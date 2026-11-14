@@ -21,3 +21,6 @@ perf/out/
 perf/node_modules/
 out/
 .idea/
+.run/
+data-live/
+object-1080p.mp4

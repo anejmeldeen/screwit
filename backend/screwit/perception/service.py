@@ -240,7 +240,7 @@ class PerceptionImpl(PerceptionService):
 
                 if not ps.available():
                     return None
-                self._segmenter = ps.GroundedSam2PartSegmenter()
+                self._segmenter = ps.Sam3PartSegmenter()
             return self._segmenter.label_images(frames, names, object_masks=object_masks)
         except Exception:  # noqa: BLE001 - segmentation is best-effort; never fail the scan
             return None

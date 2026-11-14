@@ -1,28 +1,26 @@
 """Grounded SAM 2 multi-part segmenter for the live path (P3).
 
-Turns a list of part NAMES (from Claude) into per-keyframe integer label images (0 background,
-1..N parts) that ``lifting.vote_labels`` lifts onto the mesh. Without this, the live path labels the
-whole object as one part (PASSOFF known-problem #4).
+Turns a list of part NAMES (from Claude, or a chat message) into per-keyframe integer label images
+(0 background, 1..N parts) that ``lifting.vote_labels`` lifts onto the mesh. Without this, the live
+path labels the whole object as one part (PASSOFF known-problem #4).
 
-Pipeline per object:
-1. Grounding DINO finds a box for each named part in a reference keyframe (the clearest view).
-2. SAM 2 video propagates each box's mask across all keyframes.
-3. The per-frame masks are painted into one int label image per frame; where parts overlap, the
-   higher-scoring (earlier, more-confident) detection wins.
+Pipeline per object (SAM 3 text/concept segmentation):
+1. For each part name, SAM 3 segments that concept directly from a TEXT prompt -- no Grounding DINO
+   boxes, no SAM 2 box propagation. SAM 3's native concept segmentation is what makes clean
+   multi-part splits ("ear cup", "headband") feasible.
+2. Each part's per-frame masks are clipped to the object mask (no table/background), resolved
+   competitively (a larger concept cannot overwrite a smaller one), and edge-smoothed.
 
-Config (env, mirroring adapters.resolve_device):
-- SCREWIT_SAM2_CHECKPOINT : path to the SAM 2 .pt (required to run; absent -> segmenter unavailable).
-- SCREWIT_SAM2_CONFIG     : SAM 2 config name (default configs/sam2.1/sam2.1_hiera_b+.yaml).
-- SCREWIT_DEVICE          : cpu/cuda (via resolve_device()).
+Config (env): see ``sam3_adapter`` -- SCREWIT_SAM3 (enable), SCREWIT_SAM3_MODEL, SCREWIT_SAM3_BACKEND
+(hf | sam3cpu | meta), SCREWIT_DEVICE. The sam3-cpu backend runs on a CPU-only host.
 
-Everything is best-effort: if the checkpoint is missing, a model errors, or nothing is detected,
-``label_images`` returns None and the caller keeps the single-part fallback.
+Everything is best-effort: if SAM 3 is unavailable, the weights are not authenticated, or nothing is
+detected, ``label_images`` returns None and the caller keeps the single-part fallback.
 """
 
 from __future__ import annotations
 
 import logging
-import os
 
 import numpy as np
 
@@ -30,46 +28,25 @@ from screwit.interfaces import FrameSet
 
 log = logging.getLogger(__name__)
 
-DEFAULT_SAM2_CONFIG = "configs/sam2.1/sam2.1_hiera_b+.yaml"
-
-
-def _phrase_matches(phrase: str, name: str) -> bool:
-    """True when a Grounding DINO phrase grounds to this part name. Per-name detection means the
-    phrase should equal or contain the name (minus subword fragments). Rejects '##' fragments and
-    empties that DINO emits when a prompt doesn't ground cleanly."""
-    p = (phrase or "").strip().lower()
-    nm = (name or "").strip().lower()
-    if not p or not nm or p.startswith("##"):  # reject subword fragments outright
-        return False
-    return p == nm or p in nm or nm in p or any(w in p for w in nm.split() if len(w) > 2)
-
 
 def available() -> bool:
-    """True when a SAM 2 checkpoint is configured and present (so the live path can segment parts)."""
-    ckpt = os.environ.get("SCREWIT_SAM2_CHECKPOINT")
-    return bool(ckpt) and os.path.exists(ckpt)
+    """True when SAM 3 (text-prompted part segmentation) is enabled and a backend is importable.
+    The sam3-cpu backend makes this usable on a CPU-only host."""
+    from screwit.perception import sam3_adapter
+
+    return sam3_adapter.available()[0]
 
 
-class GroundedSam2PartSegmenter:
-    """Produces per-keyframe label images from part names using Grounding DINO + SAM 2."""
+class Sam3PartSegmenter:
+    """Produces per-keyframe label images from part names using SAM 3 text/concept prompts.
 
-    def __init__(self, checkpoint: str | None = None, config: str | None = None,
-                 device: str | None = None, *, box_threshold: float = 0.2,
-                 text_threshold: float = 0.2) -> None:
-        self.checkpoint = checkpoint or os.environ.get("SCREWIT_SAM2_CHECKPOINT")
-        self.config = config or os.environ.get("SCREWIT_SAM2_CONFIG", DEFAULT_SAM2_CONFIG)
+    One text prompt per part name (no Grounding DINO, no SAM 2 boxes); SAM 3 segments the concept
+    directly. Masks are clipped to the object, resolved competitively so a large concept cannot
+    swallow a small one, and edge-smoothed."""
+
+    def __init__(self, model: str | None = None, device: str | None = None) -> None:
+        self.model = model
         self.device = device
-        self.box_threshold = box_threshold
-        self.text_threshold = text_threshold
-
-    def _reference_frame(self, frames: FrameSet) -> int:
-        """Pick the keyframe with the most valid depth (the fullest view of the object)."""
-        best, best_valid = 0, -1
-        for i, d in enumerate(frames.depth_mm):
-            v = int(np.count_nonzero(d > 0))
-            if v > best_valid:
-                best, best_valid = i, v
-        return best
 
     def label_images(self, frames: FrameSet, part_names: list[str],
                      object_masks: list[np.ndarray] | None = None) -> list[np.ndarray] | None:
@@ -79,98 +56,44 @@ class GroundedSam2PartSegmenter:
         """
         if not available() or not part_names:
             return None
-        try:
-            from screwit.perception.adapters import (
-                GroundingDinoAdapter,
-                Sam2VideoAdapter,
-                resolve_device,
-            )
-        except Exception as e:  # noqa: BLE001
-            log.warning("part segmenter unavailable (import): %s", e)
-            return None
+        from screwit.perception import sam3_adapter
 
-        device = self.device or resolve_device()
         images = [np.asarray(im, dtype=np.uint8) for im in frames.images]
         if not images:
             return None
         h, w = images[0].shape[:2]
-        ref = self._reference_frame(frames)
 
-        # Detect each part name SEPARATELY. Packing all names into one period-joined Grounding DINO
-        # prompt makes the text grounding bleed across phrases (e.g. "ear cups headband adjustment
-        # sliders" as one box) and emit subword fragments ("##band", ""). One call per name keeps
-        # each detection cleanly tied to its part and finds far more of the parts.
-        try:
-            dino = GroundingDinoAdapter(device=device)
-        except Exception as e:  # noqa: BLE001
-            log.warning("Grounding DINO unavailable; single-part fallback: %s", e)
-            return None
-
-        from screwit.perception.adapters import DinoBox
-
-        tagged: list[tuple[int, DinoBox]] = []  # (label_id, best box for that part)
-        for i, name in enumerate(part_names):
-            try:
-                found = dino.detect(images[ref], [name], box_threshold=self.box_threshold,
-                                    text_threshold=self.text_threshold)
-            except Exception as e:  # noqa: BLE001
-                log.warning("Grounding DINO failed for %r: %s", name, e)
-                continue
-            # Keep this part's single best (highest-score) box, if any grounded to the name.
-            good = [b for b in found if _phrase_matches(b.phrase, name)]
-            if good:
-                tagged.append((i + 1, max(good, key=lambda b: b.score)))
-        if not tagged:
-            log.info("Grounding DINO found no named parts; keeping single-part fallback")
-            return None
-
-        # Reject a part box that covers nearly the whole object: a detection spanning most of the
-        # object (e.g. "padding foam" blown up to the entire headphone) is wrong and would swallow
-        # every other part. Measure against the object mask area on the reference frame.
-        ref_obj = None
-        if object_masks is not None and ref < len(object_masks):
-            ref_obj = np.asarray(object_masks[ref], dtype=bool)
-            if ref_obj.shape != (h, w):
-                ref_obj = None
-        obj_area = float(ref_obj.sum()) if ref_obj is not None else float(h * w)
-
-        def _area(b):
-            x0, y0, x1, y1 = b.xyxy
-            return max(0.0, x1 - x0) * max(0.0, y1 - y0)
-
-        kept = []
-        for label, b in tagged:
-            # Only reject a box that is essentially the ENTIRE object (>95%); competitive per-pixel
-            # assignment below prevents a merely-large part from dominating, so keep as many as we can.
-            if obj_area > 0 and _area(b) > 0.95 * obj_area and len(tagged) > 1:
-                log.info("dropping whole-object box %r (%.0f%% of object)", b.phrase,
-                         100 * _area(b) / obj_area)
-                continue
-            kept.append((label, b))
-        if not kept:
-            kept = tagged  # keep at least one
-
-        sam = Sam2VideoAdapter(self.checkpoint, self.config, device=device)
-        # Get each part's propagated per-frame mask. Keep them SEPARATE (not overwrite-painted) so we
-        # can resolve overlaps competitively and every detected part keeps its own region -- the goal
-        # is as many distinct parts as the detector found, not one box dominating.
+        # SAM 3 segments by TEXT (concept) prompt directly -- one prompt per part name, no Grounding
+        # DINO box step. This replaces the old SAM 2 + DINO path: SAM 3's native concept segmentation
+        # is what makes clean multi-part splits ("ear cup", "headband") possible, and the sam3-cpu
+        # backend runs it on this CPU host.
+        seg = sam3_adapter.Sam3TextSegmenter()
         part_masks: dict[int, dict[int, np.ndarray]] = {}  # label -> {frame_idx -> bool mask}
-        box_area = {label: _area(b) for label, b in kept}
-        for label, box in kept:
-            try:
-                per_frame = sam.segment(images, box=np.asarray(box.xyxy, dtype=np.float32),
-                                        ann_frame_idx=ref, obj_id=label)
-            except Exception as e:  # noqa: BLE001
-                log.warning("SAM 2 propagation failed for %r: %s", box.phrase, e)
+        mask_size: dict[int, int] = {}                      # label -> total mask pixels (for priority)
+        for i, name in enumerate(part_names):
+            label = i + 1
+            per_frame = seg.segment(images, name)
+            if not per_frame:
                 continue
-            part_masks[label] = {fi: np.asarray(mk, dtype=bool) for fi, mk in per_frame.items()}
+            kept_frames = {}
+            total = 0
+            for fi, m in per_frame.items():
+                m = np.asarray(m, dtype=bool)
+                if m.shape != (h, w):
+                    continue
+                kept_frames[fi] = m
+                total += int(m.sum())
+            if kept_frames:
+                part_masks[label] = kept_frames
+                mask_size[label] = total
         if not part_masks:
+            log.info("SAM 3 found no named parts; keeping single-part fallback")
             return None
 
-        # Per-frame competitive assignment: a pixel claimed by several parts goes to the part with
-        # the SMALLEST box (the tightest, most specific detection), so a large loose part cannot
-        # swallow a small one and all parts survive. Priority = ascending box area.
-        order = sorted(part_masks.keys(), key=lambda la: box_area.get(la, 0.0), reverse=True)
+        # Per-frame competitive assignment: a pixel claimed by several parts goes to the SMALLER part
+        # (by total mask size), so a large concept mask cannot swallow a small one and every detected
+        # part survives. Paint largest-first; smaller overwrites.
+        order = sorted(part_masks.keys(), key=lambda la: mask_size.get(la, 0), reverse=True)
         label_imgs = [np.zeros((h, w), dtype=np.int32) for _ in images]
         painted_any = False
         for fidx in range(len(images)):
