@@ -106,10 +106,9 @@ update_repo() {
 
 start() {
   : "${OPENROUTER_API_KEY:?export OPENROUTER_API_KEY=sk-or-... first (never store it in the repo)}"
-  if alive "$BE_PID" || alive "$WEB_PID"; then
-    warn "already running (use ./run.sh stop first). backend pid $(cat "$BE_PID" 2>/dev/null), web pid $(cat "$WEB_PID" 2>/dev/null)"
-    exit 1
-  fi
+  # Always clear any previous run first (pid files AND whatever holds the ports), so `start` never
+  # collides with a stale server (EADDRINUSE) and always ends up serving the fresh build.
+  stop_quiet
   update_repo
   ensure_installed
 
@@ -142,20 +141,47 @@ start() {
   ok "open http://127.0.0.1:${WEB_PORT:-3000}   ·   stop with ./run.sh stop"
 }
 
-stop() {
-  local any=0
+stop_quiet() {
+  # Kill processes from the pid files, then anything still holding our ports (orphans the pid file
+  # missed). Quiet: no "nothing was running" noise; used by both `start` and `stop`.
+  local pid
   for pf in "$WEB_PID" "$BE_PID"; do
     if alive "$pf"; then
-      local pid; pid="$(cat "$pf")"
-      info "stopping pid $pid"
+      pid="$(cat "$pf")"
       kill "$pid" 2>/dev/null || true
-      # give it a moment, then force if still alive
       sleep 1; kill -0 "$pid" 2>/dev/null && kill -9 "$pid" 2>/dev/null || true
-      any=1
     fi
     rm -f "$pf"
   done
-  [ "$any" = 1 ] && ok "stopped" || warn "nothing was running"
+  kill_port "${WEB_PORT:-3000}"
+  kill_port "${SCREWIT_PORT:-8000}"
+}
+
+kill_port() {
+  command -v lsof >/dev/null 2>&1 || return 0
+  local p pids; pids="$(lsof -ti "tcp:$1" 2>/dev/null || true)"
+  [ -n "$pids" ] || return 0
+  for p in $pids; do kill "$p" 2>/dev/null || true; done
+  sleep 1
+  pids="$(lsof -ti "tcp:$1" 2>/dev/null || true)"
+  for p in $pids; do kill -9 "$p" 2>/dev/null || true; done
+}
+
+stop() {
+  local running=0
+  alive "$WEB_PID" && running=1
+  alive "$BE_PID" && running=1
+  if command -v lsof >/dev/null 2>&1; then
+    [ -n "$(lsof -ti "tcp:${WEB_PORT:-3000}" 2>/dev/null)" ] && running=1
+    [ -n "$(lsof -ti "tcp:${SCREWIT_PORT:-8000}" 2>/dev/null)" ] && running=1
+  fi
+  if [ "$running" = 1 ]; then
+    info "stopping backend + frontend"
+    stop_quiet
+    ok "stopped"
+  else
+    warn "nothing was running"
+  fi
 }
 
 case "${1:-}" in
