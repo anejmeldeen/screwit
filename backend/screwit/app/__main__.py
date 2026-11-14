@@ -18,12 +18,18 @@ def refuse_non_loopback(bind: str) -> None:
 
 
 def main() -> None:
+    import os
+
     cfg = settings()
     refuse_non_loopback(cfg.bind)
 
     import uvicorn
 
-    uvicorn.run("screwit.app.main:app", host=cfg.bind, port=cfg.port, log_level="info")
+    # SCREWIT_RELOAD=1 restarts the server on backend code changes (dynamic dev edits). Off by
+    # default: autoreload adds overhead and re-imports the heavy model modules on every change.
+    reload = os.environ.get("SCREWIT_RELOAD", "0").strip().lower() in ("1", "true", "on", "yes")
+    uvicorn.run("screwit.app.main:app", host=cfg.bind, port=cfg.port, log_level="info",
+                reload=reload)
 
 
 if __name__ == "__main__":

@@ -455,10 +455,22 @@ class ReconPipelineImpl:
         colors = frame_set.images
         mesh = tsdf_mod.fuse_tsdf(masked_depth, colors, result.intrinsics, extr_scan)
         mesh = tsdf_mod.repair_mesh(mesh)
+        # Sparse CPU scans sometimes fragment and the largest-component rule drops the object,
+        # yielding an empty mesh. Retry once, looser: wider truncation to bridge gaps and keep ALL
+        # sizeable components (not just the largest), so the object survives.
+        if mesh.triangles.shape[0] < 100:
+            mesh = tsdf_mod.fuse_tsdf(masked_depth, colors, result.intrinsics, extr_scan,
+                                      keep_largest=False, sdf_trunc=0.012)
+            mesh = tsdf_mod.repair_mesh(mesh)
         full_path = scratch / "object_full.ply"
         glb_path = scratch / "object.glb"
         tsdf_mod.write_full_ply(mesh, full_path)
         tris = tsdf_mod.write_web_glb(mesh, glb_path)
+        # Never overwrite an existing good mesh with an empty one.
+        if tris < 1:
+            existing = storage.head(self._key(scan_id, "mesh/object.glb"))
+            if existing is not None:
+                raise ValueError("mesh fusion produced no triangles; keeping the previous mesh")
         storage.put_file(self._key(scan_id, "mesh/object_full.ply"), full_path,
                          "application/octet-stream")
         storage.put_file(self._key(scan_id, "mesh/object.glb"), glb_path, "model/gltf-binary")

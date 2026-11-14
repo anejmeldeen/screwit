@@ -8,12 +8,18 @@
 #   export OPENROUTER_API_KEY=sk-or-...
 #
 # Optional, to enable multi-part SAM 3 segmentation on first start:
-#   export SCREWIT_SAM3=1          # `start` will install sam3-cpu if needed
+#   export SCREWIT_SAM3=1          # `start` installs sam3-cpu (from GitHub) if needed
 #   (SAM 3 weights are gated: run `<venv>/bin/huggingface-cli login` + accept the model license once)
+#
+# Dynamic/dev edits:
+#   export SCREWIT_RELOAD=1        # backend auto-reloads on code changes (uvicorn --reload)
+#   start always pulls latest (fast-forward), rebuilds the web app, and kills old servers first,
+#   so every `start` serves the newest code. Escape hatches: SCREWIT_NO_PULL=1, SCREWIT_SKIP_BUILD=1.
 #
 # Config via env (defaults in parens); export to override:
 #   SCREWIT_PORT (8000)  WEB_PORT (3000)  SCREWIT_DEVICE (cpu)  SCREWIT_CPU_VIEW_CAP (8)
-#   SCREWIT_MODEL (anthropic/claude-sonnet-4.5)  SCREWIT_DATA_DIR (<repo>/data-live)
+#   SCREWIT_INFER_GS (0)  SCREWIT_MODEL (anthropic/claude-sonnet-4.5)  SCREWIT_DATA_DIR (<repo>/data-live)
+#   SCREWIT_LLM (openrouter)  SCREWIT_SAM3 (0)  SCREWIT_SAM3_BACKEND (auto)  SCREWIT_RELOAD (0)
 
 set -euo pipefail
 
@@ -39,6 +45,47 @@ find_uv() {
   else return 1; fi
 }
 
+# Check SAM 3 gated-weight access and guide the user through the one-time grant. SAM 3 needs both a
+# HuggingFace login AND access to the gated facebook/sam3 repo (click "Agree" on the model page).
+ensure_sam3_weights() {
+  # Make the HF token discoverable regardless of HF_HOME: the token lives in the DEFAULT HF cache
+  # (~/.cache/huggingface/token) but we run with HF_HOME pointed elsewhere, so export HF_TOKEN.
+  if [ -z "${HF_TOKEN:-}" ] && [ -f "$HOME/.cache/huggingface/token" ]; then
+    export HF_TOKEN="$(cat "$HOME/.cache/huggingface/token" 2>/dev/null)"
+  fi
+  # Authoritative check: actually fetch a gated file header. Distinguishes the two failure modes.
+  local status
+  status="$("$PY" - <<'PY' 2>/dev/null
+import sys
+from huggingface_hub import hf_hub_download
+from huggingface_hub.errors import GatedRepoError
+try:
+    hf_hub_download("facebook/sam3", "config.json")
+    print("ok")
+except GatedRepoError:
+    print("gated")          # authed but not authorized (403), or not logged in (401)
+except Exception as e:
+    print("error:" + type(e).__name__)
+PY
+)"
+  case "$status" in
+    ok) ok "SAM 3 weights accessible" ;;
+    gated|*)
+      warn "SAM 3 weights (facebook/sam3) are not accessible for your account yet."
+      echo "  One time, to enable multi-part segmentation:"
+      echo "    1. Log in:  $VENV/bin/huggingface-cli login   (paste a token from https://huggingface.co/settings/tokens)"
+      echo "    2. Request access: open https://huggingface.co/facebook/sam3 and click 'Agree and access repository'."
+      echo "    3. Wait for Meta to grant access (can be instant or take a while), then re-run ./run.sh start."
+      if [ -t 0 ] && [ ! -f "$HOME/.cache/huggingface/token" ]; then
+        printf '  Run the HuggingFace login now? [y/N] '
+        read -r ans
+        case "$ans" in y|Y) "$VENV/bin/huggingface-cli" login || warn "login failed" ;; esac
+      fi
+      warn "Until access is granted, SAM 3 falls back to single-part segmentation."
+      ;;
+  esac
+}
+
 # Install only what is missing, so `start` is safe to run repeatedly.
 ensure_installed() {
   local UV
@@ -55,10 +102,22 @@ ensure_installed() {
     info "Installing backend dependencies (first run; a few minutes)…"
     "$UV" pip install -p "$PY" -e "$BACKEND[geometry,cad,agent,storage,dev]"
   fi
-  if [ "${SCREWIT_SAM3:-0}" = "1" ] && ! "$PY" -c "import sam3" >/dev/null 2>&1; then
-    info "Installing SAM 3 CPU segmenter (sam3-cpu)…"
-    "$UV" pip install -p "$PY" sam3-cpu || warn "sam3-cpu install failed; multi-part will fall back to single part"
-    warn "SAM 3 weights are gated: run '$VENV/bin/huggingface-cli login' and accept the model license once."
+  if [ "${SCREWIT_SAM3:-0}" = "1" ]; then
+    if ! "$PY" -c "import sam3" >/dev/null 2>&1; then
+      info "Installing SAM 3 CPU segmenter (sam3-cpu from GitHub)…"
+      "$UV" pip install -p "$PY" "git+https://github.com/rhubarb-ai/sam3-cpu.git" \
+        || warn "sam3-cpu install failed; multi-part will fall back to single part"
+    fi
+    # The CLIP BPE vocab asset is not packaged by the git install; fetch it once if missing.
+    local bpe="$VENV/lib/python3.12/site-packages/sam3/assets/bpe_simple_vocab_16e6.txt.gz"
+    if [ ! -f "$bpe" ] && [ -d "$VENV/lib/python3.12/site-packages/sam3" ]; then
+      info "Fetching SAM 3 tokenizer vocab…"
+      mkdir -p "$(dirname "$bpe")"
+      curl -L -fsS -o "$bpe" \
+        "https://github.com/openai/CLIP/raw/main/clip/bpe_simple_vocab_16e6.txt.gz" \
+        || warn "could not fetch the BPE vocab; SAM 3 will fail until it is present"
+    fi
+    ensure_sam3_weights
   fi
   if command -v npm >/dev/null 2>&1; then
     [ -d "$WEB/node_modules" ] || { info "Installing web dependencies…"; ( cd "$WEB" && npm ci ); }
@@ -123,7 +182,9 @@ start() {
     SCREWIT_LLM="${SCREWIT_LLM:-openrouter}" \
     SCREWIT_MODEL="${SCREWIT_MODEL:-anthropic/claude-sonnet-4.5}" \
     HF_HOME="$HF_DIR" \
+    ${HF_TOKEN:+HF_TOKEN="$HF_TOKEN"} \
     SCREWIT_SAM3="${SCREWIT_SAM3:-0}" \
+    SCREWIT_RELOAD="${SCREWIT_RELOAD:-0}" \
     ${SCREWIT_SAM3_BACKEND:+SCREWIT_SAM3_BACKEND="$SCREWIT_SAM3_BACKEND"} \
     "$PY" -m screwit.app >"$BE_LOG" 2>&1 ) &
   echo $! >"$BE_PID"

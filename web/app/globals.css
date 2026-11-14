@@ -144,11 +144,12 @@ button:disabled { cursor: not-allowed; }
 .chat-bubble { display:inline-block; max-width:100%; font-size:14px; line-height:1.7; overflow-wrap:anywhere; }
 .workbench .prose { color:#eee9d6; --tw-prose-body:#eee9d6; --tw-prose-bold:#f1d45d; --tw-prose-headings:#f1d45d; --tw-prose-links:#f1d45d; --tw-prose-code:#f1d45d; --tw-prose-bullets:#bab9a9; }
 .from-user { text-align:right; }.from-user .chat-bubble { background:#383627; padding:11px 15px; border:1px solid #666044; border-radius:12px 12px 3px 12px; text-align:left; }
-.chat-composer { display:grid; grid-template-columns:32px 1fr 36px; align-items:end; gap:8px; padding:12px; margin:0 16px 18px; border:1px solid #686650; border-radius:12px; background:#181918; }
+.chat-composer { display:grid; grid-template-columns:34px 1fr 34px; align-items:center; gap:8px; padding:12px; margin:0 16px 18px; border:1px solid #686650; border-radius:12px; background:#181918; }
 .chat-composer:focus-within { border-color:#f1d45d; }
-.workbench .chat-input { grid-column:1 / -1; grid-row:1; min-height:54px; max-height:160px; width:100%; padding:3px 4px; resize:vertical; background:transparent; border:0; font-size:14px; line-height:1.5; outline:none; }.chat-input::placeholder { color:#bab9a9; }
-.chat-attach { grid-column:1; grid-row:2; display:grid; place-items:center; height:32px; cursor:pointer; font-size:24px; color:#f1d45d; }
-.workbench .chat-send { grid-column:3; grid-row:2; height:34px; width:34px; padding:0; font-size:22px; }
+.workbench .chat-input { grid-column:1 / -1; grid-row:1; min-height:54px; max-height:160px; width:100%; padding:3px 4px; resize:vertical; background:transparent; border:0; font-size:14px; line-height:1.5; outline:none; }
+.chat-input::placeholder { color:#bab9a9; }
+.chat-attach { grid-column:1; grid-row:2; display:grid; place-items:center; height:34px; width:34px; padding:0; line-height:1; cursor:pointer; font-size:22px; color:#f1d45d; }
+.workbench .chat-send { grid-column:3; grid-row:2; display:grid; place-items:center; height:34px; width:34px; padding:0; }
 .chat-attachments { display:flex; flex-wrap:wrap; gap:5px; padding:8px 20px; font-size:12px; }
 .resize-handle { position:relative; z-index:2; display:flex; align-items:center; justify-content:center; background:#30312a; touch-action:none; user-select:none; }
 .resize-handle:hover,.resize-handle:focus-visible { background:#655d35; }

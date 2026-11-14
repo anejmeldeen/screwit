@@ -8,6 +8,7 @@ import { PartsPanel } from "@/components/PartsPanel";
 import { ResizeHandle } from "@/components/ResizeHandle";
 import { PartDownloads } from "@/components/PartDownloads";
 import { ChatPanel } from "@/components/ChatPanel";
+import { ScanProgress } from "@/components/StatusBar";
 import { ErrorNote } from "@/components/ui";
 import { markOnce, PERF_MARKS } from "@/lib/perf";
 import type { CadResult } from "@/lib/contracts.gen";
@@ -116,7 +117,7 @@ export function Workspace({
       <h1 className="sr-only">Workbench</h1>
       {scanError ? <div className="workbench-notice"><ErrorNote message={`Could not load this object: ${scanError}`} /></div> : null}
       {scan?.status === "failed" ? <div className="workbench-notice" role="alert">This scan could not finish. Try another recording.</div> : null}
-      {!scanError && (!scan || (scan.status !== "ready" && scan.status !== "failed")) ? <div className="workbench-notice" role="status">Preparing your object…</div> : null}
+      {!scanError && (!scan || (scan.status !== "ready" && scan.status !== "failed")) ? <div className="workbench-notice" role="status"><ScanProgress scan={scan} /></div> : null}
       {scaleWarnings(recon?.scale ?? null).map((warning) => <div key={warning.id} className="workbench-notice" role="note">{warning.message}</div>)}
       <div ref={gridRef} className="workbench-grid" style={{
         "--parts-width": `${actualPartsWidth}px`, "--chat-width": `${actualChatWidth}px`,

@@ -35,26 +35,31 @@ class MeshResult:
     vertex_colors: np.ndarray  # (V, 3) float in [0, 1]
 
 
-def _make_volume():
+def _make_volume(voxel_length: float = VOXEL_LENGTH_M, sdf_trunc: float = SDF_TRUNC_M):
     import open3d as o3d
 
     return o3d.pipelines.integration.ScalableTSDFVolume(
-        voxel_length=VOXEL_LENGTH_M,
-        sdf_trunc=SDF_TRUNC_M,
+        voxel_length=voxel_length,
+        sdf_trunc=sdf_trunc,
         color_type=o3d.pipelines.integration.TSDFVolumeColorType.RGB8,
     )
 
 
 def fuse_tsdf(depth_mm_list: list[np.ndarray], color_list: list[np.ndarray],
-              intrinsics: np.ndarray, extrinsics_mm: np.ndarray) -> MeshResult:
+              intrinsics: np.ndarray, extrinsics_mm: np.ndarray,
+              *, keep_largest: bool = True, voxel_length: float = VOXEL_LENGTH_M,
+              sdf_trunc: float = SDF_TRUNC_M) -> MeshResult:
     """Fuse masked depth maps (mm) with their world-to-camera poses (translation in mm) into a mesh.
 
     ``color_list`` are HxWx3 uint8 images matching the depth grids. Returns vertices in scan-frame
-    millimetres.
+    millimetres. ``keep_largest`` keeps only the biggest connected component (the default, good when
+    fusion is clean); set False on a sparse/fragmented scan to keep every component above a small
+    size so the object is not dropped when fusion shatters it. ``voxel_length``/``sdf_trunc`` allow a
+    looser retry that closes gaps across sparse views.
     """
     import open3d as o3d
 
-    volume = _make_volume()
+    volume = _make_volume(voxel_length, sdf_trunc)
     h, w = depth_mm_list[0].shape
     for i, (depth_mm, color) in enumerate(zip(depth_mm_list, color_list, strict=False)):
         k = intrinsics[i]
@@ -76,13 +81,19 @@ def fuse_tsdf(depth_mm_list: list[np.ndarray], color_list: list[np.ndarray],
     mesh.remove_degenerate_triangles()
     mesh.remove_duplicated_vertices()
     mesh.remove_duplicated_triangles()
-    # Largest connected component.
+    # Connected-component filtering. keep_largest: one component (clean scans). Otherwise keep every
+    # component above a small fraction of the biggest, so a fragmented sparse-view fuse does not lose
+    # the object to the single-largest rule.
     labels, counts, _ = mesh.cluster_connected_triangles()
     labels = np.asarray(labels)
     counts = np.asarray(counts)
     if counts.size > 0:
-        keep = int(np.argmax(counts))
-        remove = labels != keep
+        if keep_largest:
+            keep_set = {int(np.argmax(counts))}
+        else:
+            thresh = max(50, int(0.05 * counts.max()))
+            keep_set = {int(i) for i, c in enumerate(counts) if c >= thresh}
+        remove = ~np.isin(labels, list(keep_set))
         mesh.remove_triangles_by_mask(remove)
         mesh.remove_unreferenced_vertices()
 

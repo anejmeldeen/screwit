@@ -169,7 +169,10 @@ class Sam3TextSegmenter:
         return out
 
     def _segment_sam3cpu(self, frames, phrase) -> dict[int, np.ndarray]:
-        """rhubarb-ai sam3-cpu path: Sam3().process_video_with_prompts over a temp frame dir."""
+        """rhubarb-ai sam3-cpu path: Sam3().process_image_with_prompts over the frame images.
+
+        Uses the IMAGE API with a list of per-frame paths (the video API wants a real video file).
+        Each frame is segmented independently by the text prompt; masks are keyed by frame index."""
         import tempfile
 
         from PIL import Image
@@ -180,9 +183,13 @@ class Sam3TextSegmenter:
             self._impl = Sam3()
         sam3 = self._impl
         with tempfile.TemporaryDirectory() as d:
+            paths = []
             for i, img in enumerate(frames):
-                Image.fromarray(np.asarray(img, dtype=np.uint8)).save(os.path.join(d, f"{i:05d}.jpg"))
-            result = sam3.process_video_with_prompts(video_path=d, prompts=[phrase], output_dir=d)
+                p = os.path.join(d, f"{i:05d}.jpg")
+                Image.fromarray(np.asarray(img, dtype=np.uint8)).save(p)
+                paths.append(p)
+            result = sam3.process_image_with_prompts(image_path=paths, prompts=[phrase],
+                                                     output_dir=d, device=self.device)
             return _per_frame_from_sam3cpu(result, len(frames))
 
     def _segment_meta(self, frames, phrase) -> dict[int, np.ndarray]:
@@ -233,26 +240,41 @@ def _best_mask_from_hf(masks, hw) -> np.ndarray | None:
 
 
 def _per_frame_from_sam3cpu(result, n_frames: int) -> dict[int, np.ndarray]:
-    """Map a sam3-cpu process_video_with_prompts result to {frame_idx: bool mask}. The exact return
-    schema is documented-but-unverified, so this reads the common shapes and returns {} otherwise."""
+    """Map a sam3-cpu process_image_with_prompts result to {frame_idx: bool mask}.
+
+    Shape (verified against the installed sam3-cpu): result["images"] is a list, one per input frame
+    in order; each has ["prompts"][<phrase>] with "num_objects", "object_ids", and "masks_dir" -- a
+    directory of per-object masks written as object_<id>_mask.npy (bool) + .png. We OR all objects
+    for the prompt into one mask per frame."""
+    import os
+
     if not isinstance(result, dict):
         return {}
-    frames = result.get("frames") or result.get("masks") or result.get("per_frame")
-    out: dict[int, np.ndarray] = {}
-    if isinstance(frames, dict):
-        items = frames.items()
-    elif isinstance(frames, (list, tuple)):
-        items = enumerate(frames)
-    else:
+    images = result.get("images")
+    if not isinstance(images, list):
         return {}
-    for k, v in items:
-        try:
-            idx = int(k)
-        except (TypeError, ValueError):
+    out: dict[int, np.ndarray] = {}
+    for idx, img in enumerate(images):
+        if idx >= n_frames or not isinstance(img, dict):
             continue
-        arr = np.asarray(v)
-        if arr.ndim == 3:
-            arr = arr[0]
-        if arr.ndim == 2:
-            out[idx] = arr.astype(bool)
+        prompts = img.get("prompts") or {}
+        if not isinstance(prompts, dict):
+            continue
+        combined = None
+        for pr in prompts.values():
+            masks_dir = pr.get("masks_dir") if isinstance(pr, dict) else None
+            if not masks_dir or not os.path.isdir(masks_dir):
+                continue
+            for fn in os.listdir(masks_dir):
+                if not fn.endswith(".npy"):
+                    continue
+                try:
+                    m = np.load(os.path.join(masks_dir, fn)).astype(bool)
+                except Exception:  # noqa: BLE001
+                    continue
+                if m.ndim != 2:
+                    continue
+                combined = m if combined is None else (combined | m)
+        if combined is not None and combined.any():
+            out[idx] = combined
     return out

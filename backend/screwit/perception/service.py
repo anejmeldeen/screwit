@@ -42,6 +42,22 @@ PARTS_KEY = "scans/{scan_id}/parts.json"
 GRAPH_KEY = "scans/{scan_id}/scene_graph.json"
 
 
+def _target_part_count(names: list[str]) -> int:
+    """How many geometry parts to produce: follow the count of parts the VLM proposed (clamped to a
+    sensible 2-6), so the split granularity tracks what the object actually has."""
+    n = len([x for x in (names or []) if x and x.strip()])
+    return max(2, min(6, n or 4))
+
+
+def _geometry_name_hint(names: list[str]) -> str:
+    """A soft naming hint for a geometry part: the VLM names it from the render, but we pass the
+    object's proposed part vocabulary so it picks from the right category set."""
+    cands = [x for x in (names or []) if x and x.strip()]
+    if not cands:
+        return "part"
+    return "one of: " + ", ".join(cands[:8])
+
+
 def _titlecase_label(label: str) -> str:
     """Capitalize a part label for display (SPEC/UX: object and part names are shown Title Case).
 
@@ -163,23 +179,39 @@ class PerceptionImpl(PerceptionService):
         import trimesh
 
         names = self.labeller.name_parts(scan_id, frames.full_res_paths).names
-        label_images, part_names = self._part_label_images(scan_id, frames, masks, names)
 
         mesh = trimesh.load(mesh_path, force="mesh")
         verts = np.asarray(mesh.vertices, dtype=float)
         faces = np.asarray(mesh.faces, dtype=int)
         # An empty mesh means an earlier stage found no object surface (commonly: the scale board was
         # not visible and/or the object was not isolated on a flat surface, so the mask kept nothing).
-        # Fail here with an actionable message instead of a cryptic numpy error from labels.max().
+        # Fail here with an actionable message instead of a cryptic numpy error.
         if verts.size == 0 or faces.size == 0:
             raise ValueError(
                 "no object surface was reconstructed - the object could not be isolated. "
                 "Re-record with the object on a flat surface and the printed scale board lying flat "
                 "beside it, fully in view."
             )
-        labels = lifting.vote_labels(verts, label_images, frames.depth_mm, frames.cameras)
-        labels = lifting.smooth_labels(labels, faces)
-        submeshes = lifting.split_mesh_by_label(mesh, labels)
+
+        # How to split the object into parts:
+        # 1. Precomputed per-frame part-label images (hero fixtures) -> lift them onto the mesh.
+        # 2. Otherwise GEOMETRY segmentation of the mesh (CPU, no GPU/model): local thickness +
+        #    connectivity. This is the live multi-part path -- SAM 2/3 cannot do part-level on a
+        #    single object without a GPU, geometry can. Parts are named from their render by the VLM.
+        label_images = getattr(frames, "part_label_images", None)
+        geometry_named = False
+        if label_images is not None:
+            label_images = [np.asarray(li, dtype=np.int32) for li in label_images]
+            part_names = names
+            labels = lifting.vote_labels(verts, label_images, frames.depth_mm, frames.cameras)
+            labels = lifting.smooth_labels(labels, faces)
+            submeshes = lifting.split_mesh_by_label(mesh, labels)
+        else:
+            from screwit.perception import geo_segment
+
+            submeshes = geo_segment.segment_mesh(mesh, target_parts=_target_part_count(names))
+            part_names = names
+            geometry_named = True  # name each part from its render, not by name order
 
         parts: list[Part] = []
         part_points: dict[str, np.ndarray] = {}
@@ -195,7 +227,10 @@ class PerceptionImpl(PerceptionService):
             png_key = f"scans/{scan_id}/renders/{pid}.png"
             storage.put_bytes(glb_key, sub.export(file_type="glb"), "model/gltf-binary")
             storage.put_bytes(png_key, thumb, "image/png")
-            label_info = self.labeller.label_part(scan_id, name, thumb)
+            # For geometry parts the segment order carries no semantics, so let the VLM name the
+            # part purely from its render (candidate names from Claude guide, but do not force it).
+            proposed = _geometry_name_hint(names) if geometry_named else name
+            label_info = self.labeller.label_part(scan_id, proposed, thumb)
             parts.append(self._build_part(scan_id, pid, name, label_info, sub_verts,
                                           reconstruction_revision, glb_key, png_key))
 
@@ -203,47 +238,6 @@ class PerceptionImpl(PerceptionService):
         self._save_parts(scan_id, parts, storage)
         self._save_graph(scan_id, graph, storage)
         return parts, graph
-
-    def _part_label_images(self, scan_id, frames, masks, names):
-        """Pick the per-frame part-label images (0 background, 1..N parts).
-
-        Order of preference:
-        1. Hero fixtures ship precomputed label images on the FrameSet -> use them.
-        2. Live multi-part: Grounded SAM 2 segments each named part into per-frame masks, when a
-           SAM 2 checkpoint is configured and the provider is real. This is what gives separate
-           pieces (ear cups, headband, ...) instead of one blob.
-        3. Fallback: the object mask as a single part.
-        """
-        label_images = getattr(frames, "part_label_images", None)
-        if label_images is not None:
-            return [np.asarray(li, dtype=np.int32) for li in label_images], names
-
-        seg_imgs = self._segment_parts(frames, names, masks)
-        if seg_imgs is not None:
-            used = {int(v) for im in seg_imgs for v in np.unique(im) if v > 0}
-            if used:
-                # Keep names aligned to label ids 1..N; names beyond detected labels are harmless.
-                return seg_imgs, (names or ["part"])
-
-        single = [np.where(m, 1, 0).astype(np.int32) for m in masks]
-        return single, names or ["part"]
-
-    def _segment_parts(self, frames, names, object_masks=None):
-        """Run the multi-part segmenter if available; None means keep the single-part fallback.
-        ``object_masks`` (the board-excluded object mask per keyframe) is passed so the segmenter can
-        clip part boxes to the object -- keeping the table and background out of every part."""
-        if self.provider == "fake" or not names:
-            return None
-        try:
-            if self._segmenter is None:
-                from screwit.perception import part_segmenter as ps
-
-                if not ps.available():
-                    return None
-                self._segmenter = ps.Sam3PartSegmenter()
-            return self._segmenter.label_images(frames, names, object_masks=object_masks)
-        except Exception:  # noqa: BLE001 - segmentation is best-effort; never fail the scan
-            return None
 
     def _build_part(self, scan_id, pid, name, label_info, verts, recon_rev, glb_key,
                     png_key) -> Part:

@@ -72,6 +72,43 @@ function overallPercent(scan: Scan): number {
   return Math.round((acc / total) * 100);
 }
 
+const STAGE_LABEL: Record<string, string> = Object.fromEntries(
+  STAGE_ORDER.map((s) => [s.name, s.label]),
+);
+
+// Live "Preparing your object" progress: the weighted overall bar plus the current stage's label,
+// message, and percent. Driven by the SSE-updated Scan (its per-stage progress ticks). Shown while
+// a scan is processing; renders a starting state before the first stage reports.
+export function ScanProgress({ scan }: { scan: Scan | null }) {
+  const pct = scan ? overallPercent(scan) : 0;
+  const running = scan?.stages.find((s) => s.state === "running");
+  const headline = !scan
+    ? "Preparing your object…"
+    : running
+      ? `Preparing: ${STAGE_LABEL[running.name] ?? running.name}`
+      : scan.status === "ready"
+        ? "Ready"
+        : "Preparing your object…";
+  const detail = running?.message ?? null;
+  return (
+    <div data-testid="scan-progress" data-percent={pct}>
+      <div className="mb-1 flex items-center justify-between text-xs text-muted">
+        <span>
+          {headline}
+          {detail ? <span className="text-slate-400"> · {detail}</span> : null}
+        </span>
+        <span className="tabular-nums">{pct}%</span>
+      </div>
+      <div className="h-1.5 w-full overflow-hidden rounded-full bg-slate-800">
+        <div
+          className="h-full rounded-full bg-accent transition-[width] duration-500 ease-out"
+          style={{ width: `${pct}%` }}
+        />
+      </div>
+    </div>
+  );
+}
+
 export function StatusBar({
   scan,
   scale = null,
