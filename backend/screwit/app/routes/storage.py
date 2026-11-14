@@ -61,6 +61,13 @@ def get_asset(key: str, exp: str, sig: str, reg: RegistryDep):
 
     head = reg.storage.head(key)
     if head is None:
+        # Demo (hero) scans live in the read-only fixtures dir, not the live data dir. In live mode
+        # storage reads data-live, so demo assets 404 there; fall back to fixtures for them so the
+        # landing-page example previews load regardless of mode.
+        fb = _fixture_asset(reg, key)
+        if fb is not None:
+            data, ctype = fb
+            return StreamingResponse(iter([data]), media_type=ctype)
         raise HTTPException(status_code=404, detail="asset not found")
     data = reg.storage.get_bytes(key)
 
@@ -68,3 +75,18 @@ def get_asset(key: str, exp: str, sig: str, reg: RegistryDep):
         yield data
 
     return StreamingResponse(body(), media_type=head.get("content_type") or "application/octet-stream")
+
+
+def _fixture_asset(reg, key: str) -> tuple[bytes, str] | None:
+    """Read a demo-scan asset from the fixtures dir (used when live storage lacks it). Only serves
+    keys under fixtures/scans/<id>/..., never escaping the fixtures root."""
+    import mimetypes
+
+    if not key.startswith("scans/"):
+        return None
+    base = reg.settings.fixtures_dir.resolve()
+    path = (base / key).resolve()
+    if base not in path.parents or not path.is_file():  # no traversal, must exist
+        return None
+    ctype = mimetypes.guess_type(str(path))[0] or "application/octet-stream"
+    return path.read_bytes(), ctype
