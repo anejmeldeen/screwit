@@ -152,6 +152,23 @@ export function subscribeScanEvents(
     if (isTerminal(scan)) {
       stopped = true;
       controller?.abort();
+      // The terminal `ready` frame can arrive a beat before the final per-stage
+      // snapshot (e.g. the `parts` stage still showing running), which left the
+      // Parts panel empty until a manual refresh. Do ONE last GET so the client
+      // always ends on the fully-complete scan (every stage `done`), which is
+      // what flips partsReady and triggers the parts fetch. Fire-and-forget.
+      void finalResync();
+    }
+  }
+
+  async function finalResync() {
+    try {
+      const res = await fetch(`/api/scans/${scanId}`, {
+        headers: { Accept: "application/json" },
+      });
+      if (res.ok) onScan((await res.json()) as Scan);
+    } catch {
+      /* best-effort; the terminal frame already delivered the ready status */
     }
   }
 
