@@ -27,6 +27,12 @@ export function Workspace({
   const [focusPartId, setFocusPartId] = useState<string | null>(initialPartId);
   const [cadOverlay, setCadOverlay] = useState<ViewerCadOverlay | null>(null);
 
+  useEffect(() => {
+    if (parts && selectedId && !parts.some((p) => p.part_id === selectedId)) {
+      setSelectedId(null); setFocusPartId(null); setHoveredId(null);
+    }
+  }, [parts, selectedId]);
+
   const partsReady = isStageDone(scan, "parts");
 
   // Mark the shell as painted once the panels, status bar and empty viewer

@@ -66,7 +66,7 @@ class ScanStore:
                 select(ReconstructionRow).where(ReconstructionRow.scan_id == scan_id)
             ).all()
             if rows:
-                latest = max(rows, key=lambda r: r.reconstruction_revision)
+                latest = max(rows, key=lambda r: (r.reconstruction_revision, r.id or 0))
                 return Reconstruction.model_validate_json(latest.recon_json)
         return self._data.reconstruction(scan_id)
 
@@ -111,7 +111,7 @@ class ScanStore:
         with db_session() as s:
             rows = s.exec(select(SceneGraphRow).where(SceneGraphRow.scan_id == scan_id)).all()
             if rows:
-                latest = max(rows, key=lambda r: r.reconstruction_revision)
+                latest = max(rows, key=lambda r: (r.reconstruction_revision, r.id or 0))
                 return SceneGraph.model_validate_json(latest.graph_json)
         return self._data.scene_graph(scan_id)
 

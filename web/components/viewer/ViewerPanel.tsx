@@ -11,8 +11,6 @@ import { api, ApiError } from "@/lib/api";
 import { assetUrl } from "@/lib/storage";
 import {
   AssetQuality,
-  detectQuality,
-  hasMobileAssets,
   isPhone,
   splatUriFor,
 } from "@/lib/device";
@@ -73,7 +71,7 @@ export function ViewerPanel({
 }: ViewerPanelProps) {
   const splatReady = !!recon?.splat_uri;
   const [mode, setMode] = useState<"splat" | "mesh">("mesh");
-  const [quality, setQuality] = useState<AssetQuality>("desktop");
+  const quality: AssetQuality = "desktop";
   const [phone, setPhone] = useState(false);
   const [explode, setExplode] = useState(0);
   const [measureActive, setMeasureActive] = useState(false);
@@ -92,7 +90,6 @@ export function ViewerPanel({
   const [splatRequested, setSplatRequested] = useState(false);
 
   useEffect(() => {
-    setQuality(isPhone() ? "mobile" : detectQuality());
     setPhone(isPhone());
     prewarmViewer();
   }, []);
@@ -129,17 +126,13 @@ export function ViewerPanel({
   // On phones, render the light whole-object mobile mesh for the mesh view when
   // one exists (keeps first-mesh under budget on slow 4G); desktop uses the
   // per-part meshes (picking, colours, explode).
-  const mobileMeshUri = useMemo(
-    () => (quality === "mobile" && explode === 0 && !selectedId && recon?.mesh_mobile_uri ? recon.mesh_mobile_uri : null),
-    [quality, explode, selectedId, recon],
-  );
+  const mobileMeshUri = null; // One editable parts view on every device.
   const needsScale = recon?.scale?.method === "learned";
 
   const splatUri = useMemo(
     () => (recon ? splatUriFor(recon, quality) : null),
     [recon, quality],
   );
-  const showMobileToggle = hasMobileAssets(recon);
 
   // Warm the mesh in the HTTP cache the moment its URL is known, in parallel
   // with the viewer JS download, so GLTFLoader reuses the bytes instead of
@@ -210,7 +203,7 @@ export function ViewerPanel({
   return (
     <div className="flex h-full flex-col">
       {/* Toolbar */}
-      <div className="flex flex-wrap items-center gap-2 border-b border-line p-2 text-sm">
+      <div className="editor-tools">
         {/* Splat/mesh toggle. The mesh button is always present; the splat
             button appears only when a splat exists. Selecting Splat marks it as
             user-requested, which is what releases the splat fetch. */}
@@ -221,7 +214,7 @@ export function ViewerPanel({
               className={`px-3 py-1 ${mode === "mesh" ? "bg-accent text-paper" : "bg-panel"}`}
               onClick={() => setMode("mesh")}
             >
-              Mesh
+              Parts view
             </button>
             <button
               data-testid="view-toggle-splat"
@@ -231,7 +224,7 @@ export function ViewerPanel({
                 setMode("splat");
               }}
             >
-              Splat
+              Original scan
             </button>
           </div>
         ) : (
@@ -240,31 +233,12 @@ export function ViewerPanel({
             className="rounded border border-line bg-accent px-3 py-1 text-paper"
             disabled
           >
-            Mesh view
+            Parts view
           </button>
         )}
 
-        {showMobileToggle ? (
-          <div className="flex overflow-hidden rounded border border-line">
-            <button
-              className={`px-2 py-1 ${quality === "desktop" ? "bg-wash" : "bg-panel"}`}
-              onClick={() => setQuality("desktop")}
-              title="Full-resolution assets"
-            >
-              HQ
-            </button>
-            <button
-              className={`px-2 py-1 ${quality === "mobile" ? "bg-wash" : "bg-panel"}`}
-              onClick={() => setQuality("mobile")}
-              title="Lighter phone assets"
-            >
-              Phone
-            </button>
-          </div>
-        ) : null}
-
         <label className="flex items-center gap-2">
-          <span className="text-muted">Explode</span>
+          <span className="text-muted">Separate parts</span>
           <input
             type="range"
             min={0}
@@ -273,7 +247,6 @@ export function ViewerPanel({
             value={explode}
             onChange={(e) => {
               setMode("mesh");
-              setQuality("desktop");
               setExplode(parseFloat(e.target.value));
             }}
             disabled={parts.length < 2}
@@ -306,7 +279,7 @@ export function ViewerPanel({
           }}
           title="Set scale from a known length"
         >
-          Set scale
+          Set real size
         </button>
 
         {cadOverlay ? (
@@ -316,7 +289,7 @@ export function ViewerPanel({
             }`}
             onClick={() => setCadVisible((v) => !v)}
           >
-            CAD overlay
+            Show replacement
           </button>
         ) : null}
       </div>

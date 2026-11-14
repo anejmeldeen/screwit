@@ -97,6 +97,10 @@ export const api = {
       body: JSON.stringify(body),
     }),
 
+  partHistory: (scanId: string) => request<{can_undo: boolean; can_restore_example: boolean}>(`/scans/${scanId}/parts/history`),
+  undoMerge: (scanId: string) => request<Part[]>(`/scans/${scanId}/parts/undo`, {method: "POST"}),
+  restoreExample: (scanId: string) => request<Part[]>(`/scans/${scanId}/parts/restore-example`, {method: "POST"}),
+
   // Scene graph + measurement
   getSceneGraph: (scanId: string) =>
     request<SceneGraph>(`/scans/${scanId}/scene-graph`),

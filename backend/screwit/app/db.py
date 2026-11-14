@@ -44,6 +44,16 @@ class PartRow(SQLModel, table=True):
     part_json: str  # Part contract (4.3)
 
 
+class MergeHistoryRow(SQLModel, table=True):
+    __tablename__ = "merge_history"
+    id: int | None = Field(default=None, primary_key=True)
+    scan_id: str = Field(index=True)
+    before_json: str
+    after_json: str
+    graph_json: str | None = None
+    undone: bool = False
+
+
 class SceneGraphRow(SQLModel, table=True):
     __tablename__ = "scene_graphs"
     id: int | None = Field(default=None, primary_key=True)

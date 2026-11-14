@@ -64,7 +64,7 @@ def build_registry(settings: Settings) -> Registry:
     if settings.is_mock:
         return Registry(
             settings=settings,
-            storage=FixtureStorage(settings.fixtures_dir),
+            storage=FixtureStorage(settings.fixtures_dir, settings.data_dir / "generated"),
             media_validator=FakeMediaValidator(),
             recon=FakeReconPipeline(data),
             perception=FakePerceptionService(data),

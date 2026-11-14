@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { Part } from "@/lib/contracts.gen";
 import {
   editableMeasurements,
@@ -10,7 +10,7 @@ import {
 import { api, ApiError } from "@/lib/api";
 import { assetUrl } from "@/lib/storage";
 import { partColor } from "@/lib/palette";
-import { Badge, EmptyState, Skeleton } from "@/components/ui";
+import { EmptyState, Skeleton } from "@/components/ui";
 
 function fmt(v: number | null): string {
   return v == null ? "—" : v.toFixed(1);
@@ -58,6 +58,7 @@ function PartCard({
   mergeState: {
     pick: string | null;
     setPick: (id: string | null) => void;
+    label: string;
   };
 }) {
   const dims = resolveAllDimensions(part);
@@ -66,6 +67,7 @@ function PartCard({
   const [label, setLabel] = useState(part.label);
   const [err, setErr] = useState<string | null>(null);
   const [caliperBusy, setCaliperBusy] = useState(false);
+  const [merging, setMerging] = useState(false);
 
   async function saveLabel() {
     setErr(null);
@@ -98,6 +100,8 @@ function PartCard({
   }
 
   async function doMerge(otherId: string) {
+    if (merging) return;
+    setMerging(true);
     setErr(null);
     try {
       await api.mergeParts(scanId, {
@@ -107,7 +111,7 @@ function PartCard({
       onChanged();
     } catch (e) {
       setErr(e instanceof ApiError ? `${e.message} (${e.status})` : String(e));
-    }
+    } finally { setMerging(false); }
   }
 
   return (
@@ -141,9 +145,7 @@ function PartCard({
         <span className="min-w-0 flex-1">
           <span className="flex items-center gap-2">
             <span className="truncate font-medium">{part.label}</span>
-            <Badge tone="slate">
-              {(part.label_confidence * 100).toFixed(0)}%
-            </Badge>
+
           </span>
           {part.description ? (
             <span className="mt-0.5 block truncate text-xs text-muted">
@@ -182,29 +184,31 @@ function PartCard({
             onClick={() => mergeState.setPick(part.part_id)}
             className="rounded border border-line px-1.5 py-0.5 hover:border-line"
           >
-            Merge…
+            Combine…
           </button>
         ) : mergeState.pick === part.part_id ? (
-          <span className="text-muted">pick another part to merge into</span>
+          <span className="text-muted">Choose another part below</span>
         ) : (
           <button
+            disabled={merging}
             onClick={() => doMerge(mergeState.pick!)}
             className="rounded border border-amber-600 px-1.5 py-0.5 text-amber-800"
           >
-            Merge with {mergeState.pick}
+            {merging ? "Combining…" : `Combine with ${mergeState.label}`}
           </button>
         )}
       </div>
 
+      <details className="part-details"><summary>Measurements & details</summary>
       {/* Dimensions table */}
       {dims.length ? (
         <table className="mt-3 w-full text-xs">
           <thead className="text-muted">
             <tr>
-              <th className="px-2 py-1 text-left font-normal">dimension (mm)</th>
-              <th className="px-2 py-1 text-right font-normal">scan</th>
-              <th className="px-2 py-1 text-right font-normal">snapped</th>
-              <th className="px-2 py-1 text-right font-normal">caliper</th>
+              <th className="px-2 py-1 text-left font-normal">Size (mm)</th>
+              <th className="px-2 py-1 text-right font-normal">Measured</th>
+              <th className="px-2 py-1 text-right font-normal">Standard</th>
+              <th className="px-2 py-1 text-right font-normal">Your value</th>
             </tr>
           </thead>
           <tbody>
@@ -256,6 +260,7 @@ function PartCard({
         </details>
       ) : null}
 
+      </details>
       {err ? <p className="mt-2 text-xs text-rose-800">{err}</p> : null}
     </div>
   );
@@ -277,6 +282,23 @@ export function PartsPanel({
   onChanged: () => void;
 }) {
   const [mergePick, setMergePick] = useState<string | null>(null);
+  const [history, setHistory] = useState({can_undo: false, can_restore_example: false});
+  const [busy, setBusy] = useState(false);
+  const [editError, setEditError] = useState("");
+  useEffect(() => {
+    let alive = true;
+    api.partHistory(scanId).then((h) => {if (alive) setHistory(h);}).catch(() => {});
+    return () => { alive = false; };
+  }, [scanId, parts]);
+  async function recover(reset = false) {
+    if (reset && !window.confirm("Restore the original example parts? This removes your part edits to this example.")) return;
+    setBusy(true); setEditError("");
+    try {
+      if (reset) await api.restoreExample(scanId); else await api.undoMerge(scanId);
+      setMergePick(null); onChanged();
+    } catch (e) { setEditError(e instanceof Error ? e.message : String(e)); }
+    finally { setBusy(false); }
+  }
 
   if (!partsReady) {
     return (
@@ -307,6 +329,9 @@ export function PartsPanel({
 
   return (
     <div data-testid="parts-panel" className="space-y-3">
+      <div className="part-history"><button disabled={busy || !history.can_undo} onClick={() => recover()}>↶ Undo combine</button>{history.can_restore_example ? <button disabled={busy} onClick={() => recover(true)}>Restore original example</button> : null}</div>
+      {editError ? <p role="alert">{editError}</p> : null}
+      {mergePick ? <div className="combine-hint">Choose a second part. <button onClick={() => setMergePick(null)}>Cancel</button></div> : null}
       {parts.map((p, i) => (
         <PartCard
           key={p.part_id}
@@ -316,7 +341,7 @@ export function PartsPanel({
           onSelect={onSelect}
           onChanged={onChanged}
           scanId={scanId}
-          mergeState={{ pick: mergePick, setPick: setMergePick }}
+          mergeState={{ pick: mergePick, setPick: setMergePick, label: parts.find((p) => p.part_id === mergePick)?.label ?? "selected part" }}
         />
       ))}
     </div>

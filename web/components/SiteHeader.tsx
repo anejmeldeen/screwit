@@ -5,6 +5,9 @@ import { usePathname } from "next/navigation";
 
 export function SiteHeader() {
   const path = usePathname();
+  if (path.startsWith("/scan/") && path !== "/scan/new") return (
+    <header className="editor-top"><Link href="/" aria-label="Exit editor and go home">← Home</Link></header>
+  );
   return (
     <header className={`site-header ${path.startsWith("/scan/") && path !== "/scan/new" ? "site-header-workbench" : ""}`}>
       <Link href="/" className="wordmark" aria-label="Screw It home">Screw It<span aria-hidden="true">.</span></Link>

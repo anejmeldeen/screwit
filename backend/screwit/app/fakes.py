@@ -50,13 +50,20 @@ def _content_type(p: Path) -> str:
 class FixtureStorage:
     """Storage (P5) backed by the read-only fixtures tree. Writes are refused: mock mode is read-only."""
 
-    def __init__(self, fixtures_dir: Path) -> None:
+    def __init__(self, fixtures_dir: Path, generated_dir: Path | None = None) -> None:
         self._root = fixtures_dir
+        self._generated = generated_dir
 
     def _path(self, key: str) -> Path:
         p = (self._root / key).resolve()
-        if not str(p).startswith(str(self._root.resolve())):
-            raise ValueError(f"key escapes the fixtures tree: {key!r}")
+        if not p.is_relative_to(self._root.resolve()):
+            raise ValueError("key escapes the fixtures tree")
+        if self._generated is not None:
+            generated = (self._generated / key).resolve()
+            if not generated.is_relative_to(self._generated.resolve()):
+                raise ValueError("key escapes generated assets")
+            if generated.is_file():
+                return generated
         return p
 
     def presign_upload(self, key: str, content_types: list[str], max_bytes: int,

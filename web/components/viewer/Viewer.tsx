@@ -2,7 +2,7 @@
 
 import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
-import { Matrix4, Vector3, PerspectiveCamera, GridHelper } from "three";
+import { Matrix4, Vector3, PerspectiveCamera, GridHelper, Box3, Quaternion } from "three";
 import { OrbitControls as OrbitControlsImpl } from "three/examples/jsm/controls/OrbitControls.js";
 import type { CadResult, Part, Reconstruction } from "@/lib/contracts.gen";
 import { scanToWebMatrix } from "@/lib/transform";
@@ -125,6 +125,39 @@ function FocusController({
   return null;
 }
 
+function FitObject({ parts, matrix }: { parts: Part[]; matrix: Matrix4 }) {
+  const camera = useThree((s) => s.camera);
+  const controls = useThree((s) => s.controls as unknown as OrbitControlsImpl | null);
+  const size = useThree((s) => s.size);
+  const invalidate = useThree((s) => s.invalidate);
+  const bounds = useMemo(() => {
+    const box = new Box3();
+    for (const part of parts) {
+      const center = part.obb.center as unknown as number[];
+      const extent = part.obb.extent as unknown as number[];
+      const rotation = new Quaternion().fromArray(part.obb.rotation_quat as unknown as number[]);
+      for (const x of [-1, 1]) for (const y of [-1, 1]) for (const z of [-1, 1]) {
+        box.expandByPoint(new Vector3(x * extent[0] / 2, y * extent[1] / 2, z * extent[2] / 2)
+          .applyQuaternion(rotation).add(new Vector3(...center)).applyMatrix4(matrix));
+      }
+    }
+    return box;
+  }, [parts, matrix]);
+  useEffect(() => {
+    if (!controls || bounds.isEmpty()) return;
+    const center = bounds.getCenter(new Vector3());
+    const radius = Math.max(bounds.getSize(new Vector3()).length() / 2, 0.025);
+    const vertical = (camera as PerspectiveCamera).fov * Math.PI / 360;
+    const horizontal = Math.atan(Math.tan(vertical) * size.width / size.height);
+    const distance = radius / Math.sin(Math.min(vertical, horizontal)) * 1.25;
+    camera.position.copy(center).add(new Vector3(1, .65, 1).normalize().multiplyScalar(distance));
+    controls.target.copy(center);
+    controls.update();
+    invalidate();
+  }, [bounds, camera, controls, size.width, size.height, invalidate]);
+  return null;
+}
+
 function FpsSampler({ onSample }: { onSample?: (fps: number) => void }) {
   const acc = useRef({ frames: 0, t: 0 });
   useFrame((_, dt) => {
@@ -164,7 +197,7 @@ export function Viewer(props: ViewerProps) {
 
   const parentMatrix = useMemo(() => scanToWebMatrix(recon), [recon]);
   const gridHelper = useMemo(() => {
-    const g = new GridHelper(2, 40, 0x334155, 0x1f2937);
+    const g = new GridHelper(2, 40, 0x647076, 0x1f2937);
     return g;
   }, []);
   const { map: centroids, register } = useCentroidRegistry();
@@ -193,7 +226,7 @@ export function Viewer(props: ViewerProps) {
         (camera as PerspectiveCamera).lookAt(0, 0.05, 0);
       }}
     >
-      <color attach="background" args={["#f3e5ac"]} />
+      <color attach="background" args={["#252a2d"]} />
       <ambientLight intensity={0.8} />
       <directionalLight position={[1, 2, 1]} intensity={1.1} />
       <directionalLight position={[-1, 1, -1]} intensity={0.4} />
@@ -253,6 +286,7 @@ export function Viewer(props: ViewerProps) {
       </group>
 
       <OrbitControlsLite />
+      <FitObject parts={parts} matrix={parentMatrix} />
       <FocusController target={focusTarget} />
       <FpsSampler onSample={onFpsSample} />
     </Canvas>
