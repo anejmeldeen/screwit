@@ -10,10 +10,13 @@ from __future__ import annotations
 import io
 import json
 import uuid
+from typing import Literal
+from urllib.parse import quote
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from sqlmodel import select
+from starlette.responses import Response
 
 from screwit.app import signing
 from screwit.app.db import MergeHistoryRow, db_session
@@ -40,6 +43,29 @@ def _store(reg: Registry) -> ScanStore:
 @router.get("/scans/{scan_id}/parts", response_model=list[Part])
 def list_parts(scan_id: str, reg: RegistryDep) -> list[Part]:
     return signing.parts(reg.storage, _store(reg).list_parts(scan_id))
+
+
+@router.get("/scans/{scan_id}/parts/{part_id}/export")
+def export_part(scan_id: str, part_id: str, reg: RegistryDep,
+                format: Literal["stp", "stl"] = "stp") -> Response:
+    from screwit.cad.part_export import MAX_MESH_BYTES, export_part_mesh
+
+    part = _store(reg).get_part(scan_id, part_id)
+    if part is None:
+        raise HTTPException(status_code=404, detail="part not found")
+    head = reg.storage.head(part.mesh_uri)
+    if head is None:
+        raise HTTPException(status_code=404, detail="component mesh not found")
+    if head["size"] > MAX_MESH_BYTES:
+        raise HTTPException(status_code=413, detail="This mesh is too large to export (64 MB limit).")
+    try:
+        data = export_part_mesh(reg.storage.get_bytes(part.mesh_uri), format)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from None
+    filename = quote(f"{part.label}.{format}", safe="")
+    return Response(data, media_type="model/step" if format == "stp" else "model/stl",
+                    headers={"Content-Disposition": f"attachment; filename*=UTF-8''{filename}",
+                             "Cache-Control": "no-store"})
 
 
 @router.patch("/scans/{scan_id}/parts/{part_id}", response_model=Part)

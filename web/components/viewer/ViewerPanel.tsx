@@ -12,7 +12,6 @@ import { assetUrl } from "@/lib/storage";
 import {
   AssetQuality,
   detectQuality,
-  hasMobileAssets,
   isPhone,
   splatUriFor,
 } from "@/lib/device";
@@ -143,7 +142,6 @@ export function ViewerPanel({
     setPoints([]); setFeaturePicks([]); setMeasureResult(null);
   }, [parts, hiddenPartIds, recon?.reconstruction_revision]);
 
-  const showMobileToggle = hasMobileAssets(recon);
   const splatUri = useMemo(
     () => (recon ? splatUriFor(recon, quality) : null),
     [recon, quality],
@@ -238,6 +236,7 @@ export function ViewerPanel({
           <div className="flex overflow-hidden rounded border border-line">
             <button
               data-testid="view-toggle-mesh"
+              aria-pressed={mode === "mesh"}
               className={`px-3 py-1 ${mode === "mesh" ? "bg-accent text-paper" : "bg-panel"}`}
               onClick={() => setMode("mesh")}
             >
@@ -245,6 +244,7 @@ export function ViewerPanel({
             </button>
             <button
               data-testid="view-toggle-splat"
+              aria-pressed={mode === "splat"}
               disabled={hiddenPartIds.length > 0}
               title={hiddenPartIds.length > 0 ? "Show all components to use splat view" : "Splat view"}
               className={`px-3 py-1 ${mode === "splat" ? "bg-accent text-paper" : "bg-panel"}`}
@@ -266,25 +266,6 @@ export function ViewerPanel({
             Parts view
           </button>
         )}
-
-        {showMobileToggle ? (
-          <div className="flex overflow-hidden rounded border border-line">
-            <button
-              className={`px-2 py-1 ${quality === "desktop" ? "bg-wash" : "bg-panel"}`}
-              onClick={() => setQuality("desktop")}
-              title="Full-resolution assets"
-            >
-              HQ
-            </button>
-            <button
-              className={`px-2 py-1 ${quality === "mobile" ? "bg-wash" : "bg-panel"}`}
-              onClick={() => setQuality("mobile")}
-              title="Lighter phone assets"
-            >
-              Phone
-            </button>
-          </div>
-        ) : null}
 
         {!isolated ? (
         <label className="flex items-center gap-2">
@@ -357,7 +338,7 @@ export function ViewerPanel({
             <span className="text-ink">
               <select aria-label="Measurement type" value={measureMode}
                 onChange={e => { setMeasureMode(e.target.value as MeasureMode); resetPoints(); }}
-                className="mr-2 rounded border border-line bg-panel px-2 py-1">
+                className="mr-2 max-w-full rounded border border-line bg-panel px-2 py-1">
                 <option value="point">Point to point</option>
                 <option value="edge-length">Edge length (including curves)</option>
                 <option value="edge-distance">Edge to edge</option>
@@ -376,7 +357,7 @@ export function ViewerPanel({
             </span>
           ) : null}
           {scaleActive ? (
-            <span className="flex items-center gap-2 text-ink">
+            <span className="flex flex-wrap items-center gap-2 text-ink">
               Click the two ends of a known length ({points.length}/2).
               <input
                 type="number"

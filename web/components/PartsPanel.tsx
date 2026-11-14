@@ -32,7 +32,7 @@ function DimensionRow({ d }: { d: ResolvedDimension }) {
   );
   return (
     <tr className="border-t border-line">
-      <td className="px-2 py-1 text-left text-ink">{d.name}</td>
+      <td className="px-2 py-1 text-left text-ink">{d.name.replace(/_/g, " ")}</td>
       {cell("scan", d.scanMm, "scan")}
       {cell("snapped", d.snappedMm, "snapped")}
       {cell("caliper", d.caliperMm, "caliper")}
@@ -121,12 +121,12 @@ function PartCard({
   return (
     <div
       data-testid={`part-row-${part.part_id}`}
-      className={`rounded-lg border bg-panel p-3 ${
+      className={`part-card rounded-lg border bg-panel p-3 ${
         selected ? "border-accent" : "border-line"
       }`}
     >
       <button
-        className="flex w-full items-start gap-3 text-left"
+        className="part-select flex w-full items-start gap-3 text-left"
         onClick={() => onSelect(part.part_id)}
       >
         <span
@@ -148,7 +148,7 @@ function PartCard({
         </span>
         <span className="min-w-0 flex-1">
           <span className="flex items-center gap-2">
-            <span className="truncate font-medium">{part.label}</span>
+            <span className="truncate font-bold">{part.label}</span>
 
           </span>
           {part.description ? (
@@ -213,13 +213,13 @@ function PartCard({
       <details className="part-details"><summary>Measurements & details</summary>
       {/* Dimensions table */}
       {dims.length ? (
-        <table className="mt-3 w-full text-xs">
+        <div className="dimension-table-wrap"><table className="dimension-table">
           <thead className="text-muted">
             <tr>
-              <th className="px-2 py-1 text-left font-normal">Size (mm)</th>
-              <th className="px-2 py-1 text-right font-normal">Measured</th>
-              <th className="px-2 py-1 text-right font-normal">Standard</th>
-              <th className="px-2 py-1 text-right font-normal">Your value</th>
+              <th className="px-2 py-1 text-left font-bold">Size (mm)</th>
+              <th className="px-2 py-1 text-right font-bold">Measured</th>
+              <th className="px-2 py-1 text-right font-bold">Standard</th>
+              <th className="px-2 py-1 text-right font-bold">Your value</th>
             </tr>
           </thead>
           <tbody>
@@ -227,7 +227,7 @@ function PartCard({
               <DimensionRow key={d.name} d={d} />
             ))}
           </tbody>
-        </table>
+        </table></div>
       ) : null}
 
       {/* Caliper entry per feature measurement */}
@@ -240,9 +240,9 @@ function PartCard({
             {editable.map((e) => (
               <div
                 key={`${e.featureId}.${e.field}`}
-                className="flex items-center gap-2"
+                className="caliper-row"
               >
-                <span className="w-40 text-muted">
+                <span className="min-w-0 break-words text-muted">
                   {e.featureId}.{e.field}
                 </span>
                 <input
@@ -254,7 +254,8 @@ function PartCard({
                       : "mm"
                   }
                   disabled={caliperBusy}
-                  className="w-24 rounded border border-line bg-paper px-1.5 py-0.5"
+                  aria-label={`${e.featureId} ${e.field} in millimetres`}
+                  className="w-full min-w-0 rounded border border-line bg-paper px-1.5 py-0.5"
                   onKeyDown={(ev) => {
                     if (ev.key === "Enter") {
                       const v = parseFloat(

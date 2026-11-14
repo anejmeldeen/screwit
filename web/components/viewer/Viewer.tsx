@@ -206,7 +206,7 @@ export function Viewer(props: ViewerProps) {
 
   const parentMatrix = useMemo(() => scanToWebMatrix(recon), [recon]);
   const gridHelper = useMemo(() => {
-    const g = new GridHelper(2, 40, 0x647076, 0x1f2937);
+    const g = new GridHelper(2, 40, 0xf1d45d, 0x57564a);
     return g;
   }, []);
   const { map: centroids, register } = useCentroidRegistry();
@@ -237,7 +237,7 @@ export function Viewer(props: ViewerProps) {
         (camera as PerspectiveCamera).lookAt(0, 0.05, 0);
       }}
     >
-      <color attach="background" args={["#252a2d"]} />
+      <color attach="background" args={["#181918"]} />
       <ambientLight intensity={0.8} />
       <directionalLight position={[1, 2, 1]} intensity={1.1} />
       <directionalLight position={[-1, 1, -1]} intensity={0.4} />
