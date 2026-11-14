@@ -48,7 +48,11 @@ function PartCard({
   onChanged,
   scanId,
   mergeState,
+  hidden, onToggleHidden, onIsolate,
 }: {
+  hidden: boolean;
+  onToggleHidden: (id: string) => void;
+  onIsolate: (id: string) => void;
   part: Part;
   index: number;
   selected: boolean;
@@ -155,6 +159,13 @@ function PartCard({
 
       {/* Actions */}
       <div className="mt-2 flex flex-wrap gap-2 text-xs">
+        <button aria-label={`${hidden ? "Show" : "Hide"} ${part.label}`} aria-pressed={hidden}
+          onClick={() => onToggleHidden(part.part_id)}
+          className="rounded border border-slate-700 px-1.5 py-0.5 hover:border-accent">
+          {hidden ? "Show" : "Hide"}
+        </button>
+        <button aria-label={`Isolate ${part.label}`} onClick={() => onIsolate(part.part_id)}
+          className="rounded border border-slate-700 px-1.5 py-0.5 hover:border-accent">Isolate…</button>
         {renaming ? (
           <span className="flex items-center gap-1">
             <input
@@ -262,6 +273,7 @@ function PartCard({
 }
 
 export function PartsPanel({
+  hiddenPartIds = [], onToggleHidden = () => {}, onIsolate = () => {},
   scanId,
   parts,
   partsReady,
@@ -269,6 +281,9 @@ export function PartsPanel({
   onSelect,
   onChanged,
 }: {
+  hiddenPartIds?: string[];
+  onToggleHidden?: (id: string) => void;
+  onIsolate?: (id: string) => void;
   scanId: string;
   parts: Part[] | null;
   partsReady: boolean;
@@ -311,6 +326,7 @@ export function PartsPanel({
         <PartCard
           key={p.part_id}
           part={p}
+          hidden={hiddenPartIds.includes(p.part_id)} onToggleHidden={onToggleHidden} onIsolate={onIsolate}
           index={i}
           selected={selectedId === p.part_id}
           onSelect={onSelect}

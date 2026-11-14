@@ -5,6 +5,7 @@ import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { Matrix4, Vector3, PerspectiveCamera, GridHelper } from "three";
 import { OrbitControls as OrbitControlsImpl } from "three/examples/jsm/controls/OrbitControls.js";
 import type { CadResult, Part, Reconstruction } from "@/lib/contracts.gen";
+import { explodeOffsets, type FeaturePick, type MeasureMode } from "@/lib/editorGeometry";
 import { scanToWebMatrix } from "@/lib/transform";
 import { PartMeshes } from "./PartMeshes";
 import { MeasureLayer, PickedPoint } from "./MeasureLayer";
@@ -28,6 +29,10 @@ export interface ViewerCadOverlay {
 }
 
 export interface ViewerProps {
+  hiddenPartIds?: string[];
+  measureMode?: MeasureMode | null;
+  featurePicks?: FeaturePick[];
+  onFeaturePick?: (p: FeaturePick) => void;
   recon: Reconstruction;
   parts: Part[];
   splatUri: string | null; // already resolved for quality
@@ -108,7 +113,8 @@ function FocusController({
   );
   const camera = useThree((s) => s.camera);
   const goal = useRef<Vector3 | null>(null);
-  if (target && goal.current !== target) goal.current = target;
+  const invalidate = useThree(s => s.invalidate);
+  useEffect(() => { goal.current = target; invalidate(); }, [target, invalidate]);
 
   useFrame(() => {
     if (!goal.current || !controls) return;
@@ -122,6 +128,28 @@ function FocusController({
     controls.update();
     if (t.distanceTo(goal.current) < 0.001) goal.current = null;
   });
+  return null;
+}
+
+function FitAssembly({ parts, matrix, explode }: { parts: Part[]; matrix: Matrix4; explode: number }) {
+  const camera = useThree(s => s.camera) as PerspectiveCamera;
+  const controls = useThree(s => s.controls) as unknown as OrbitControlsImpl | null;
+  const invalidate = useThree(s => s.invalidate);
+  useEffect(() => {
+    if (!controls || !parts.length) return;
+    const offsets = explodeOffsets(parts);
+    const centers = parts.map(p => new Vector3(...p.centroid_mm as [number, number, number]).addScaledVector(offsets.get(p.part_id)!, explode));
+    const center = centers.reduce((sum, p) => sum.add(p), new Vector3()).divideScalar(parts.length);
+    const radius = Math.max(5, ...parts.map((p, i) => centers[i].distanceTo(center) + new Vector3(...p.obb.extent as [number, number, number]).length() / 2));
+    const worldCenter = center.applyMatrix4(matrix);
+    const worldRadius = radius * new Vector3().setFromMatrixScale(matrix).length() / Math.sqrt(3);
+    const halfFov = Math.min(camera.fov * Math.PI / 360, Math.atan(Math.tan(camera.fov * Math.PI / 360) * camera.aspect));
+    const distance = worldRadius / Math.sin(halfFov) * 1.15;
+    controls.target.copy(worldCenter);
+    camera.position.copy(worldCenter).add(new Vector3(1, 0.65, 1).normalize().multiplyScalar(distance));
+    camera.near = Math.max(0.00001, distance / 1000); camera.far = Math.max(100, distance * 100);
+    camera.updateProjectionMatrix(); controls.update(); invalidate();
+  }, [parts, matrix, controls, camera, invalidate, explode]);
   return null;
 }
 
@@ -143,6 +171,7 @@ function FpsSampler({ onSample }: { onSample?: (fps: number) => void }) {
 export function Viewer(props: ViewerProps) {
   const {
     recon,
+    hiddenPartIds = [], measureMode = null, featurePicks = [], onFeaturePick = () => {},
     parts,
     splatUri,
     mobileMeshUri,
@@ -180,6 +209,8 @@ export function Viewer(props: ViewerProps) {
   if (!focusPartId) lastFocus.current = null;
 
   const placement = cadOverlay?.placement ?? null;
+  const editing = measureActive || explode > 0 || hiddenPartIds.length > 0;
+  const meshVisible = mode === "mesh" || editing;
 
   return (
     <Canvas
@@ -211,19 +242,23 @@ export function Viewer(props: ViewerProps) {
               Mounting is what fetches Spark + the .spz, so a phone never
               downloads the splat unasked. It is hidden until splat mode. */}
           {splatAllowed && splatUri ? (
-            <SplatLayer url={splatUri} visible={mode === "splat"} />
+            <SplatLayer url={splatUri} visible={mode === "splat" && !editing} />
           ) : null}
         </Suspense>
 
         <Suspense fallback={null}>
-          {mobileMeshUri ? (
+          {mobileMeshUri && !editing ? (
             // Phone path: one light whole-object mesh.
-            <WholeMesh url={mobileMeshUri} visible={mode === "mesh"} />
+            <WholeMesh url={mobileMeshUri} visible={meshVisible} />
           ) : (
             // Desktop path: per-part meshes with picking, colours and explode.
             <PartMeshes
               parts={parts}
-              visible={mode === "mesh"}
+              hiddenPartIds={hiddenPartIds}
+              measureMode={measureActive ? (measureMode ?? "point") : null}
+              featurePicks={featurePicks} onFeaturePick={onFeaturePick}
+              onMeasurePick={onMeasurePick}
+              visible={meshVisible}
               selectedId={selectedId}
               hoveredId={hoveredId}
               explode={explode}
@@ -245,14 +280,12 @@ export function Viewer(props: ViewerProps) {
         ) : null}
 
         <MeasureLayer
-          active={measureActive}
-          parentMatrix={parentMatrix}
           points={measurePoints}
-          onPick={onMeasurePick}
         />
       </group>
 
       <OrbitControlsLite />
+      <FitAssembly parts={parts} matrix={parentMatrix} explode={explode} />
       <FocusController target={focusTarget} />
       <FpsSampler onSample={onFpsSample} />
     </Canvas>

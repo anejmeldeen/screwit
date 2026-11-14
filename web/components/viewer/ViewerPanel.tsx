@@ -17,6 +17,7 @@ import {
   splatUriFor,
 } from "@/lib/device";
 import { afterPaint, PERF_MARKS } from "@/lib/perf";
+import { edgeStats, featureDistance, type FeaturePick, type MeasureMode } from "@/lib/editorGeometry";
 import type { PickedPoint } from "./MeasureLayer";
 import type { ViewerCadOverlay } from "./Viewer";
 
@@ -42,9 +43,12 @@ function prewarmViewer() {
   void import("./WholeMesh");
 }
 
+const NO_HIDDEN_PARTS: string[] = [];
 const CARD_LONG_EDGE_MM = 85.6; // credit-card long edge, default known length
 
 export interface ViewerPanelProps {
+  isolated?: boolean;
+  hiddenPartIds?: string[];
   scanId: string;
   recon: Reconstruction | null;
   parts: Part[];
@@ -60,6 +64,8 @@ export interface ViewerPanelProps {
 
 export function ViewerPanel({
   scanId,
+  isolated = false,
+  hiddenPartIds = NO_HIDDEN_PARTS,
   recon,
   parts,
   selectedId,
@@ -71,12 +77,14 @@ export function ViewerPanel({
   onScaled,
   onFpsSample,
 }: ViewerPanelProps) {
-  const splatReady = !!recon?.splat_uri;
+  const splatReady = !isolated && !!recon?.splat_uri;
   const [mode, setMode] = useState<"splat" | "mesh">("mesh");
   const [quality, setQuality] = useState<AssetQuality>("desktop");
   const [phone, setPhone] = useState(false);
   const [explode, setExplode] = useState(0);
   const [measureActive, setMeasureActive] = useState(false);
+  const [measureMode, setMeasureMode] = useState<MeasureMode>("point");
+  const [featurePicks, setFeaturePicks] = useState<FeaturePick[]>([]);
   const [scaleActive, setScaleActive] = useState(false);
   const [points, setPoints] = useState<PickedPoint[]>([]);
   const [measureResult, setMeasureResult] = useState<string | null>(null);
@@ -130,10 +138,13 @@ export function ViewerPanel({
   // one exists (keeps first-mesh under budget on slow 4G); desktop uses the
   // per-part meshes (picking, colours, explode).
   const mobileMeshUri = useMemo(
-    () => (phone && recon?.mesh_mobile_uri ? recon.mesh_mobile_uri : null),
-    [phone, recon],
+    () => (!isolated && phone && recon?.mesh_mobile_uri ? recon.mesh_mobile_uri : null),
+    [isolated, phone, recon],
   );
   const needsScale = recon?.scale?.method === "learned";
+  useEffect(() => {
+    setPoints([]); setFeaturePicks([]); setMeasureResult(null);
+  }, [parts, hiddenPartIds, recon?.reconstruction_revision]);
 
   const splatUri = useMemo(
     () => (recon ? splatUriFor(recon, quality) : null),
@@ -155,25 +166,36 @@ export function ViewerPanel({
     return () => ctrl.abort();
   }, [prefetchMeshUri]);
 
-  async function onPick(p: PickedPoint) {
-    const next = [...points, p].slice(-2);
+  function onPick(p: PickedPoint) {
+    const next = points.length === 2 ? [p] : [...points, p];
     setPoints(next);
     if (next.length === 2) {
-      if (measureActive) await runMeasure(next);
+      if (measureActive) runMeasure(next);
       // scale is submitted by the explicit button so the user can type length
     }
   }
 
-  async function runMeasure(pts: PickedPoint[]) {
+  function runMeasure(pts: PickedPoint[]) {
+    const delta = pts[1].scan.map((v, i) => v - pts[0].scan[i]);
+    setMeasureResult(`${Math.hypot(...delta).toFixed(2)} mm · ΔX ${delta[0].toFixed(2)}, ΔY ${delta[1].toFixed(2)}, ΔZ ${delta[2].toFixed(2)} mm`);
+  }
+
+  function onFeaturePick(pick: FeaturePick) {
     setErr(null);
-    try {
-      const res = await api.measure(scanId, {
-        a_mm: pts[0].scan as unknown as never,
-        b_mm: pts[1].scan as unknown as never,
-      } as never);
-      setMeasureResult(`${(res as { distance_mm: number }).distance_mm.toFixed(1)} mm`);
-    } catch (e) {
-      setErr(describe(e));
+    if (measureMode === "edge-length") {
+      setFeaturePicks([pick]);
+      const s = edgeStats(pick.feature);
+      setPoints([]);
+      setMeasureResult(`Edge length ${s.length.toFixed(2)} mm · X travel ${s.x.toFixed(2)}, Y travel ${s.y.toFixed(2)}, Z travel ${s.z.toFixed(2)} mm · endpoint ΔX ${s.delta.x.toFixed(2)}, ΔY ${s.delta.y.toFixed(2)}, ΔZ ${s.delta.z.toFixed(2)} mm`);
+      return;
+    }
+    if (featurePicks.length === 1 && featurePicks[0].partId === pick.partId && featurePicks[0].feature.id === pick.feature.id) return;
+    const next = featurePicks.length === 1 ? [...featurePicks, pick] : [pick];
+    setFeaturePicks(next); setPoints([]); setMeasureResult(null);
+    if (next.length === 2) {
+      const [a, b] = featureDistance(next[0].feature, next[1].feature);
+      const pts = [a, b].map(v => ({ scan: v.toArray() as [number, number, number] }));
+      setPoints(pts); runMeasure(pts);
     }
   }
 
@@ -200,6 +222,7 @@ export function ViewerPanel({
 
   function resetPoints() {
     setPoints([]);
+    setFeaturePicks([]);
     setMeasureResult(null);
   }
 
@@ -225,9 +248,12 @@ export function ViewerPanel({
             </button>
             <button
               data-testid="view-toggle-splat"
+              disabled={hiddenPartIds.length > 0}
+              title={hiddenPartIds.length > 0 ? "Show all components to use splat view" : "Splat view"}
               className={`px-3 py-1 ${mode === "splat" ? "bg-accent text-ink" : "bg-panel"}`}
               onClick={() => {
                 setSplatRequested(true);
+                setMeasureActive(false); setScaleActive(false); setExplode(0); resetPoints();
                 setMode("splat");
               }}
             >
@@ -271,7 +297,9 @@ export function ViewerPanel({
             max={1}
             step={0.01}
             value={explode}
-            onChange={(e) => setExplode(parseFloat(e.target.value))}
+            disabled={measureActive || scaleActive}
+            aria-label="Explode components"
+            onChange={(e) => { setExplode(parseFloat(e.target.value)); setMode("mesh"); }}
             onMouseDown={() => mode === "splat" && setMode("mesh")}
           />
         </label>
@@ -282,6 +310,7 @@ export function ViewerPanel({
           }`}
           onClick={() => {
             setMeasureActive((v) => !v);
+            setMode("mesh"); setExplode(0);
             setScaleActive(false);
             resetPoints();
           }}
@@ -295,10 +324,13 @@ export function ViewerPanel({
           } ${needsScale ? "ring-1 ring-amber-500" : ""}`}
           onClick={() => {
             setScaleActive((v) => !v);
+            setMeasureMode("point");
+            setMode("mesh"); setExplode(0);
             setMeasureActive(false);
             resetPoints();
           }}
-          title="Set scale from a known length"
+          disabled={isolated}
+          title={isolated ? "Set scale in the assembly window" : "Set scale from a known length"}
         >
           Set scale
         </button>
@@ -320,12 +352,24 @@ export function ViewerPanel({
         <div className="flex flex-wrap items-center gap-3 border-b border-slate-800 bg-slate-900/60 px-3 py-2 text-sm">
           {measureActive ? (
             <span className="text-slate-300">
-              Click two points. {points.length}/2 picked.
+              <select aria-label="Measurement type" value={measureMode}
+                onChange={e => { setMeasureMode(e.target.value as MeasureMode); resetPoints(); }}
+                className="mr-2 rounded border border-slate-600 bg-panel px-2 py-1">
+                <option value="point">Point to point</option>
+                <option value="edge-length">Edge length (including curves)</option>
+                <option value="edge-distance">Edge to edge</option>
+                <option value="face-distance">Face to face</option>
+              </select>
+              {measureMode === "point" ? `Click any two positions on the mesh surface. ${points.length}/2 picked.` :
+                measureMode === "edge-length" ? "Hover near an outlined edge, then click to measure the highlighted chain." :
+                `Click two highlighted ${measureMode === "face-distance" ? "faces" : "edges"}. ${featurePicks.length}/2 picked. Distance is the shortest gap.`}
+              <button className="ml-2 text-accent" onClick={resetPoints}>Clear</button>
+              <span className="block text-xs text-slate-400">Scan coordinates in mm. Curves follow mesh segments; faces are connected planar patches. Measurements use the assembled geometry.</span>
             </span>
           ) : null}
           {measureResult ? (
             <span className="font-medium text-emerald-300">
-              Distance: {measureResult}
+              {measureResult}
             </span>
           ) : null}
           {scaleActive ? (
@@ -368,6 +412,8 @@ export function ViewerPanel({
         {recon ? (
           <Viewer
             recon={recon}
+            hiddenPartIds={hiddenPartIds}
+            measureMode={measureMode} featurePicks={featurePicks} onFeaturePick={onFeaturePick}
             parts={parts}
             splatUri={splatUri}
             mobileMeshUri={mobileMeshUri}

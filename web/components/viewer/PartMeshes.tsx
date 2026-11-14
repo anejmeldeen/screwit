@@ -9,6 +9,9 @@ import { assetUrl } from "@/lib/storage";
 import { configureGltfLoader } from "./gltf";
 import { markOnce, PERF_MARKS } from "@/lib/perf";
 
+import { clonePartScene, explodeOffsets, type FeaturePick, type MeasureMode } from "@/lib/editorGeometry";
+import { FeatureSurface } from "./FeatureSurface";
+import type { PickedPoint } from "./MeasureLayer";
 import { partColor } from "@/lib/palette";
 export { partColor };
 
@@ -31,6 +34,7 @@ function PartMesh({
   onHover,
   onSelect,
   registerCentroid,
+  offset, measureMode, featurePicks, onFeaturePick, onMeasurePick,
 }: {
   part: Part;
   index: number;
@@ -40,11 +44,23 @@ function PartMesh({
   onHover: (id: string | null) => void;
   onSelect: (id: string) => void;
   registerCentroid: (id: string, worldCentroid: Vector3) => void;
+  offset: Vector3;
+  measureMode: MeasureMode | null;
+  featurePicks: FeaturePick[];
+  onFeaturePick: (p: FeaturePick) => void;
+  onMeasurePick: (p: PickedPoint) => void;
 }) {
   const { gltf } = usePartGltf(assetUrl(part.mesh_uri));
   const groupRef = useRef<Group>(null);
 
-  const scene = useMemo(() => gltf.scene.clone(true), [gltf]);
+  const scene = useMemo(() => clonePartScene(gltf.scene), [gltf]);
+  useEffect(() => () => {
+    scene.traverse(o => {
+      if (!(o as Mesh).isMesh) return;
+      const materials = (o as Mesh).material;
+      for (const material of Array.isArray(materials) ? materials : [materials]) material.dispose();
+    });
+  }, [scene]);
   const baseColor = useMemo(() => new Color(partColor(index)), [index]);
 
   // The first part mesh to draw marks the viewer's first-mesh timestamp.
@@ -52,31 +68,23 @@ function PartMesh({
     markOnce(PERF_MARKS.firstMesh);
   }, [scene]);
 
-  // Explode direction: unit vector from scan origin to the part centroid, in
-  // scan-frame mm. Offset grows with the slider.
-  const dir = useMemo(() => {
-    const c = part.centroid_mm as unknown as number[];
-    const v = new Vector3(c[0], c[1], c[2]);
-    const len = v.length();
-    return len > 1e-6 ? v.clone().normalize() : new Vector3(0, 0, 0);
-  }, [part.centroid_mm]);
-
   useEffect(() => {
     scene.traverse((o) => {
       const m = o as Mesh;
       if (m.isMesh) {
-        const mat = (m.material as { color?: Color; emissive?: Color }) ?? {};
-        if (mat.color) {
-          mat.color.copy(baseColor);
-        }
-        if (mat.emissive) {
-          mat.emissive.copy(
-            selected
-              ? new Color("#ffffff")
-              : hovered
-                ? new Color("#334155")
-                : new Color("#000000"),
-          );
+        for (const mat of (Array.isArray(m.material) ? m.material : [m.material]) as { color?: Color; emissive?: Color }[]) {
+          if (mat.color) {
+            mat.color.copy(baseColor);
+          }
+          if (mat.emissive) {
+            mat.emissive.copy(
+              selected
+                ? new Color("#ffffff")
+                : hovered
+                  ? new Color("#334155")
+                  : new Color("#000000"),
+            );
+          }
         }
       }
     });
@@ -94,12 +102,12 @@ function PartMesh({
     registerCentroid(part.part_id, center);
   }, [scene, explode, part.part_id, registerCentroid]);
 
-  const offset = dir.clone().multiplyScalar(explode * 80); // scan-frame mm
+  const displacement = offset.clone().multiplyScalar(explode);
 
   return (
     <group
       ref={groupRef}
-      position={[offset.x, offset.y, offset.z]}
+      position={displacement}
       onPointerOver={(e) => {
         e.stopPropagation();
         onHover(part.part_id);
@@ -109,12 +117,14 @@ function PartMesh({
         onHover(null);
       }}
       onClick={(e) => {
+        if (measureMode || e.delta > 4) return;
         e.stopPropagation();
         onSelect(part.part_id);
       }}
     >
-      <primitive object={scene} />
-      {selected ? (
+      <FeatureSurface scene={scene} partId={part.part_id} mode={measureMode}
+        picks={featurePicks} onFeature={onFeaturePick} onPoint={onMeasurePick} />
+      {selected && !measureMode ? (
         // Simple selection outline: a slightly larger wireframe box.
         <SelectionOutline target={scene} />
       ) : null}
@@ -124,7 +134,9 @@ function PartMesh({
 
 function SelectionOutline({ target }: { target: Group }) {
   const box = useMemo(() => {
-    const b = new Box3().setFromObject(target);
+    // A detached clone gives part-local bounds; world bounds would apply the
+    // assembly/explode transform a second time inside this wrapper.
+    const b = new Box3().setFromObject(target.clone(true));
     const size = new Vector3();
     const center = new Vector3();
     b.getSize(size);
@@ -132,7 +144,7 @@ function SelectionOutline({ target }: { target: Group }) {
     return { size, center };
   }, [target]);
   return (
-    <mesh position={[box.center.x, box.center.y, box.center.z]}>
+    <mesh raycast={() => {}} position={[box.center.x, box.center.y, box.center.z]}>
       <boxGeometry args={[box.size.x * 1.04, box.size.y * 1.04, box.size.z * 1.04]} />
       <meshBasicMaterial color="#ffffff" wireframe transparent opacity={0.5} />
     </mesh>
@@ -148,7 +160,13 @@ export function PartMeshes({
   onHover,
   onSelect,
   registerCentroid,
+  hiddenPartIds = [], measureMode = null, featurePicks = [], onFeaturePick = () => {}, onMeasurePick = () => {},
 }: {
+  hiddenPartIds?: string[];
+  measureMode?: MeasureMode | null;
+  featurePicks?: FeaturePick[];
+  onFeaturePick?: (p: FeaturePick) => void;
+  onMeasurePick?: (p: PickedPoint) => void;
   parts: Part[];
   visible: boolean;
   selectedId: string | null;
@@ -158,13 +176,17 @@ export function PartMeshes({
   onSelect: (id: string) => void;
   registerCentroid: (id: string, worldCentroid: Vector3) => void;
 }) {
+  const offsets = useMemo(() => explodeOffsets(parts), [parts]);
   if (!visible) return null;
   return (
     <group>
-      {parts.map((p, i) => (
+      {parts.map((p, i) => hiddenPartIds.includes(p.part_id) ? null : (
         <PartMesh
           key={p.part_id}
           part={p}
+          offset={offsets.get(p.part_id)!}
+          measureMode={measureMode} featurePicks={featurePicks}
+          onFeaturePick={onFeaturePick} onMeasurePick={onMeasurePick}
           index={i}
           selected={selectedId === p.part_id}
           hovered={hoveredId === p.part_id}
