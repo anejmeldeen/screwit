@@ -78,54 +78,71 @@ def _duplicate_counts(labels: list[str]) -> dict[str, int]:
     return counts
 
 
-def _merge_same_name_adjacent(regions: list[dict]) -> list[list[int]]:
-    """Group region indices so that same-name regions that are spatially adjacent become one group.
+def _group_regions_by_name_and_blob(regions: list[dict]) -> list[list[int]]:
+    """Group segmented regions into final parts: pool regions by name, then split each name's pool
+    into spatially separated blobs.
 
-    Over-segmentation slices one physical part (an ear cushion) into several regions the VLM all
-    names the same; those are adjacent and should merge. Two physically separate parts can share a
-    name (the two ear cushions) but sit far apart, so they must NOT merge. We union same-name
-    regions whose point clouds come within an adjacency distance scaled by their own sizes.
-    Different-name regions never merge here. Returns a list of index groups, largest first.
+    Geometry segmentation produces thickness-based regions that do not line up with physical parts,
+    and the fused mesh is one connected piece, so a plain "merge adjacent same-name regions" rule
+    collapses the two ear pads (both named 'Ear Pad', and touching through the headband) into one.
+    Instead:
+      1. Pool all regions that share a normalized name.
+      2. Within each pool, cluster the regions' centroids by GAP: two groups whose point clouds are
+         separated by a clear empty gap (relative to the object size) are distinct parts; regions
+         with no gap between them are the same part. So one 'Ear Pad' pool that forms two separated
+         lumps becomes two parts (Ear Pad 1 / Ear Pad 2); a 'Headband' pool that is one connected
+         arch stays one.
+    Object-agnostic: nothing here knows what an ear pad or a headband is; it only uses names (from
+    the VLM) and spatial separation. Returns a list of region-index groups, largest first.
     """
     import numpy as np
+    from scipy.sparse import csr_matrix
+    from scipy.sparse.csgraph import connected_components
     from scipy.spatial import cKDTree
 
     n = len(regions)
-    parent = list(range(n))
+    if n == 0:
+        return []
+    # Object scale: diagonal of the whole bounding box across all regions.
+    allv = np.concatenate([r["verts"] for r in regions if len(r["verts"])], axis=0)
+    diag = float(np.linalg.norm(allv.max(0) - allv.min(0))) if len(allv) else 1.0
+    # Two regions are "connected" (same physical part) if their nearest points are closer than this
+    # gap; a clear gap wider than this marks separate parts (e.g. the two ear pads).
+    gap = max(8.0, 0.12 * diag)
 
-    def find(x):
-        while parent[x] != x:
-            parent[x] = parent[parent[x]]
-            x = parent[x]
-        return x
+    # Pool indices by normalized name.
+    by_name: dict[str, list[int]] = {}
+    for i, r in enumerate(regions):
+        by_name.setdefault(r["key"], []).append(i)
 
-    def union(x, y):
-        parent[find(x)] = find(y)
-
-    for i in range(n):
-        vi = regions[i]["verts"]
-        if len(vi) == 0:
+    out: list[list[int]] = []
+    for _key, idxs in by_name.items():
+        m = len(idxs)
+        if m == 1:
+            out.append(idxs)
             continue
-        ti = cKDTree(vi)
-        di = float(np.linalg.norm(vi.max(0) - vi.min(0)))
-        for j in range(i + 1, n):
-            if regions[i]["key"] != regions[j]["key"]:
+        # Build a graph over this name's regions: edge when the two regions come within `gap`.
+        rows, cols = [], []
+        trees = {i: cKDTree(regions[i]["verts"]) for i in idxs if len(regions[i]["verts"])}
+        for a in range(m):
+            ia = idxs[a]
+            if ia not in trees:
                 continue
-            vj = regions[j]["verts"]
-            if len(vj) == 0:
-                continue
-            dj = float(np.linalg.norm(vj.max(0) - vj.min(0)))
-            # Adjacent if the closest points of the two regions come within ~8% of their mean size:
-            # touching slices of one cushion qualify; two cushions a cushion-width apart do not.
-            radius = 0.08 * (0.5 * (di + dj)) + 2.0
-            d, _ = ti.query(vj, k=1, distance_upper_bound=radius)
-            if np.isfinite(d).any():
-                union(i, j)
+            for b in range(a + 1, m):
+                ib = idxs[b]
+                vb = regions[ib]["verts"]
+                if len(vb) == 0:
+                    continue
+                d, _ = trees[ia].query(vb, k=1, distance_upper_bound=gap)
+                if np.isfinite(d).any():
+                    rows += [a, b]
+                    cols += [b, a]
+        g = csr_matrix((np.ones(len(rows)), (rows, cols)), shape=(m, m))
+        ncomp, comp = connected_components(g, directed=False)
+        for c in range(ncomp):
+            out.append([idxs[k] for k in range(m) if comp[k] == c])
 
-    groups: dict[int, list[int]] = {}
-    for i in range(n):
-        groups.setdefault(find(i), []).append(i)
-    return sorted(groups.values(), key=lambda g: -sum(len(regions[i]["verts"]) for i in g))
+    return sorted(out, key=lambda grp: -sum(len(regions[i]["verts"]) for i in grp))
 
 
 def _titlecase_label(label: str) -> str:
@@ -335,7 +352,7 @@ class PerceptionImpl(PerceptionService):
         # 2. Union-find merge of same-name regions that touch (centroids within an adjacency radius
         #    scaled by their sizes). Two separate ear cushions have the same name but are far apart,
         #    so they do NOT merge; four slices of one cushion are adjacent and do.
-        groups = _merge_same_name_adjacent(regions)
+        groups = _group_regions_by_name_and_blob(regions)
 
         # 3. Build a Part per merged group; disambiguate duplicate display names (Ear Pad 1/2).
         parts: list[Part] = []
