@@ -30,12 +30,12 @@ button:disabled { cursor: not-allowed; }
 .button-secondary:hover { background: #3431230d; transform: translateY(-2px); }
 .hero-caption { position: absolute; bottom: 24px; left: 0; font-size: 13px; color: var(--muted); }
 .mascot-wrap { position: absolute; right: 7%; bottom: 67px; width: 300px; text-align: center; }
-.mascot-scene { width: 300px; height: 260px; position: relative; perspective: 700px; isolation: isolate; }
+.mascot-scene { display: block; cursor: pointer; border-radius: 12px; width: 300px; height: 260px; position: relative; perspective: 700px; isolation: isolate; }
 .mascot-shadow { position: absolute; top: 216px; left: 65px; width: 170px; height: 24px; background: #34312325; border-radius: 50%; filter: blur(3px); }
 .mascot-clip { position: absolute; top: 0; left: 0; width: 300px; height: 230px; overflow: hidden; }
-.mascot-driver { position: absolute; left: 83px; top: 4px; width: 134px; height: 215px; transform: translateY(170px); animation: screw-drive 2.5s cubic-bezier(.25,.1,.2,1) both; }
-.mascot-screw { position: relative; width: 134px; height: 215px; transform-style: preserve-3d; animation: screw-turn 2.5s cubic-bezier(.3,.05,.3,1) both; }
-.mascot-head { position: absolute; z-index: 2; width: 134px; height: 67px; border: 2px solid #333333; border-radius: 25px; background: #c8c8c8; box-shadow: inset 0 5px 0 #ededed,inset -12px 0 0 #ababab,0 7px 0 #888888; }
+.mascot-driver { position: absolute; left: 83px; top: 4px; width: 134px; height: 215px; transform: translateY(152px); transition: transform 1.2s cubic-bezier(.45,0,.2,1); }
+.mascot-screw { position: relative; width: 134px; height: 215px; display: block; transform-style: preserve-3d; transform: rotateY(0deg); transition: transform 1.2s cubic-bezier(.45,0,.2,1); }
+.mascot-head { position: absolute; left: 0; top: 0; z-index: 2; width: 134px; height: 67px; border: 2px solid #333333; border-radius: 25px; overflow: hidden; background: #c8c8c8; box-shadow: inset 0 5px 0 #ededed,inset -12px 0 0 #ababab,0 7px 0 #888888; }
 .mascot-eyes { position: absolute; top: 25px; left: 39px; width: 9px; height: 13px; border-radius: 50%; background: #333333; box-shadow: 38px 0 #333333; }
 .mascot-smile { position: absolute; top: 33px; left: 58px; width: 16px; height: 14px; border-bottom: 2px solid #333333; border-radius: 50%; }
 .mascot-stem { position: absolute; top: 65px; left: 37px; width: 60px; height: 127px; border: 2px solid #333333; border-radius: 0 0 25px 25px; background: repeating-linear-gradient(-18deg,#888888 0 3px,#d4d4d4 4px 15px,#888888 17px 19px); }
@@ -44,8 +44,19 @@ button:disabled { cursor: not-allowed; }
 .mascot-tick-left { left: 12px; }.mascot-tick-right { right: 12px; }
 .mascot-replay { padding: 8px 14px; color: var(--muted); font-size: 12px; border-radius: 5px; }
 .mascot-replay:hover { background: #3431230d; }
-@keyframes screw-drive { 0% { transform: translateY(-15px); } 15% { transform: translateY(4px); } 90% { transform: translateY(173px); } 100% { transform: translateY(170px); } }
+@keyframes screw-drive { 0% { transform: translateY(-15px); } 15% { transform: translateY(4px); } 90% { transform: translateY(154px); } 100% { transform: translateY(152px); } }
 @keyframes screw-turn { 0% { transform: rotateY(0); } 90% { transform: rotateY(1080deg) rotateZ(-3deg); } 100% { transform: rotateY(1080deg); } }
+.mascot-bob { display: block; width: 134px; height: 215px; }
+.mascot-scene.is-entering .mascot-driver { animation: screw-drive 2.5s cubic-bezier(.25,.1,.2,1) both; }
+.mascot-scene.is-entering .mascot-screw { animation: screw-turn 2.5s cubic-bezier(.3,.05,.3,1) both; }
+.mascot-scene.is-raised .mascot-driver { transform: translateY(10px); }
+.mascot-scene.is-raised .mascot-screw { transform: rotateY(-1080deg); }
+.mascot-scene.is-raised .mascot-bob { animation: screw-float 2s ease-in-out 1.2s infinite; }
+.mascot-shadow { transition: transform 1.2s, opacity 1.2s; }
+.mascot-scene.is-raised .mascot-shadow { transform: scaleX(.65); opacity: .5; }
+.mascot-hello { position: absolute; top: -24px; left: 166px; z-index: 3; padding: 6px 12px; border: 1.5px solid #333; border-radius: 10px 10px 10px 2px; background: #f8f8f8; color: #333; font-size: 13px; opacity: 0; transform: translateY(6px); transition: opacity .15s,transform .2s; pointer-events: none; }
+.mascot-scene.is-raised .mascot-hello { opacity: 1; transform: translateY(0); transition-delay: .7s; }
+@keyframes screw-float { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-6px); } }
 .examples-section { padding: 32px 0 44px; }
 .section-heading { display: flex; justify-content: space-between; align-items: baseline; gap: 14px; margin-bottom: 24px; }
 .section-heading h2 { font-size: 25px; letter-spacing: -.8px; font-weight: 600; }.section-heading>span { color: var(--muted); font-size: 13px; }

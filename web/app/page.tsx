@@ -56,7 +56,7 @@ export default function LandingPage() {
           ))}</div>
         )}
       </section>
-      <footer className="site-footer"><span>Made at a hackathon. Free to use.</span><span>Screw It.</span></footer>
+      <footer className="site-footer"><span>Made by Ali Brandon Darian, Nigel, and Ram</span></footer>
     </div>
   );
 }
