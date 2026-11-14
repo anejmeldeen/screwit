@@ -60,17 +60,17 @@ function PartMesh({
       // Own the display material: glTF defaults to metalness=1, and baked
       // vertex colors otherwise multiply (darken) the part palette.
       object.material = new MeshStandardMaterial({
-        color: partColor(index), metalness: 0, roughness: 0.85,
+        color: partColor(index, part.part_id), metalness: 0, roughness: 1,
       });
     });
     return clone;
-  }, [gltf, index]);
+  }, [gltf, index, part.part_id]);
   useEffect(() => () => {
     scene.traverse((object) => {
       if (object instanceof Mesh) (object.material as MeshStandardMaterial).dispose();
     });
   }, [scene]);
-  const baseColor = useMemo(() => new Color(partColor(index)), [index]);
+  const baseColor = useMemo(() => new Color(partColor(index, part.part_id)), [index, part.part_id]);
 
   // The first part mesh to draw marks the viewer's first-mesh timestamp.
   useEffect(() => {
@@ -88,9 +88,9 @@ function PartMesh({
           if (mat.emissive) {
             mat.emissive.copy(
               selected
-                ? new Color("#ffffff")
+                ? new Color("#302a20")
                 : hovered
-                  ? new Color("#334155")
+                  ? new Color("#18160f")
                   : new Color("#000000"),
             );
           }

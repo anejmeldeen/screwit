@@ -131,7 +131,7 @@ function PartCard({
       >
         <span
           className="mt-1 h-3 w-3 shrink-0 rounded-sm"
-          style={{ backgroundColor: partColor(index) }}
+          style={{ backgroundColor: partColor(index, part.part_id) }}
         />
         <span className="h-12 w-12 shrink-0 overflow-hidden rounded bg-wash">
           {/* eslint-disable-next-line @next/next/no-img-element */}

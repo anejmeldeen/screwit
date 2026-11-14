@@ -19,6 +19,7 @@ Everything is committed (each output is well under 10 MB).
 
 from __future__ import annotations
 
+import json
 import math
 from pathlib import Path
 
@@ -31,10 +32,10 @@ from screwit.contracts import Cameras
 ROOT = Path(__file__).resolve().parents[1]
 SCANS = ROOT / "fixtures" / "scans"
 
-# RGBA vertex colours per part, so the mesh view is distinguishable.
+# One palette for the web viewer, gallery thumbnails and generated fixtures.
 COLORS = [
-    (200, 90, 70, 255), (90, 160, 210, 255), (210, 190, 90, 255),
-    (120, 200, 130, 255), (180, 120, 200, 255), (150, 150, 150, 255),
+    (*tuple(bytes.fromhex(color.removeprefix("#"))), 255)
+    for color in json.loads((ROOT / "web/lib/partPalette.json").read_text())
 ]
 
 

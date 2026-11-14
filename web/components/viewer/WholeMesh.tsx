@@ -24,7 +24,7 @@ export function WholeMesh({ url, visible }: { url: string; visible: boolean }) {
         const material = source.clone();
         if (material instanceof MeshStandardMaterial) {
           material.metalness = 0;
-          material.roughness = 0.85;
+          material.roughness = 1;
         }
         return material;
       });
