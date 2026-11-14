@@ -56,7 +56,7 @@ export default function LandingPage() {
           ))}</div>
         )}
       </section>
-      <footer className="site-footer"><span>Made by Ali Brandon Darian, Nigel, and Ram</span></footer>
+      <footer className="site-footer"><span>HackUMass 2026</span></footer>
     </div>
   );
 }

@@ -4,7 +4,6 @@ import { useState } from "react";
 
 // A stable hit area lets the screw rise without moving away from the pointer.
 export function ScrewMascot() {
-  const [replay, setReplay] = useState(0);
   const [entering, setEntering] = useState(true);
   const [hovered, setHovered] = useState(false);
   const [focused, setFocused] = useState(false);
@@ -39,10 +38,10 @@ export function ScrewMascot() {
           }
         }}
       >
-        <span className="mascot-hello" aria-hidden="true">hello!</span>
+        <span className="mascot-hello" aria-hidden="true">Hello!</span>
         <span className="mascot-shadow" />
         <span className="mascot-clip" aria-hidden="true">
-          <span key={replay} className="mascot-driver" onAnimationEnd={(e) => {
+          <span className="mascot-driver" onAnimationEnd={(e) => {
             if (e.animationName === "screw-drive") setEntering(false);
           }}>
             <span className="mascot-bob">
@@ -53,14 +52,12 @@ export function ScrewMascot() {
             </span>
           </span>
         </span>
+        <span className="mascot-whirlwind" aria-hidden="true"><span /><span /><span /></span>
         <span className="mascot-surface" />
         <span className="mascot-tick mascot-tick-left" />
         <span className="mascot-tick mascot-tick-right" />
       </button>
-      <button type="button" onClick={() => {
-        setHovered(false); setFocused(false); setTapped(false);
-        setEntering(true); setReplay((n) => n + 1);
-      }} className="mascot-replay" aria-label="Replay screw entrance animation">↻ Again</button>
+
     </div>
   );
 }
