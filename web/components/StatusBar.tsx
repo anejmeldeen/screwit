@@ -35,9 +35,9 @@ function dotClass(state?: string) {
     case "failed":
       return "bg-rose-500";
     case "skipped":
-      return "bg-slate-600";
+      return "bg-wash";
     default:
-      return "bg-slate-700";
+      return "bg-wash";
   }
 }
 
@@ -87,21 +87,21 @@ export function StatusBar({
                 data-state={state ?? "pending"}
                 className={`flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium ${
                   skipped
-                    ? "bg-slate-800 text-slate-500"
-                    : "bg-slate-800 text-slate-200"
+                    ? "bg-wash text-muted"
+                    : "bg-wash text-ink"
                 }`}
                 title={stage?.message ?? s.label}
               >
                 <span className={`h-2 w-2 rounded-full ${dotClass(state)}`} />
                 {s.label}
                 {state === "running" && stage?.progress != null ? (
-                  <span className="text-slate-400">
+                  <span className="text-muted">
                     {Math.round(stage.progress * 100)}%
                   </span>
                 ) : null}
               </span>
               {i < STAGE_ORDER.length - 1 ? (
-                <span className="text-slate-600">›</span>
+                <span className="text-muted">›</span>
               ) : null}
             </li>
           );
@@ -116,8 +116,8 @@ export function StatusBar({
               data-scale-warning={w.id}
               className={`inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs font-medium ${
                 w.level === "info"
-                  ? "bg-slate-700 text-slate-200"
-                  : "bg-amber-800/60 text-amber-200"
+                  ? "bg-wash text-ink"
+                  : "bg-amber-100 text-amber-800"
               }`}
               title={w.message}
             >
@@ -128,10 +128,10 @@ export function StatusBar({
         </div>
       ) : null}
       {failed ? (
-        <p className="mt-2 text-sm text-rose-300">
+        <p className="mt-2 text-sm text-rose-800">
           {FRIENDLY[failed.name] ?? "A stage failed."}{" "}
           {failed.message ? (
-            <span className="text-rose-400/80">({failed.message})</span>
+            <span className="text-rose-800/80">({failed.message})</span>
           ) : null}
         </p>
       ) : null}

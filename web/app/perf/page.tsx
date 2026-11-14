@@ -80,7 +80,7 @@ function PerfInner() {
 
   return (
     <div className="flex h-[calc(100vh-57px)] flex-col">
-      <div className="grid grid-cols-2 gap-2 border-b border-slate-800 bg-panel px-4 py-2 text-xs sm:grid-cols-4">
+      <div className="grid grid-cols-2 gap-2 border-b border-line bg-panel px-4 py-2 text-xs sm:grid-cols-4">
         <Stat label="fps (now)" value={stats.last.toFixed(0)} />
         <Stat label="fps p50 / 5 s" value={stats.p50.toFixed(0)} />
         <Stat label="fps p95 / 5 s" value={stats.p95.toFixed(0)} />
@@ -105,7 +105,7 @@ function PerfInner() {
 
       <div className="min-h-0 flex-1">
         {err ? (
-          <p className="p-4 text-rose-300">Could not load {scanId}: {err}</p>
+          <p className="p-4 text-rose-800">Could not load {scanId}: {err}</p>
         ) : recon ? (
           <ViewerPanel
             scanId={scanId}
@@ -121,7 +121,7 @@ function PerfInner() {
             onFpsSample={onFps}
           />
         ) : (
-          <p className="p-4 text-slate-400">Loading {scanId}…</p>
+          <p className="p-4 text-muted">Loading {scanId}…</p>
         )}
         {/* Expose the resolved mobile/full choice for the harness. */}
         <span className="sr-only" data-splat-uri={splatUri ?? ""} />
@@ -140,11 +140,11 @@ function Stat({
   id?: string;
 }) {
   return (
-    <div id={id} className="rounded bg-slate-800 px-2 py-1">
-      <div className="text-[10px] uppercase tracking-wide text-slate-500">
+    <div id={id} className="rounded bg-wash px-2 py-1">
+      <div className="text-[10px] uppercase tracking-wide text-muted">
         {label}
       </div>
-      <div className="font-mono text-sm text-slate-100" data-perf-value={value}>
+      <div className="font-mono text-sm text-ink" data-perf-value={value}>
         {value}
       </div>
     </div>
@@ -157,7 +157,7 @@ function fmtMark(v: number | null): string {
 
 export default function PerfPage() {
   return (
-    <Suspense fallback={<p className="p-4 text-slate-400">Loading…</p>}>
+    <Suspense fallback={<p className="p-4 text-muted">Loading…</p>}>
       <PerfInner />
     </Suspense>
   );

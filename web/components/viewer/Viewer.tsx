@@ -2,7 +2,7 @@
 
 import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
-import { Matrix4, Vector3, PerspectiveCamera, GridHelper } from "three";
+import { Matrix4, Vector3, PerspectiveCamera, GridHelper, Box3, Quaternion } from "three";
 import { OrbitControls as OrbitControlsImpl } from "three/examples/jsm/controls/OrbitControls.js";
 import type { CadResult, Part, Reconstruction } from "@/lib/contracts.gen";
 import { explodeOffsets, type FeaturePick, type MeasureMode } from "@/lib/editorGeometry";
@@ -131,25 +131,38 @@ function FocusController({
   return null;
 }
 
-function FitAssembly({ parts, matrix, explode }: { parts: Part[]; matrix: Matrix4; explode: number }) {
-  const camera = useThree(s => s.camera) as PerspectiveCamera;
-  const controls = useThree(s => s.controls) as unknown as OrbitControlsImpl | null;
-  const invalidate = useThree(s => s.invalidate);
-  useEffect(() => {
-    if (!controls || !parts.length) return;
+function FitObject({ parts, matrix, explode }: { parts: Part[]; matrix: Matrix4; explode: number }) {
+  const camera = useThree((s) => s.camera);
+  const controls = useThree((s) => s.controls as unknown as OrbitControlsImpl | null);
+  const size = useThree((s) => s.size);
+  const invalidate = useThree((s) => s.invalidate);
+  const bounds = useMemo(() => {
+    const box = new Box3();
     const offsets = explodeOffsets(parts);
-    const centers = parts.map(p => new Vector3(...p.centroid_mm as [number, number, number]).addScaledVector(offsets.get(p.part_id)!, explode));
-    const center = centers.reduce((sum, p) => sum.add(p), new Vector3()).divideScalar(parts.length);
-    const radius = Math.max(5, ...parts.map((p, i) => centers[i].distanceTo(center) + new Vector3(...p.obb.extent as [number, number, number]).length() / 2));
-    const worldCenter = center.applyMatrix4(matrix);
-    const worldRadius = radius * new Vector3().setFromMatrixScale(matrix).length() / Math.sqrt(3);
-    const halfFov = Math.min(camera.fov * Math.PI / 360, Math.atan(Math.tan(camera.fov * Math.PI / 360) * camera.aspect));
-    const distance = worldRadius / Math.sin(halfFov) * 1.15;
-    controls.target.copy(worldCenter);
-    camera.position.copy(worldCenter).add(new Vector3(1, 0.65, 1).normalize().multiplyScalar(distance));
-    camera.near = Math.max(0.00001, distance / 1000); camera.far = Math.max(100, distance * 100);
-    camera.updateProjectionMatrix(); controls.update(); invalidate();
-  }, [parts, matrix, controls, camera, invalidate, explode]);
+    for (const part of parts) {
+      const center = part.obb.center as unknown as number[];
+      const extent = part.obb.extent as unknown as number[];
+      const rotation = new Quaternion().fromArray(part.obb.rotation_quat as unknown as number[]);
+      for (const x of [-1, 1]) for (const y of [-1, 1]) for (const z of [-1, 1]) {
+        box.expandByPoint(new Vector3(x * extent[0] / 2, y * extent[1] / 2, z * extent[2] / 2)
+          .applyQuaternion(rotation).add(new Vector3(...center))
+          .addScaledVector(offsets.get(part.part_id)!, explode).applyMatrix4(matrix));
+      }
+    }
+    return box;
+  }, [parts, matrix, explode]);
+  useEffect(() => {
+    if (!controls || bounds.isEmpty()) return;
+    const center = bounds.getCenter(new Vector3());
+    const radius = Math.max(bounds.getSize(new Vector3()).length() / 2, 0.025);
+    const vertical = (camera as PerspectiveCamera).fov * Math.PI / 360;
+    const horizontal = Math.atan(Math.tan(vertical) * size.width / size.height);
+    const distance = radius / Math.sin(Math.min(vertical, horizontal)) * 1.25;
+    camera.position.copy(center).add(new Vector3(1, .65, 1).normalize().multiplyScalar(distance));
+    controls.target.copy(center);
+    controls.update();
+    invalidate();
+  }, [bounds, camera, controls, size.width, size.height, invalidate]);
   return null;
 }
 
@@ -193,7 +206,7 @@ export function Viewer(props: ViewerProps) {
 
   const parentMatrix = useMemo(() => scanToWebMatrix(recon), [recon]);
   const gridHelper = useMemo(() => {
-    const g = new GridHelper(2, 40, 0x334155, 0x1f2937);
+    const g = new GridHelper(2, 40, 0x647076, 0x1f2937);
     return g;
   }, []);
   const { map: centroids, register } = useCentroidRegistry();
@@ -224,7 +237,7 @@ export function Viewer(props: ViewerProps) {
         (camera as PerspectiveCamera).lookAt(0, 0.05, 0);
       }}
     >
-      <color attach="background" args={["#0b1120"]} />
+      <color attach="background" args={["#252a2d"]} />
       <ambientLight intensity={0.8} />
       <directionalLight position={[1, 2, 1]} intensity={1.1} />
       <directionalLight position={[-1, 1, -1]} intensity={0.4} />
@@ -285,7 +298,7 @@ export function Viewer(props: ViewerProps) {
       </group>
 
       <OrbitControlsLite />
-      <FitAssembly parts={parts} matrix={parentMatrix} explode={explode} />
+      <FitObject parts={parts} matrix={parentMatrix} explode={explode} />
       <FocusController target={focusTarget} />
       <FpsSampler onSample={onFpsSample} />
     </Canvas>

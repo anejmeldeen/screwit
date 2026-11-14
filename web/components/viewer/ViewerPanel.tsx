@@ -29,7 +29,7 @@ const importViewer = () => import("./Viewer");
 const Viewer = dynamic(importViewer, {
   ssr: false,
   loading: () => (
-    <div className="flex h-full w-full items-center justify-center text-slate-500">
+    <div className="flex h-full w-full items-center justify-center text-muted">
       Loading 3D viewer…
     </div>
   ),
@@ -100,8 +100,8 @@ export function ViewerPanel({
   const [splatRequested, setSplatRequested] = useState(false);
 
   useEffect(() => {
-    setQuality(detectQuality());
     setPhone(isPhone());
+    setQuality(detectQuality());
     prewarmViewer();
   }, []);
 
@@ -137,20 +137,17 @@ export function ViewerPanel({
   // On phones, render the light whole-object mobile mesh for the mesh view when
   // one exists (keeps first-mesh under budget on slow 4G); desktop uses the
   // per-part meshes (picking, colours, explode).
-  const mobileMeshUri = useMemo(
-    () => (!isolated && phone && recon?.mesh_mobile_uri ? recon.mesh_mobile_uri : null),
-    [isolated, phone, recon],
-  );
+  const mobileMeshUri = null; // One editable parts view on every device.
   const needsScale = recon?.scale?.method === "learned";
   useEffect(() => {
     setPoints([]); setFeaturePicks([]); setMeasureResult(null);
   }, [parts, hiddenPartIds, recon?.reconstruction_revision]);
 
+  const showMobileToggle = hasMobileAssets(recon);
   const splatUri = useMemo(
     () => (recon ? splatUriFor(recon, quality) : null),
     [recon, quality],
   );
-  const showMobileToggle = hasMobileAssets(recon);
 
   // Warm the mesh in the HTTP cache the moment its URL is known, in parallel
   // with the viewer JS download, so GLTFLoader reuses the bytes instead of
@@ -233,54 +230,54 @@ export function ViewerPanel({
   return (
     <div className="flex h-full flex-col">
       {/* Toolbar */}
-      <div className="flex flex-wrap items-center gap-2 border-b border-slate-800 p-2 text-sm">
+      <div className="editor-tools">
         {/* Splat/mesh toggle. The mesh button is always present; the splat
             button appears only when a splat exists. Selecting Splat marks it as
             user-requested, which is what releases the splat fetch. */}
         {splatReady ? (
-          <div className="flex overflow-hidden rounded border border-slate-700">
+          <div className="flex overflow-hidden rounded border border-line">
             <button
               data-testid="view-toggle-mesh"
-              className={`px-3 py-1 ${mode === "mesh" ? "bg-accent text-ink" : "bg-panel"}`}
+              className={`px-3 py-1 ${mode === "mesh" ? "bg-accent text-paper" : "bg-panel"}`}
               onClick={() => setMode("mesh")}
             >
-              Mesh
+              Parts view
             </button>
             <button
               data-testid="view-toggle-splat"
               disabled={hiddenPartIds.length > 0}
               title={hiddenPartIds.length > 0 ? "Show all components to use splat view" : "Splat view"}
-              className={`px-3 py-1 ${mode === "splat" ? "bg-accent text-ink" : "bg-panel"}`}
+              className={`px-3 py-1 ${mode === "splat" ? "bg-accent text-paper" : "bg-panel"}`}
               onClick={() => {
                 setSplatRequested(true);
                 setMeasureActive(false); setScaleActive(false); setExplode(0); resetPoints();
                 setMode("splat");
               }}
             >
-              Splat
+              Original scan
             </button>
           </div>
         ) : (
           <button
             data-testid="view-toggle-mesh"
-            className="rounded border border-slate-700 bg-accent px-3 py-1 text-ink"
+            className="rounded border border-line bg-accent px-3 py-1 text-paper"
             disabled
           >
-            Mesh view
+            Parts view
           </button>
         )}
 
         {showMobileToggle ? (
-          <div className="flex overflow-hidden rounded border border-slate-700">
+          <div className="flex overflow-hidden rounded border border-line">
             <button
-              className={`px-2 py-1 ${quality === "desktop" ? "bg-slate-700" : "bg-panel"}`}
+              className={`px-2 py-1 ${quality === "desktop" ? "bg-wash" : "bg-panel"}`}
               onClick={() => setQuality("desktop")}
               title="Full-resolution assets"
             >
               HQ
             </button>
             <button
-              className={`px-2 py-1 ${quality === "mobile" ? "bg-slate-700" : "bg-panel"}`}
+              className={`px-2 py-1 ${quality === "mobile" ? "bg-wash" : "bg-panel"}`}
               onClick={() => setQuality("mobile")}
               title="Lighter phone assets"
             >
@@ -291,24 +288,28 @@ export function ViewerPanel({
 
         {!isolated ? (
         <label className="flex items-center gap-2">
-          <span className="text-slate-400">Explode</span>
+          <span className="text-muted">Separate parts</span>
           <input
             type="range"
             min={0}
             max={1}
             step={0.01}
             value={explode}
-            disabled={measureActive || scaleActive}
+            onChange={(e) => {
+              setMode("mesh");
+              setExplode(parseFloat(e.target.value));
+            }}
+            disabled={parts.length < 2 || measureActive || scaleActive}
             aria-label="Explode components"
-            onChange={(e) => { setExplode(parseFloat(e.target.value)); setMode("mesh"); }}
-            onMouseDown={() => mode === "splat" && setMode("mesh")}
+            aria-valuetext={`${Math.round(explode * 100)}% separated`}
+            title={parts.length < 2 ? "Explode needs at least two parts" : "Separate parts"}
           />
         </label>
         ) : null}
 
         <button
           className={`rounded border px-2 py-1 ${
-            measureActive ? "border-accent text-accent" : "border-slate-700"
+            measureActive ? "border-accent text-accent" : "border-line"
           }`}
           onClick={() => {
             setMeasureActive((v) => !v);
@@ -322,7 +323,7 @@ export function ViewerPanel({
 
         <button
           className={`rounded border px-2 py-1 ${
-            scaleActive ? "border-accent text-accent" : "border-slate-700"
+            scaleActive ? "border-accent text-accent" : "border-line"
           } ${needsScale ? "ring-1 ring-amber-500" : ""}`}
           onClick={() => {
             setScaleActive((v) => !v);
@@ -334,29 +335,29 @@ export function ViewerPanel({
           disabled={isolated}
           title={isolated ? "Set scale in the assembly window" : "Set scale from a known length"}
         >
-          Set scale
+          Set real size
         </button>
 
         {cadOverlay ? (
           <button
             className={`rounded border px-2 py-1 ${
-              cadVisible ? "border-orange-500 text-orange-300" : "border-slate-700"
+              cadVisible ? "border-orange-500 text-orange-800" : "border-line"
             }`}
             onClick={() => setCadVisible((v) => !v)}
           >
-            CAD overlay
+            Show replacement
           </button>
         ) : null}
       </div>
 
       {/* Interaction hints / results */}
       {(measureActive || scaleActive || measureResult || err || busyMsg) && (
-        <div className="flex flex-wrap items-center gap-3 border-b border-slate-800 bg-slate-900/60 px-3 py-2 text-sm">
+        <div className="flex flex-wrap items-center gap-3 border-b border-line bg-wash px-3 py-2 text-sm">
           {measureActive ? (
-            <span className="text-slate-300">
+            <span className="text-ink">
               <select aria-label="Measurement type" value={measureMode}
                 onChange={e => { setMeasureMode(e.target.value as MeasureMode); resetPoints(); }}
-                className="mr-2 rounded border border-slate-600 bg-panel px-2 py-1">
+                className="mr-2 rounded border border-line bg-panel px-2 py-1">
                 <option value="point">Point to point</option>
                 <option value="edge-length">Edge length (including curves)</option>
                 <option value="edge-distance">Edge to edge</option>
@@ -366,16 +367,16 @@ export function ViewerPanel({
                 measureMode === "edge-length" ? "Hover near an outlined edge, then click to measure the highlighted chain." :
                 `Click two highlighted ${measureMode === "face-distance" ? "faces" : "edges"}. ${featurePicks.length}/2 picked. Distance is the shortest gap.`}
               <button className="ml-2 text-accent" onClick={resetPoints}>Clear</button>
-              <span className="block text-xs text-slate-400">Scan coordinates in mm. Curves follow mesh segments; faces are connected planar patches. Measurements use the assembled geometry.</span>
+              <span className="block text-xs text-muted">Scan coordinates in mm. Curves follow mesh segments; faces are connected planar patches. Measurements use the assembled geometry.</span>
             </span>
           ) : null}
           {measureResult ? (
-            <span className="font-medium text-emerald-300">
+            <span className="font-medium text-emerald-800">
               {measureResult}
             </span>
           ) : null}
           {scaleActive ? (
-            <span className="flex items-center gap-2 text-slate-300">
+            <span className="flex items-center gap-2 text-ink">
               Click the two ends of a known length ({points.length}/2).
               <input
                 type="number"
@@ -384,28 +385,28 @@ export function ViewerPanel({
                 onChange={(e) =>
                   setScaleLength(parseFloat(e.target.value) || CARD_LONG_EDGE_MM)
                 }
-                className="w-24 rounded border border-slate-700 bg-panel px-2 py-0.5"
+                className="w-24 rounded border border-line bg-panel px-2 py-0.5"
               />
               mm
               <button
                 disabled={points.length !== 2 || !!busyMsg}
                 onClick={submitScale}
-                className="rounded bg-accent px-2 py-0.5 text-ink disabled:opacity-40"
+                className="rounded bg-accent px-2 py-0.5 text-paper disabled:opacity-40"
               >
                 Apply scale
               </button>
             </span>
           ) : null}
           {clearanceCheck ? (
-            <span className="text-orange-300">
+            <span className="text-orange-800">
               Clearance {Number(clearanceCheck.value).toFixed(2)} mm
               {clearanceCheck.input_source ? (
-                <span className="text-slate-400"> ({clearanceCheck.input_source})</span>
+                <span className="text-muted"> ({clearanceCheck.input_source})</span>
               ) : null}
             </span>
           ) : null}
-          {busyMsg ? <span className="text-slate-400">{busyMsg}</span> : null}
-          {err ? <span className="text-rose-300">{err}</span> : null}
+          {busyMsg ? <span className="text-muted">{busyMsg}</span> : null}
+          {err ? <span className="text-rose-800">{err}</span> : null}
         </div>
       )}
 
@@ -435,7 +436,7 @@ export function ViewerPanel({
             onFpsSample={onFpsSample}
           />
         ) : (
-          <div className="flex h-full items-center justify-center text-slate-500">
+          <div className="flex h-full items-center justify-center text-muted">
             {recon ? "Preparing 3D viewer…" : "Waiting for reconstruction…"}
           </div>
         )}

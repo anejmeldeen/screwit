@@ -24,7 +24,7 @@ These are measurements of the reconstructed triangle mesh, not exact analytic CA
 
 `ViewerPanel.tsx` stores the selected quality and uses `splatUriFor` in `lib/device.ts` to choose `splat_uri` (HQ) or `splat_mobile_uri` (Phone). The original is used if no mobile splat exists.
 
-The mesh path does not read the selected quality: a detected phone uses `mesh_mobile_uri`, while desktop uses per-component `Part.mesh_uri` assets. The `meshUriFor` quality helper exists but is not wired into the viewer. Therefore toggling Phone/HQ in desktop Mesh view does not change the mesh. In Splat view the resolution/asset size can change, but similar fixture assets may look alike. This switch is not a change of model units or dimensions. Its handlers and quality selection are unchanged by this editor work.
+The mesh path does not read the selected quality. After merging the upstream editor redesign, all devices use per-component `Part.mesh_uri` assets so editing and explosion remain available on phones. The `meshUriFor` quality helper exists but is not wired into the viewer. Therefore toggling Phone/HQ in desktop Mesh view does not change the mesh. In Splat view the resolution/asset size can change, but similar fixture assets may look alike. This switch is not a change of model units or dimensions. Its handlers and quality selection are unchanged by this editor work.
 
 ## STEP/STP feasibility (no export changes made)
 

@@ -3,13 +3,13 @@
 import { useEffect, useMemo, useRef } from "react";
 import { useLoader } from "@react-three/fiber";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
-import { Box3, Color, Group, Mesh, Vector3 } from "three";
+import { Box3, Color, Group, Mesh, MeshStandardMaterial, Vector3 } from "three";
 import type { Part } from "@/lib/contracts.gen";
 import { assetUrl } from "@/lib/storage";
 import { configureGltfLoader } from "./gltf";
 import { markOnce, PERF_MARKS } from "@/lib/perf";
 
-import { clonePartScene, explodeOffsets, type FeaturePick, type MeasureMode } from "@/lib/editorGeometry";
+import { explodeOffsets, type FeaturePick, type MeasureMode } from "@/lib/editorGeometry";
 import { FeatureSurface } from "./FeatureSurface";
 import type { PickedPoint } from "./MeasureLayer";
 import { partColor } from "@/lib/palette";
@@ -53,12 +53,21 @@ function PartMesh({
   const { gltf } = usePartGltf(assetUrl(part.mesh_uri));
   const groupRef = useRef<Group>(null);
 
-  const scene = useMemo(() => clonePartScene(gltf.scene), [gltf]);
+  const scene = useMemo(() => {
+    const clone = gltf.scene.clone(true);
+    clone.traverse((object) => {
+      if (!(object instanceof Mesh)) return;
+      // Own the display material: glTF defaults to metalness=1, and baked
+      // vertex colors otherwise multiply (darken) the part palette.
+      object.material = new MeshStandardMaterial({
+        color: partColor(index), metalness: 0, roughness: 0.85,
+      });
+    });
+    return clone;
+  }, [gltf, index]);
   useEffect(() => () => {
-    scene.traverse(o => {
-      if (!(o as Mesh).isMesh) return;
-      const materials = (o as Mesh).material;
-      for (const material of Array.isArray(materials) ? materials : [materials]) material.dispose();
+    scene.traverse((object) => {
+      if (object instanceof Mesh) (object.material as MeshStandardMaterial).dispose();
     });
   }, [scene]);
   const baseColor = useMemo(() => new Color(partColor(index)), [index]);
