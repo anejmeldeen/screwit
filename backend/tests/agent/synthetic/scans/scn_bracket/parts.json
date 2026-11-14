@@ -1,0 +1,49 @@
+[
+  {
+    "part_id": "p1",
+    "reconstruction_revision": 1,
+    "measurement_revision": 1,
+    "label": "shelf bracket arm",
+    "label_confidence": 0.8,
+    "description": "The horizontal arm of a wall shelf bracket that has snapped near the elbow",
+    "mesh_uri": "scans/scn_bracket/parts/p1.glb",
+    "thumbnail_uri": "scans/scn_bracket/renders/p1.png",
+    "centroid_mm": [0.0, 0.0, 40.0],
+    "obb": { "center": [0.0, 0.0, 40.0], "extent": [120, 20, 4], "rotation_quat": [0, 0, 0, 1] },
+    "dimensions": [
+      { "name": "hole_diameter", "derived_from": "p1_f1.radius", "factor": 2.0 },
+      { "name": "arm_length", "value": { "scan_mm": 118.0, "snapped_mm": null, "snap_rule": null, "caliper_mm": null, "user_confirmed": false, "preferred": "scan" } }
+    ],
+    "features": [
+      { "feature_id": "p1_f1", "type": "hole",
+        "center_mm": [0.0, 0.0, 10.0], "normal": [0, 0, 1], "fit_rmse_mm": 0.6,
+        "radius": { "scan_mm": 2.6, "snapped_mm": null, "snap_rule": null, "caliper_mm": null, "user_confirmed": false, "preferred": "scan" },
+        "depth": { "scan_mm": 4.0, "snapped_mm": null, "snap_rule": null, "caliper_mm": null, "user_confirmed": false, "preferred": "scan" } }
+    ],
+    "material_guess": { "value": "die-cast zinc", "confidence": 0.5 },
+    "source": "auto"
+  },
+  {
+    "part_id": "p2",
+    "reconstruction_revision": 1,
+    "measurement_revision": 1,
+    "label": "mounting post",
+    "label_confidence": 0.7,
+    "description": "Cylindrical post the bracket arm slides onto",
+    "mesh_uri": "scans/scn_bracket/parts/p2.glb",
+    "thumbnail_uri": "scans/scn_bracket/renders/p2.png",
+    "centroid_mm": [0.0, -30.0, 40.0],
+    "obb": { "center": [0.0, -30.0, 40.0], "extent": [12, 40, 12], "rotation_quat": [0.7071068, 0, 0, 0.7071068] },
+    "dimensions": [
+      { "name": "post_diameter", "derived_from": "p2_f1.radius", "factor": 2.0 }
+    ],
+    "features": [
+      { "feature_id": "p2_f1", "type": "cylinder",
+        "axis_point_mm": [0.0, -30.0, 40.0], "axis_dir": [0, -1, 0], "fit_rmse_mm": 0.9, "inlier_fraction": 0.7,
+        "radius": { "scan_mm": 5.1, "snapped_mm": null, "snap_rule": null, "caliper_mm": null, "user_confirmed": false, "preferred": "scan" },
+        "length": { "scan_mm": 38.0, "snapped_mm": null, "snap_rule": null, "caliper_mm": null, "user_confirmed": false, "preferred": "scan" } }
+    ],
+    "material_guess": { "value": "steel", "confidence": 0.6 },
+    "source": "auto"
+  }
+]

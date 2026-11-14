@@ -1,0 +1,33 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "scan_id": {
+      "title": "Scan Id",
+      "type": "string"
+    },
+    "scenario": {
+      "enum": [
+        "A",
+        "B"
+      ],
+      "title": "Scenario",
+      "type": "string"
+    },
+    "thumbnail_uri": {
+      "title": "Thumbnail Uri",
+      "type": "string"
+    },
+    "title": {
+      "title": "Title",
+      "type": "string"
+    }
+  },
+  "required": [
+    "scan_id",
+    "title",
+    "scenario",
+    "thumbnail_uri"
+  ],
+  "title": "DemoScan",
+  "type": "object"
+}

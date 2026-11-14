@@ -1,0 +1,361 @@
+{
+  "$defs": {
+    "BBox": {
+      "additionalProperties": false,
+      "properties": {
+        "max": {
+          "maxItems": 3,
+          "minItems": 3,
+          "prefixItems": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "number"
+            },
+            {
+              "type": "number"
+            }
+          ],
+          "title": "Max",
+          "type": "array"
+        },
+        "min": {
+          "maxItems": 3,
+          "minItems": 3,
+          "prefixItems": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "number"
+            },
+            {
+              "type": "number"
+            }
+          ],
+          "title": "Min",
+          "type": "array"
+        }
+      },
+      "required": [
+        "min",
+        "max"
+      ],
+      "title": "BBox",
+      "type": "object"
+    },
+    "ReconQuality": {
+      "additionalProperties": false,
+      "properties": {
+        "frames_used": {
+          "title": "Frames Used",
+          "type": "integer"
+        },
+        "gaussians": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Gaussians"
+        },
+        "mean_depth_confidence": {
+          "title": "Mean Depth Confidence",
+          "type": "number"
+        },
+        "total_frames": {
+          "title": "Total Frames",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "frames_used",
+        "total_frames",
+        "mean_depth_confidence"
+      ],
+      "title": "ReconQuality",
+      "type": "object"
+    },
+    "ScaleInfo": {
+      "additionalProperties": false,
+      "properties": {
+        "board": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Board"
+        },
+        "board_tilt_deg": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Board Tilt Deg"
+        },
+        "corner_views": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Corner Views"
+        },
+        "learned_scale_ratio": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Learned Scale Ratio"
+        },
+        "method": {
+          "enum": [
+            "aruco",
+            "manual",
+            "learned"
+          ],
+          "title": "Method",
+          "type": "string"
+        },
+        "residual_mm": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Residual Mm"
+        }
+      },
+      "required": [
+        "method"
+      ],
+      "title": "ScaleInfo",
+      "type": "object"
+    },
+    "ScanToWeb": {
+      "additionalProperties": false,
+      "properties": {
+        "matrix": {
+          "maxItems": 4,
+          "minItems": 4,
+          "prefixItems": [
+            {
+              "maxItems": 4,
+              "minItems": 4,
+              "prefixItems": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "number"
+                }
+              ],
+              "type": "array"
+            },
+            {
+              "maxItems": 4,
+              "minItems": 4,
+              "prefixItems": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "number"
+                }
+              ],
+              "type": "array"
+            },
+            {
+              "maxItems": 4,
+              "minItems": 4,
+              "prefixItems": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "number"
+                }
+              ],
+              "type": "array"
+            },
+            {
+              "maxItems": 4,
+              "minItems": 4,
+              "prefixItems": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "number"
+                }
+              ],
+              "type": "array"
+            }
+          ],
+          "title": "Matrix",
+          "type": "array"
+        },
+        "unit_scale": {
+          "exclusiveMinimum": 0,
+          "title": "Unit Scale",
+          "type": "number"
+        }
+      },
+      "required": [
+        "matrix",
+        "unit_scale"
+      ],
+      "title": "ScanToWeb",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "cameras_uri": {
+      "title": "Cameras Uri",
+      "type": "string"
+    },
+    "frame_origin": {
+      "enum": [
+        "board",
+        "object_bottom_center"
+      ],
+      "title": "Frame Origin",
+      "type": "string"
+    },
+    "keyframes": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Keyframes",
+      "type": "array"
+    },
+    "mesh_mobile_uri": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Mesh Mobile Uri"
+    },
+    "mesh_uri": {
+      "title": "Mesh Uri",
+      "type": "string"
+    },
+    "object_bbox_mm": {
+      "$ref": "#/$defs/BBox"
+    },
+    "quality": {
+      "$ref": "#/$defs/ReconQuality"
+    },
+    "reconstruction_revision": {
+      "minimum": 0,
+      "title": "Reconstruction Revision",
+      "type": "integer"
+    },
+    "scale": {
+      "$ref": "#/$defs/ScaleInfo"
+    },
+    "scan_id": {
+      "title": "Scan Id",
+      "type": "string"
+    },
+    "scan_to_web": {
+      "$ref": "#/$defs/ScanToWeb"
+    },
+    "splat_mobile_uri": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Splat Mobile Uri"
+    },
+    "splat_uri": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Splat Uri"
+    }
+  },
+  "required": [
+    "scan_id",
+    "reconstruction_revision",
+    "splat_uri",
+    "mesh_uri",
+    "cameras_uri",
+    "keyframes",
+    "scale",
+    "frame_origin",
+    "scan_to_web",
+    "object_bbox_mm",
+    "quality"
+  ],
+  "title": "Reconstruction",
+  "type": "object"
+}

@@ -1,0 +1,12 @@
+.venv/
+.cache/
+src/
+data/
+out/*
+!out/*.json
+!out/*.log
+!out/sam2_image_mask.png
+__pycache__/
+*.pt
+*.pth
+*.safetensors

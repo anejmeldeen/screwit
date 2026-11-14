@@ -1,0 +1,12 @@
+{
+  "scan_id": "scn_bracket",
+  "object": { "category": "wall shelf bracket", "summary": "A die-cast shelf bracket whose arm has cracked near the mounting post" },
+  "parts": ["p1", "p2"],
+  "relations": [
+    { "a": "p1", "b": "p2", "type": "sliding", "confidence": 0.6, "note": "arm slides onto the post" }
+  ],
+  "function": "The bracket arm cantilevers from the wall post to carry a shelf load.",
+  "failure_hypotheses": [
+    { "part_id": "p1", "mode": "fatigue crack in the arm near the elbow", "evidence": ["visible crack line across the arm in frame 0020"], "likelihood": 0.8 }
+  ]
+}

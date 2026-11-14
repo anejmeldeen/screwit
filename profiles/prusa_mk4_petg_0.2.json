@@ -1,0 +1,16 @@
+{
+  "name": "prusa_mk4_petg_0.2",
+  "material": "PETG",
+  "build_volume_mm": [250, 210, 220],
+  "nozzle_mm": 0.4,
+  "perimeters": 3,
+  "min_wall_mm": 1.2,
+  "max_overhang_deg": 50,
+  "min_feature_mm": 0.8,
+  "radial_clearance_mm": { "snug": 0.12, "sliding": 0.25, "press": 0.05 },
+  "effective_strength_mpa": {},
+  "density_g_cm3": 1.27,
+  "layer_height_mm": 0.2,
+  "infill_pct": 40,
+  "volumetric_speed_mm3_s": 8.0
+}

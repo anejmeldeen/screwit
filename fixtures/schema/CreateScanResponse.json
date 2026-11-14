@@ -1,0 +1,51 @@
+{
+  "$defs": {
+    "PresignedPost": {
+      "additionalProperties": false,
+      "properties": {
+        "fields": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "title": "Fields",
+          "type": "object"
+        },
+        "key": {
+          "title": "Key",
+          "type": "string"
+        },
+        "url": {
+          "title": "Url",
+          "type": "string"
+        }
+      },
+      "required": [
+        "url",
+        "fields",
+        "key"
+      ],
+      "title": "PresignedPost",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "scan_id": {
+      "title": "Scan Id",
+      "type": "string"
+    },
+    "uploads": {
+      "items": {
+        "$ref": "#/$defs/PresignedPost"
+      },
+      "title": "Uploads",
+      "type": "array"
+    }
+  },
+  "required": [
+    "scan_id",
+    "uploads"
+  ],
+  "title": "CreateScanResponse",
+  "type": "object"
+}

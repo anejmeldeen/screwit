@@ -1,0 +1,14 @@
+# X5 phone asset optimizer (worktree screw-it-wt/optimize, branch ws/optimize)
+
+Read: briefs/common.md, AGENTS.md (especially "Performance budgets"), SPEC.md 3.1 (SPZ packing, quaternion orders), 3.2, 4.2 (note the new optional splat_mobile_uri and mesh_mobile_uri), 6.1 steps 4 and 6.
+
+You own only backend/screwit/optimize/, backend/tests/optimize/, scripts/make_fixture_mobile.py, fixtures/scans/*/mobile/. Create nothing elsewhere. P2 owns the full-size splat writer and pipeline; you produce the phone-sized variants from full-size assets, as a library P2's pipeline will call.
+
+Build:
+1. optimize/mesh.py: full-size scan-frame mesh (GLB/PLY, mm) -> phone GLB with at most 50k triangles (quadric decimation that preserves vertex colour, e.g. Open3D simplify_quadric_decimation or pyfqmr; pick and justify), then compressed with meshopt via gltfpack (install the official binary from the meshoptimizer GitHub releases into $KIROCREW_SCRATCH or a pip/npm package, pin the version, verify checksum) or Draco if gltfpack is impossible. The output must load in three.js: if you use meshopt, the web client needs MeshoptDecoder (`three/examples/jsm/libs/meshopt_decoder.module.js`); write that requirement in optimize/README.md for P1. Keep coordinates in scan-frame mm exactly as the input (no axis or unit change; compare bounding boxes before and after).
+2. optimize/splat.py: full-size splat -> phone splat with at most 400k gaussians, chosen by importance (opacity times volume, with spatial stratification so coverage is even), written as .spz. If P2's SPZ writer exists at /local/home/brancli/.kiro/crew/workspace/screw-it-wt/recon/backend/screwit/recon/gaussians.py, do NOT import from another worktree; instead define a small Protocol for "read gaussians / write spz" and a minimal local PLY reader for tests, and note in your report that integration wires P2's writer in. Keep [x,y,z,w] vs [w,x,y,z] handling explicit.
+3. optimize/__init__.py: `make_mobile_variants(full_mesh_path, full_splat_path | None, out_dir) -> (mesh_mobile_path, splat_mobile_path | None)` plus size and count stats.
+4. Tests: triangle and gaussian caps respected; bbox preserved within 0.5 mm; output GLB parses with trimesh (after decompression if needed, or validate with gltf-validator from npm if available); colour kept; a timing test that the mesh path for a 200k-triangle mesh runs in under 10 s on this host (record the actual number).
+5. scripts/make_fixture_mobile.py: for each fixture scan whose fixtures/scans/<id>/mesh/object.glb exists (P3 generates them; may be absent now), write fixtures/scans/<id>/mobile/object.glb (and splat if a full splat exists). If absent, say so and exit 0. Test it on your own synthetic mesh.
+
+Report also: decimator and compressor chosen with versions, achieved sizes, and the exact three.js loader requirement for P1.

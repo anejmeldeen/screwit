@@ -1,0 +1,188 @@
+{
+  "$defs": {
+    "BomLine": {
+      "additionalProperties": false,
+      "properties": {
+        "buy_links": {
+          "items": {
+            "$ref": "#/$defs/BuyLink"
+          },
+          "title": "Buy Links",
+          "type": "array"
+        },
+        "est_price_usd": {
+          "minimum": 0,
+          "title": "Est Price Usd",
+          "type": "number"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "qty": {
+          "minimum": 1,
+          "title": "Qty",
+          "type": "integer"
+        },
+        "spec": {
+          "title": "Spec",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "spec",
+        "qty",
+        "est_price_usd",
+        "buy_links"
+      ],
+      "title": "BomLine",
+      "type": "object"
+    },
+    "BuyLink": {
+      "additionalProperties": false,
+      "properties": {
+        "url": {
+          "title": "Url",
+          "type": "string"
+        },
+        "vendor": {
+          "title": "Vendor",
+          "type": "string"
+        }
+      },
+      "required": [
+        "vendor",
+        "url"
+      ],
+      "title": "BuyLink",
+      "type": "object"
+    },
+    "Diagnosis": {
+      "additionalProperties": false,
+      "properties": {
+        "confidence": {
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Confidence",
+          "type": "number"
+        },
+        "part_ids": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Part Ids",
+          "type": "array"
+        },
+        "summary": {
+          "title": "Summary",
+          "type": "string"
+        }
+      },
+      "required": [
+        "summary",
+        "part_ids",
+        "confidence"
+      ],
+      "title": "Diagnosis",
+      "type": "object"
+    },
+    "Step": {
+      "additionalProperties": false,
+      "properties": {
+        "n": {
+          "minimum": 1,
+          "title": "N",
+          "type": "integer"
+        },
+        "part_ids": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Part Ids",
+          "type": "array"
+        },
+        "text": {
+          "title": "Text",
+          "type": "string"
+        }
+      },
+      "required": [
+        "n",
+        "text"
+      ],
+      "title": "Step",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "bom": {
+      "items": {
+        "$ref": "#/$defs/BomLine"
+      },
+      "title": "Bom",
+      "type": "array"
+    },
+    "diagnosis": {
+      "$ref": "#/$defs/Diagnosis"
+    },
+    "followups": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Followups",
+      "type": "array"
+    },
+    "intent": {
+      "title": "Intent",
+      "type": "string"
+    },
+    "plan_id": {
+      "title": "Plan Id",
+      "type": "string"
+    },
+    "printable": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Printable",
+      "type": "array"
+    },
+    "safety": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Safety",
+      "type": "array"
+    },
+    "steps": {
+      "items": {
+        "$ref": "#/$defs/Step"
+      },
+      "title": "Steps",
+      "type": "array"
+    },
+    "tools": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Tools",
+      "type": "array"
+    }
+  },
+  "required": [
+    "plan_id",
+    "intent",
+    "diagnosis",
+    "safety",
+    "tools",
+    "steps",
+    "bom",
+    "printable",
+    "followups"
+  ],
+  "title": "RepairPlan",
+  "type": "object"
+}

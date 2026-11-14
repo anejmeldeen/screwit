@@ -1,0 +1,17 @@
+{
+  "name": "screwit-perf",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Screw It performance suite: Lighthouse (mobile preset) and Playwright (mobile emulation + CDP throttling). See AGENTS.md 'Performance budgets'.",
+  "type": "module",
+  "scripts": {
+    "lighthouse": "node lighthouse/run.mjs",
+    "playwright": "node playwright/run.mjs",
+    "install:chromium": "playwright install chromium"
+  },
+  "dependencies": {
+    "chrome-launcher": "1.1.2",
+    "lighthouse": "12.2.1",
+    "playwright": "1.48.2"
+  }
+}

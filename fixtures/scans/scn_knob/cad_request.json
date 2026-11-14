@@ -1,0 +1,15 @@
+{
+  "cad_id": "cad_07",
+  "scan_id": "scn_knob",
+  "reconstruction_revision": 1,
+  "part_measurement_revisions": { "p2": 3 },
+  "mode": "template",
+  "template": "knob",
+  "params": { "shaft_diameter": 6.0, "shaft_flat_depth": 1.5, "outer_diameter": 32.0, "height": 22.0 },
+  "param_sources": { "shaft_diameter": "caliper", "shaft_flat_depth": "user_confirmed", "outer_diameter": "scan", "height": "scan" },
+  "codegen_prompt": null,
+  "mates_with": [{ "part_id": "p2", "feature_id": "p2_f1", "fit": "snug", "radial_clearance_mm": 0.12 }],
+  "placement": { "translate_mm": [0.0, -20.0, 60.0], "rotation_quat": [0.7071068, 0, 0, 0.7071068] },
+  "material": "PETG",
+  "printer_profile": "prusa_mk4_petg_0.2"
+}

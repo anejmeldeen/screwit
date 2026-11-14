@@ -1,0 +1,70 @@
+{
+  "scan_id": "scn_trap",
+  "reconstruction_revision": 1,
+  "splat_uri": "scans/scn_trap/splat/scene.spz",
+  "mesh_uri": "scans/scn_trap/mesh/object.glb",
+  "cameras_uri": "scans/scn_trap/geometry/cameras.json",
+  "keyframes": [
+    "frames/0001.jpg",
+    "frames/0007.jpg",
+    "frames/0013.jpg"
+  ],
+  "scale": {
+    "method": "aruco",
+    "board": "charuco_5x7_30mm",
+    "corner_views": 41,
+    "residual_mm": 0.6,
+    "board_tilt_deg": 2.1,
+    "learned_scale_ratio": 1.03
+  },
+  "frame_origin": "board",
+  "scan_to_web": {
+    "matrix": [
+      [
+        1,
+        0,
+        0,
+        0
+      ],
+      [
+        0,
+        0,
+        1,
+        0
+      ],
+      [
+        0,
+        -1,
+        0,
+        0
+      ],
+      [
+        0,
+        0,
+        0,
+        1
+      ]
+    ],
+    "unit_scale": 0.001
+  },
+  "object_bbox_mm": {
+    "min": [
+      -40,
+      -60,
+      0
+    ],
+    "max": [
+      200,
+      60,
+      320
+    ]
+  },
+  "quality": {
+    "frames_used": 56,
+    "total_frames": 56,
+    "mean_depth_confidence": 0.81,
+    "gaussians": 94670
+  },
+  "mesh_mobile_uri": "scans/scn_trap/mobile/object.glb",
+  "splat_mobile_uri": "scans/scn_trap/mobile/scene.spz"
+}

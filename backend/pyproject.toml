@@ -1,0 +1,62 @@
+[project]
+name = "screwit"
+version = "0.1.0"
+description = "Screw It backend: reconstruction, perception, agent and CAD services (see ../SPEC.md)"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+  "pydantic>=2.7,<3",
+  "fastapi>=0.115",
+  "python-multipart==0.0.33",
+  "uvicorn[standard]>=0.30",
+  "sqlmodel>=0.0.22",
+  "httpx>=0.27",
+  "numpy>=1.26",
+  "scipy>=1.13",
+  "trimesh>=4.4",
+  "pillow>=10",
+  "zstandard>=0.22",
+  # ffmpeg binary for frame extraction and upload validation (no system ffmpeg needed).
+  "imageio-ffmpeg>=0.5",
+]
+
+[project.optional-dependencies]
+# CPU-only extras, installable on any machine.
+cad = ["cadquery>=2.4", "manifold3d>=2.5", "matplotlib>=3.8"]
+geometry = ["open3d==0.19.0", "opencv-contrib-python-headless>=4.10,<5", "pyransac3d>=0.6", "pymeshfix>=0.17", "rtree>=1.3"]
+storage = ["boto3>=1.34"]
+queue = ["redis>=5", "rq>=1.16"]
+agent = ["anthropic>=0.40"]
+postgres = ["psycopg[binary]>=3.2"]
+# GPU-only models; installed in the GPU worker image (scripts/gpu-image), not in dev. They also run
+# on CPU (SCREWIT_DEVICE=cpu, 16-view cap); cpu-verify/requirements.lock.txt pins a working CPU set.
+# depth-anything-3 and map-anything install from their git repos (see cpu-verify/README.md).
+gpu = ["torch>=2.3", "depth-anything-3", "sam2", "transformers>=4.45"]
+e2e = ["playwright==1.65.2", "pytest-playwright==0.10.0"]
+dev = ["cfn-lint>=1.0", "pytest>=8", "pytest-asyncio>=0.23", "ruff>=0.6", "imageio-ffmpeg>=0.5"]
+
+[build-system]
+requires = ["hatchling>=1.25"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["screwit"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+filterwarnings = ["ignore::DeprecationWarning:dash.*", "ignore:The hookimpl pytest_addhooks:Warning"]
+markers = [
+  "gpu: needs a CUDA GPU and the model weights (skipped elsewhere)",
+  "network: needs outbound network or cloud credentials (skipped by default)",
+]
+
+[tool.ruff]
+line-length = 120
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["screwit"]

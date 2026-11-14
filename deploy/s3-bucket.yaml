@@ -1,0 +1,91 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >
+  Screw It upload/asset bucket (SPEC 3.3). Private, all four S3 Block Public Access settings on,
+  server-side encryption, CORS restricted to the exact web origin, and a lifecycle rule that expires
+  scan objects. The browser never gets public access: it uses short-lived pre-signed POST URLs for
+  uploads and signed GET URLs for assets, both minted by the API.
+
+Parameters:
+  BucketName:
+    Type: String
+    Description: Globally unique bucket name, e.g. screwit-uploads-<account>-<region>.
+  WebOrigin:
+    Type: String
+    Default: http://localhost:3000
+    Description: >
+      The exact web origin allowed by CORS. For the offline/local demo this is http://localhost:3000;
+      set it to the deployed HTTPS origin (e.g. https://screwit.example.com) when hosting the web app.
+  ExpireAfterDays:
+    Type: Number
+    Default: 30
+    Description: Days after which scan objects are deleted (hackathon artifacts are short-lived).
+
+Resources:
+  UploadBucket:
+    Type: AWS::S3::Bucket
+    # Retain so a stack delete never silently drops scan data; empty it deliberately instead.
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      BucketName: !Ref BucketName
+      # All four Block Public Access settings ON (builder-security, SPEC 3.3).
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      OwnershipControls:
+        Rules:
+          - ObjectOwnership: BucketOwnerEnforced   # ACLs disabled; bucket owner owns every object
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+            BucketKeyEnabled: true
+      VersioningConfiguration:
+        Status: Enabled
+      CorsConfiguration:
+        CorsRules:
+          # Only the exact web origin, only the methods the uploader and asset loaders use.
+          - AllowedOrigins: [!Ref WebOrigin]
+            AllowedMethods: [POST, GET, HEAD]
+            AllowedHeaders: ["*"]
+            ExposedHeaders: [ETag]
+            MaxAge: 3000
+      LifecycleConfiguration:
+        Rules:
+          - Id: expire-scans
+            Status: Enabled
+            Prefix: scans/
+            ExpirationInDays: !Ref ExpireAfterDays
+            NoncurrentVersionExpiration:
+              NoncurrentDays: 7
+          - Id: abort-incomplete-uploads
+            Status: Enabled
+            AbortIncompleteMultipartUpload:
+              DaysAfterInitiation: 1
+
+  # Deny any non-TLS access; combined with Block Public Access this keeps the bucket fully private.
+  BucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref UploadBucket
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: DenyInsecureTransport
+            Effect: Deny
+            Principal: "*"
+            Action: "s3:*"
+            Resource:
+              - !GetAtt UploadBucket.Arn
+              - !Sub "${UploadBucket.Arn}/*"
+            Condition:
+              Bool:
+                "aws:SecureTransport": "false"
+
+Outputs:
+  BucketName:
+    Value: !Ref UploadBucket
+  BucketArn:
+    Value: !GetAtt UploadBucket.Arn

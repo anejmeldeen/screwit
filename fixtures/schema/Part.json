@@ -1,0 +1,773 @@
+{
+  "$defs": {
+    "BoreFeature": {
+      "additionalProperties": false,
+      "properties": {
+        "axis_dir": {
+          "maxItems": 3,
+          "minItems": 3,
+          "prefixItems": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "number"
+            },
+            {
+              "type": "number"
+            }
+          ],
+          "title": "Axis Dir",
+          "type": "array"
+        },
+        "axis_point_mm": {
+          "maxItems": 3,
+          "minItems": 3,
+          "prefixItems": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "number"
+            },
+            {
+              "type": "number"
+            }
+          ],
+          "title": "Axis Point Mm",
+          "type": "array"
+        },
+        "feature_id": {
+          "title": "Feature Id",
+          "type": "string"
+        },
+        "fit_rmse_mm": {
+          "title": "Fit Rmse Mm",
+          "type": "number"
+        },
+        "inlier_fraction": {
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Inlier Fraction",
+          "type": "number"
+        },
+        "length": {
+          "$ref": "#/$defs/Measurement"
+        },
+        "radius": {
+          "$ref": "#/$defs/Measurement"
+        },
+        "type": {
+          "const": "bore",
+          "default": "bore",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "feature_id",
+        "axis_point_mm",
+        "axis_dir",
+        "fit_rmse_mm",
+        "inlier_fraction",
+        "radius",
+        "length"
+      ],
+      "title": "BoreFeature",
+      "type": "object"
+    },
+    "CylinderFeature": {
+      "additionalProperties": false,
+      "properties": {
+        "axis_dir": {
+          "maxItems": 3,
+          "minItems": 3,
+          "prefixItems": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "number"
+            },
+            {
+              "type": "number"
+            }
+          ],
+          "title": "Axis Dir",
+          "type": "array"
+        },
+        "axis_point_mm": {
+          "maxItems": 3,
+          "minItems": 3,
+          "prefixItems": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "number"
+            },
+            {
+              "type": "number"
+            }
+          ],
+          "title": "Axis Point Mm",
+          "type": "array"
+        },
+        "feature_id": {
+          "title": "Feature Id",
+          "type": "string"
+        },
+        "fit_rmse_mm": {
+          "title": "Fit Rmse Mm",
+          "type": "number"
+        },
+        "inlier_fraction": {
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Inlier Fraction",
+          "type": "number"
+        },
+        "length": {
+          "$ref": "#/$defs/Measurement"
+        },
+        "radius": {
+          "$ref": "#/$defs/Measurement"
+        },
+        "type": {
+          "const": "cylinder",
+          "default": "cylinder",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "feature_id",
+        "axis_point_mm",
+        "axis_dir",
+        "fit_rmse_mm",
+        "inlier_fraction",
+        "radius",
+        "length"
+      ],
+      "title": "CylinderFeature",
+      "type": "object"
+    },
+    "DShaftFeature": {
+      "additionalProperties": false,
+      "properties": {
+        "axis_dir": {
+          "maxItems": 3,
+          "minItems": 3,
+          "prefixItems": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "number"
+            },
+            {
+              "type": "number"
+            }
+          ],
+          "title": "Axis Dir",
+          "type": "array"
+        },
+        "axis_point_mm": {
+          "maxItems": 3,
+          "minItems": 3,
+          "prefixItems": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "number"
+            },
+            {
+              "type": "number"
+            }
+          ],
+          "title": "Axis Point Mm",
+          "type": "array"
+        },
+        "feature_id": {
+          "title": "Feature Id",
+          "type": "string"
+        },
+        "fit_rmse_mm": {
+          "title": "Fit Rmse Mm",
+          "type": "number"
+        },
+        "flat_depth": {
+          "$ref": "#/$defs/Measurement"
+        },
+        "flat_normal": {
+          "maxItems": 3,
+          "minItems": 3,
+          "prefixItems": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "number"
+            },
+            {
+              "type": "number"
+            }
+          ],
+          "title": "Flat Normal",
+          "type": "array"
+        },
+        "inlier_fraction": {
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Inlier Fraction",
+          "type": "number"
+        },
+        "length": {
+          "$ref": "#/$defs/Measurement"
+        },
+        "radius": {
+          "$ref": "#/$defs/Measurement"
+        },
+        "type": {
+          "const": "d_shaft",
+          "default": "d_shaft",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "feature_id",
+        "axis_point_mm",
+        "axis_dir",
+        "fit_rmse_mm",
+        "inlier_fraction",
+        "radius",
+        "length",
+        "flat_normal",
+        "flat_depth"
+      ],
+      "title": "DShaftFeature",
+      "type": "object"
+    },
+    "DerivedDimension": {
+      "additionalProperties": false,
+      "description": "Read-only view of a feature Measurement, so one physical quantity is never stored twice.",
+      "properties": {
+        "derived_from": {
+          "pattern": "^[A-Za-z0-9_]+\\.[a-z_]+$",
+          "title": "Derived From",
+          "type": "string"
+        },
+        "factor": {
+          "default": 1.0,
+          "title": "Factor",
+          "type": "number"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "derived_from"
+      ],
+      "title": "DerivedDimension",
+      "type": "object"
+    },
+    "Guess": {
+      "additionalProperties": false,
+      "properties": {
+        "confidence": {
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Confidence",
+          "type": "number"
+        },
+        "value": {
+          "title": "Value",
+          "type": "string"
+        }
+      },
+      "required": [
+        "value",
+        "confidence"
+      ],
+      "title": "Guess",
+      "type": "object"
+    },
+    "HoleFeature": {
+      "additionalProperties": false,
+      "properties": {
+        "center_mm": {
+          "maxItems": 3,
+          "minItems": 3,
+          "prefixItems": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "number"
+            },
+            {
+              "type": "number"
+            }
+          ],
+          "title": "Center Mm",
+          "type": "array"
+        },
+        "depth": {
+          "$ref": "#/$defs/Measurement"
+        },
+        "feature_id": {
+          "title": "Feature Id",
+          "type": "string"
+        },
+        "fit_rmse_mm": {
+          "title": "Fit Rmse Mm",
+          "type": "number"
+        },
+        "normal": {
+          "maxItems": 3,
+          "minItems": 3,
+          "prefixItems": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "number"
+            },
+            {
+              "type": "number"
+            }
+          ],
+          "title": "Normal",
+          "type": "array"
+        },
+        "radius": {
+          "$ref": "#/$defs/Measurement"
+        },
+        "type": {
+          "const": "hole",
+          "default": "hole",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "feature_id",
+        "center_mm",
+        "normal",
+        "fit_rmse_mm",
+        "radius",
+        "depth"
+      ],
+      "title": "HoleFeature",
+      "type": "object"
+    },
+    "Measurement": {
+      "additionalProperties": false,
+      "properties": {
+        "caliper_mm": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Caliper Mm"
+        },
+        "preferred": {
+          "enum": [
+            "scan",
+            "snapped",
+            "caliper"
+          ],
+          "title": "Preferred",
+          "type": "string"
+        },
+        "scan_mm": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Scan Mm"
+        },
+        "snap_rule": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Snap Rule"
+        },
+        "snapped_mm": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Snapped Mm"
+        },
+        "user_confirmed": {
+          "default": false,
+          "title": "User Confirmed",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "scan_mm",
+        "preferred"
+      ],
+      "title": "Measurement",
+      "type": "object"
+    },
+    "OBB": {
+      "additionalProperties": false,
+      "properties": {
+        "center": {
+          "maxItems": 3,
+          "minItems": 3,
+          "prefixItems": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "number"
+            },
+            {
+              "type": "number"
+            }
+          ],
+          "title": "Center",
+          "type": "array"
+        },
+        "extent": {
+          "maxItems": 3,
+          "minItems": 3,
+          "prefixItems": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "number"
+            },
+            {
+              "type": "number"
+            }
+          ],
+          "title": "Extent",
+          "type": "array"
+        },
+        "rotation_quat": {
+          "maxItems": 4,
+          "minItems": 4,
+          "prefixItems": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "number"
+            },
+            {
+              "type": "number"
+            },
+            {
+              "type": "number"
+            }
+          ],
+          "title": "Rotation Quat",
+          "type": "array"
+        }
+      },
+      "required": [
+        "center",
+        "extent",
+        "rotation_quat"
+      ],
+      "title": "OBB",
+      "type": "object"
+    },
+    "OwnDimension": {
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "value": {
+          "$ref": "#/$defs/Measurement"
+        }
+      },
+      "required": [
+        "name",
+        "value"
+      ],
+      "title": "OwnDimension",
+      "type": "object"
+    },
+    "PlaneFeature": {
+      "additionalProperties": false,
+      "properties": {
+        "extent_u": {
+          "$ref": "#/$defs/Measurement"
+        },
+        "extent_v": {
+          "$ref": "#/$defs/Measurement"
+        },
+        "feature_id": {
+          "title": "Feature Id",
+          "type": "string"
+        },
+        "fit_rmse_mm": {
+          "title": "Fit Rmse Mm",
+          "type": "number"
+        },
+        "inlier_fraction": {
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Inlier Fraction",
+          "type": "number"
+        },
+        "normal": {
+          "maxItems": 3,
+          "minItems": 3,
+          "prefixItems": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "number"
+            },
+            {
+              "type": "number"
+            }
+          ],
+          "title": "Normal",
+          "type": "array"
+        },
+        "point_mm": {
+          "maxItems": 3,
+          "minItems": 3,
+          "prefixItems": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "number"
+            },
+            {
+              "type": "number"
+            }
+          ],
+          "title": "Point Mm",
+          "type": "array"
+        },
+        "type": {
+          "const": "plane",
+          "default": "plane",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "feature_id",
+        "point_mm",
+        "normal",
+        "fit_rmse_mm",
+        "inlier_fraction",
+        "extent_u",
+        "extent_v"
+      ],
+      "title": "PlaneFeature",
+      "type": "object"
+    },
+    "ThreadSuspectedFeature": {
+      "additionalProperties": false,
+      "properties": {
+        "confidence": {
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Confidence",
+          "type": "number"
+        },
+        "feature_id": {
+          "title": "Feature Id",
+          "type": "string"
+        },
+        "nominal": {
+          "title": "Nominal",
+          "type": "string"
+        },
+        "type": {
+          "const": "thread_suspected",
+          "default": "thread_suspected",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "feature_id",
+        "nominal",
+        "confidence"
+      ],
+      "title": "ThreadSuspectedFeature",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "centroid_mm": {
+      "maxItems": 3,
+      "minItems": 3,
+      "prefixItems": [
+        {
+          "type": "number"
+        },
+        {
+          "type": "number"
+        },
+        {
+          "type": "number"
+        }
+      ],
+      "title": "Centroid Mm",
+      "type": "array"
+    },
+    "description": {
+      "title": "Description",
+      "type": "string"
+    },
+    "dimensions": {
+      "items": {
+        "anyOf": [
+          {
+            "$ref": "#/$defs/OwnDimension"
+          },
+          {
+            "$ref": "#/$defs/DerivedDimension"
+          }
+        ]
+      },
+      "title": "Dimensions",
+      "type": "array"
+    },
+    "features": {
+      "items": {
+        "discriminator": {
+          "mapping": {
+            "bore": "#/$defs/BoreFeature",
+            "cylinder": "#/$defs/CylinderFeature",
+            "d_shaft": "#/$defs/DShaftFeature",
+            "hole": "#/$defs/HoleFeature",
+            "plane": "#/$defs/PlaneFeature",
+            "thread_suspected": "#/$defs/ThreadSuspectedFeature"
+          },
+          "propertyName": "type"
+        },
+        "oneOf": [
+          {
+            "$ref": "#/$defs/CylinderFeature"
+          },
+          {
+            "$ref": "#/$defs/BoreFeature"
+          },
+          {
+            "$ref": "#/$defs/DShaftFeature"
+          },
+          {
+            "$ref": "#/$defs/PlaneFeature"
+          },
+          {
+            "$ref": "#/$defs/HoleFeature"
+          },
+          {
+            "$ref": "#/$defs/ThreadSuspectedFeature"
+          }
+        ]
+      },
+      "title": "Features",
+      "type": "array"
+    },
+    "label": {
+      "title": "Label",
+      "type": "string"
+    },
+    "label_confidence": {
+      "maximum": 1,
+      "minimum": 0,
+      "title": "Label Confidence",
+      "type": "number"
+    },
+    "material_guess": {
+      "$ref": "#/$defs/Guess"
+    },
+    "measurement_revision": {
+      "minimum": 1,
+      "title": "Measurement Revision",
+      "type": "integer"
+    },
+    "mesh_uri": {
+      "title": "Mesh Uri",
+      "type": "string"
+    },
+    "obb": {
+      "$ref": "#/$defs/OBB"
+    },
+    "part_id": {
+      "title": "Part Id",
+      "type": "string"
+    },
+    "reconstruction_revision": {
+      "minimum": 0,
+      "title": "Reconstruction Revision",
+      "type": "integer"
+    },
+    "source": {
+      "enum": [
+        "auto",
+        "user_edited"
+      ],
+      "title": "Source",
+      "type": "string"
+    },
+    "thumbnail_uri": {
+      "title": "Thumbnail Uri",
+      "type": "string"
+    }
+  },
+  "required": [
+    "part_id",
+    "reconstruction_revision",
+    "measurement_revision",
+    "label",
+    "label_confidence",
+    "description",
+    "mesh_uri",
+    "thumbnail_uri",
+    "centroid_mm",
+    "obb",
+    "dimensions",
+    "features",
+    "material_guess",
+    "source"
+  ],
+  "title": "Part",
+  "type": "object"
+}

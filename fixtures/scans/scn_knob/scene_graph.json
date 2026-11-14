@@ -1,0 +1,12 @@
+{
+  "scan_id": "scn_knob",
+  "object": { "category": "appliance control panel", "summary": "Steel panel with a 6 mm D-shaft whose knob is missing" },
+  "parts": ["p1", "p2"],
+  "relations": [
+    { "a": "p2", "b": "p1", "type": "fastened", "confidence": 0.6, "note": "shaft passes through the panel" }
+  ],
+  "function": "Turning the shaft operates the control behind the panel; the knob gives grip and shows the setting.",
+  "failure_hypotheses": [
+    { "part_id": "p2", "mode": "knob missing", "evidence": ["bare shaft visible in every frame"], "likelihood": 0.95 }
+  ]
+}

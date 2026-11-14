@@ -1,0 +1,200 @@
+{
+  "$defs": {
+    "Mate": {
+      "additionalProperties": false,
+      "properties": {
+        "feature_id": {
+          "title": "Feature Id",
+          "type": "string"
+        },
+        "fit": {
+          "enum": [
+            "snug",
+            "sliding",
+            "press"
+          ],
+          "title": "Fit",
+          "type": "string"
+        },
+        "part_id": {
+          "title": "Part Id",
+          "type": "string"
+        },
+        "radial_clearance_mm": {
+          "title": "Radial Clearance Mm",
+          "type": "number"
+        }
+      },
+      "required": [
+        "part_id",
+        "feature_id",
+        "fit",
+        "radial_clearance_mm"
+      ],
+      "title": "Mate",
+      "type": "object"
+    },
+    "Placement": {
+      "additionalProperties": false,
+      "properties": {
+        "rotation_quat": {
+          "maxItems": 4,
+          "minItems": 4,
+          "prefixItems": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "number"
+            },
+            {
+              "type": "number"
+            },
+            {
+              "type": "number"
+            }
+          ],
+          "title": "Rotation Quat",
+          "type": "array"
+        },
+        "translate_mm": {
+          "maxItems": 3,
+          "minItems": 3,
+          "prefixItems": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "number"
+            },
+            {
+              "type": "number"
+            }
+          ],
+          "title": "Translate Mm",
+          "type": "array"
+        }
+      },
+      "required": [
+        "translate_mm",
+        "rotation_quat"
+      ],
+      "title": "Placement",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "cad_id": {
+      "title": "Cad Id",
+      "type": "string"
+    },
+    "codegen_prompt": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Codegen Prompt"
+    },
+    "material": {
+      "title": "Material",
+      "type": "string"
+    },
+    "mates_with": {
+      "items": {
+        "$ref": "#/$defs/Mate"
+      },
+      "title": "Mates With",
+      "type": "array"
+    },
+    "mode": {
+      "enum": [
+        "template",
+        "codegen"
+      ],
+      "title": "Mode",
+      "type": "string"
+    },
+    "param_sources": {
+      "additionalProperties": {
+        "enum": [
+          "scan",
+          "snapped",
+          "caliper",
+          "user_confirmed"
+        ],
+        "type": "string"
+      },
+      "title": "Param Sources",
+      "type": "object"
+    },
+    "params": {
+      "additionalProperties": {
+        "type": "number"
+      },
+      "title": "Params",
+      "type": "object"
+    },
+    "part_measurement_revisions": {
+      "additionalProperties": {
+        "type": "integer"
+      },
+      "title": "Part Measurement Revisions",
+      "type": "object"
+    },
+    "placement": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Placement"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "printer_profile": {
+      "title": "Printer Profile",
+      "type": "string"
+    },
+    "reconstruction_revision": {
+      "title": "Reconstruction Revision",
+      "type": "integer"
+    },
+    "scan_id": {
+      "title": "Scan Id",
+      "type": "string"
+    },
+    "template": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Template"
+    }
+  },
+  "required": [
+    "cad_id",
+    "scan_id",
+    "reconstruction_revision",
+    "part_measurement_revisions",
+    "mode",
+    "template",
+    "params",
+    "param_sources",
+    "codegen_prompt",
+    "mates_with",
+    "material",
+    "printer_profile"
+  ],
+  "title": "CadRequest",
+  "type": "object"
+}

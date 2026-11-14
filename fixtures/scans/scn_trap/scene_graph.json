@@ -1,0 +1,15 @@
+{
+  "scan_id": "scn_trap",
+  "object": { "category": "sink drain P-trap", "summary": "White PVC 1-1/2 in P-trap under a kitchen sink" },
+  "parts": ["p1", "p2", "p3", "p4"],
+  "relations": [
+    { "a": "p3", "b": "p2", "type": "threaded", "confidence": 0.7 },
+    { "a": "p3", "b": "p1", "type": "fastened", "confidence": 0.6, "note": "nut slides over the tailpiece" },
+    { "a": "p4", "b": "p3", "type": "seals", "confidence": 0.6, "note": "slip washer inside nut" }
+  ],
+  "function": "Traps water to block sewer gas; slip nuts compress washers to seal joints.",
+  "failure_hypotheses": [
+    { "part_id": "p4", "mode": "worn or misaligned slip washer", "evidence": ["water marks below the joint in frame 0042"], "likelihood": 0.6 },
+    { "part_id": "p3", "mode": "slip nut loose or cross-threaded", "evidence": ["nut sits about 2 mm lower on one side in frame 0013"], "likelihood": 0.3 }
+  ]
+}

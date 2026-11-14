@@ -1,0 +1,67 @@
+# GPU worker image for Screw It reconstruction + perception (SPEC 3.1/6.1, P2/P3 code).
+#
+# NOT built here (no GPU on the dev machine; this file is the spec P2 builds and runs on the GPU host).
+# It bakes the models and their CUDA kernels at build time so nothing is downloaded at demo time:
+# Depth Anything 3 (+ the pinned gsplat kernels its Gaussian head needs), SAM 2 and Grounded SAM 2.
+#
+# Network posture: this worker is never reachable from the internet (SPEC 3.3). Only the API server is
+# public. The worker reaches Redis and Postgres over the private compose/VPC network and S3 over AWS
+# APIs; it publishes no port.
+
+FROM nvidia/cuda:12.4.1-cudnn-runtime-ubuntu22.04
+
+ENV DEBIAN_FRONTEND=noninteractive \
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1 \
+    TORCH_CUDA_ARCH_LIST="8.6;8.9" \
+    HF_HOME=/opt/models/hf \
+    SCREWIT_MODEL_DIR=/opt/models
+
+# System deps: Python 3.12, build tools for the gsplat CUDA extension, ffmpeg WITH HEVC decode and
+# tone-mapping filters (SPEC 6.1 step 1), and OpenGL/EGL libs for offscreen mesh work.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        software-properties-common ca-certificates git curl build-essential ninja-build \
+        ffmpeg libgl1 libglib2.0-0 libegl1 libgomp1 && \
+    add-apt-repository -y ppa:deadsnakes/ppa && \
+    apt-get update && apt-get install -y --no-install-recommends \
+        python3.12 python3.12-dev python3.12-venv && \
+    rm -rf /var/lib/apt/lists/*
+
+RUN python3.12 -m venv /opt/venv
+ENV PATH="/opt/venv/bin:${PATH}"
+RUN python -m pip install --upgrade pip setuptools wheel
+
+# PyTorch with the matching CUDA build. Pin exact versions on the GPU host after the day-one spike.
+RUN pip install torch==2.4.1 torchvision==0.19.1 --index-url https://download.pytorch.org/whl/cu124
+
+# gsplat (DA3's Gaussian head needs its CUDA kernels compiled at build, not at demo time).
+RUN pip install "gsplat==1.4.0"
+
+# Reconstruction + perception stacks. Versions are pinned on the GPU host (SPEC "check versions day one").
+RUN pip install \
+        "numpy>=1.26,<2" scipy \
+        open3d==0.19.0 "opencv-contrib-python-headless>=4.10,<5" pyransac3d pymeshfix trimesh \
+        "huggingface_hub>=0.24" safetensors imageio-ffmpeg \
+        redis rq boto3 pydantic "fastapi>=0.115"
+
+# Model code. Depth Anything 3, MapAnything (Apache fallback), SAM 2 and Grounded SAM 2 install from
+# their upstream repos; pin to the commit verified on day one. Placeholders here — P2 fills the refs.
+# RUN pip install "git+https://github.com/<da3-repo>@<commit>#egg=depth-anything-3"
+# RUN pip install "git+https://github.com/facebookresearch/sam2@<commit>#egg=sam2"
+# RUN pip install "git+https://github.com/IDEA-Research/Grounded-SAM-2@<commit>"
+
+# Pre-download all weights into the image so the demo host needs no network for inference.
+# The licence-gated DA3 checkpoint (CC BY-NC 4.0) is pulled only after the licence gate clears (1.5);
+# MapAnything's Apache checkpoint is the fallback. Record the approved checkpoint in deploy/README.md.
+#   RUN python -c "from huggingface_hub import snapshot_download; \
+#       snapshot_download('<approved-da3-or-mapanything-checkpoint>', local_dir='/opt/models/geometry')"
+#   RUN python -c "from huggingface_hub import snapshot_download; \
+#       snapshot_download('facebook/sam2-hiera-large', local_dir='/opt/models/sam2')"
+
+WORKDIR /opt/screwit
+COPY backend /opt/screwit/backend
+ENV PYTHONPATH=/opt/screwit/backend
+
+# One RQ SimpleWorker on the GPU queue, concurrency 1, no fork so CUDA survives (SPEC 3.1 Jobs row).
+# Timeouts are set generously because SimpleWorker sends no heartbeat during a job.
+CMD ["rq", "worker", "--worker-class", "rq.SimpleWorker", "gpu"]

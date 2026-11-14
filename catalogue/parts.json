@@ -1,0 +1,190 @@
+[
+  {
+    "id": "slip_washer_1_1_2",
+    "name": "1-1/2 in slip-joint washer",
+    "category": "washer",
+    "spec": "polyethylene beveled washer, fits 1-1/2 in (38.1 mm) tubular drain",
+    "match_terms": ["washer", "slip", "joint", "trap", "drain", "pipe", "tubular"],
+    "size_table": "tubular",
+    "nominal_od_mm": 38.1,
+    "nominal_size": "1-1/2 in",
+    "est_price_usd": 3.0,
+    "buy_links": [
+      { "vendor": "Home Depot", "url": "https://www.homedepot.com/s/1-1%2F2%20in%20slip%20joint%20washer" },
+      { "vendor": "Lowe's", "url": "https://www.lowes.com/search?searchTerm=1-1%2F2%20in%20slip%20joint%20washer" }
+    ]
+  },
+  {
+    "id": "slip_washer_1_1_2x1_1_4",
+    "name": "1-1/2 in x 1-1/4 in reducing slip washer",
+    "category": "washer",
+    "spec": "reducing beveled slip washer, 1-1/2 in nut down to 1-1/4 in (31.75 mm) tube",
+    "match_terms": ["washer", "slip", "reducing", "joint", "trap", "drain", "pipe"],
+    "size_table": "tubular",
+    "nominal_od_mm": 38.1,
+    "nominal_size": "1-1/2 x 1-1/4 in",
+    "est_price_usd": 3.5,
+    "buy_links": [
+      { "vendor": "Home Depot", "url": "https://www.homedepot.com/s/1-1%2F2%20x%201-1%2F4%20reducing%20slip%20joint%20washer" },
+      { "vendor": "Lowe's", "url": "https://www.lowes.com/search?searchTerm=1-1%2F2%20x%201-1%2F4%20reducing%20slip%20washer" }
+    ]
+  },
+  {
+    "id": "slip_nut_1_1_2",
+    "name": "1-1/2 in plastic slip nut",
+    "category": "slip_nut",
+    "spec": "PVC/ABS slip-joint nut for 1-1/2 in (38.1 mm) tubular drain",
+    "match_terms": ["nut", "slip", "joint", "trap", "drain", "pipe"],
+    "size_table": "tubular",
+    "nominal_od_mm": 38.1,
+    "nominal_size": "1-1/2 in",
+    "est_price_usd": 2.5,
+    "buy_links": [
+      { "vendor": "Home Depot", "url": "https://www.homedepot.com/s/1-1%2F2%20in%20slip%20joint%20nut" }
+    ]
+  },
+  {
+    "id": "slip_nut_1_1_4",
+    "name": "1-1/4 in plastic slip nut",
+    "category": "slip_nut",
+    "spec": "PVC/ABS slip-joint nut for 1-1/4 in (31.75 mm) tubular drain",
+    "match_terms": ["nut", "slip", "joint", "trap", "drain", "pipe"],
+    "size_table": "tubular",
+    "nominal_od_mm": 31.75,
+    "nominal_size": "1-1/4 in",
+    "est_price_usd": 2.5,
+    "buy_links": [
+      { "vendor": "Home Depot", "url": "https://www.homedepot.com/s/1-1%2F4%20in%20slip%20joint%20nut" }
+    ]
+  },
+  {
+    "id": "ptrap_kit_1_1_2",
+    "name": "1-1/2 in P-trap kit",
+    "category": "p_trap",
+    "spec": "complete 1-1/2 in PVC P-trap with J-bend, trap arm, slip nuts and washers",
+    "match_terms": ["trap", "p-trap", "ptrap", "drain", "kit", "j-bend"],
+    "size_table": "tubular",
+    "nominal_od_mm": 38.1,
+    "nominal_size": "1-1/2 in",
+    "est_price_usd": 7.0,
+    "buy_links": [
+      { "vendor": "Home Depot", "url": "https://www.homedepot.com/s/1-1%2F2%20in%20p-trap%20kit" },
+      { "vendor": "Lowe's", "url": "https://www.lowes.com/search?searchTerm=1-1%2F2%20in%20p-trap%20kit" }
+    ]
+  },
+  {
+    "id": "faucet_cartridge_generic",
+    "name": "Single-handle faucet cartridge",
+    "category": "faucet_cartridge",
+    "spec": "replacement ceramic-disc cartridge; match brand and model stamped on the old one",
+    "match_terms": ["cartridge", "faucet", "valve", "tap"],
+    "est_price_usd": 18.0,
+    "buy_links": [
+      { "vendor": "Home Depot", "url": "https://www.homedepot.com/s/faucet%20cartridge" }
+    ]
+  },
+  {
+    "id": "hose_washer_3_4",
+    "name": "3/4 in garden hose washer",
+    "category": "washer",
+    "spec": "rubber hose washer for a 3/4 in GHT garden-hose connection",
+    "match_terms": ["washer", "hose", "garden", "gasket", "seal", "rubber"],
+    "est_price_usd": 2.0,
+    "buy_links": [
+      { "vendor": "Home Depot", "url": "https://www.homedepot.com/s/garden%20hose%20washer" }
+    ]
+  },
+  {
+    "id": "cabinet_hinge_concealed",
+    "name": "Concealed cabinet hinge (35 mm cup)",
+    "category": "hinge",
+    "spec": "Euro-style soft-close concealed hinge, 35 mm boring cup, full overlay",
+    "match_terms": ["hinge", "cabinet", "door", "cupboard", "euro", "concealed"],
+    "est_price_usd": 4.5,
+    "buy_links": [
+      { "vendor": "Home Depot", "url": "https://www.homedepot.com/s/35%20mm%20concealed%20cabinet%20hinge" },
+      { "vendor": "Lowe's", "url": "https://www.lowes.com/search?searchTerm=concealed%20cabinet%20hinge" }
+    ]
+  },
+  {
+    "id": "drawer_slide_side_mount",
+    "name": "Side-mount drawer slide pair",
+    "category": "drawer_slide",
+    "spec": "ball-bearing full-extension side-mount drawer slides, sold as a pair; match the drawer length",
+    "match_terms": ["slide", "drawer", "runner", "glide", "rail"],
+    "est_price_usd": 12.0,
+    "buy_links": [
+      { "vendor": "Home Depot", "url": "https://www.homedepot.com/s/drawer%20slides" },
+      { "vendor": "Lowe's", "url": "https://www.lowes.com/search?searchTerm=drawer%20slides" }
+    ]
+  },
+  {
+    "id": "furniture_foot_leveling",
+    "name": "Threaded leveling furniture foot",
+    "category": "furniture_foot",
+    "spec": "adjustable leveling glide with a threaded stem; match the stem thread and leg socket",
+    "match_terms": ["foot", "feet", "leg", "glide", "leveler", "leveling", "furniture"],
+    "est_price_usd": 3.0,
+    "buy_links": [
+      { "vendor": "Home Depot", "url": "https://www.homedepot.com/s/leveling%20furniture%20foot" }
+    ]
+  },
+  {
+    "id": "appliance_knob_dshaft",
+    "name": "Universal appliance control knob (D-shaft)",
+    "category": "knob",
+    "spec": "replacement control knob for a 6 mm D-shaft stove/washer control; universal fit kit",
+    "match_terms": ["knob", "control", "dial", "shaft", "appliance", "stove", "washer", "dryer"],
+    "est_price_usd": 8.0,
+    "buy_links": [
+      { "vendor": "Home Depot", "url": "https://www.homedepot.com/s/universal%20appliance%20knob" },
+      { "vendor": "Amazon", "url": "https://www.amazon.com/s?k=universal+appliance+control+knob+d+shaft" }
+    ]
+  },
+  {
+    "id": "wall_anchor_plastic",
+    "name": "Plastic expansion wall anchor",
+    "category": "wall_anchor",
+    "spec": "ribbed plastic expansion anchor for drywall; sized to the screw gauge and wall thickness",
+    "match_terms": ["anchor", "wall", "drywall", "plug", "mount", "fixing"],
+    "est_price_usd": 0.1,
+    "buy_links": [
+      { "vendor": "Home Depot", "url": "https://www.homedepot.com/s/plastic%20wall%20anchor" }
+    ]
+  },
+  {
+    "id": "toggle_bolt_anchor",
+    "name": "Toggle bolt wall anchor",
+    "category": "wall_anchor",
+    "spec": "spring toggle bolt for hollow walls, for heavier mounted loads",
+    "match_terms": ["anchor", "toggle", "bolt", "wall", "hollow", "mount"],
+    "est_price_usd": 0.5,
+    "buy_links": [
+      { "vendor": "Home Depot", "url": "https://www.homedepot.com/s/toggle%20bolt" }
+    ]
+  },
+  {
+    "id": "machine_screw_m4x10",
+    "name": "M4 x 10 mm machine screw",
+    "category": "screw",
+    "spec": "stainless M4-0.7 pan-head machine screw, 10 mm long",
+    "match_terms": ["screw", "machine", "bolt", "fastener", "metric"],
+    "nominal_size": "M4",
+    "est_price_usd": 0.2,
+    "buy_links": [
+      { "vendor": "Home Depot", "url": "https://www.homedepot.com/s/m4%20machine%20screw" }
+    ]
+  },
+  {
+    "id": "wood_screw_8x1",
+    "name": "#8 x 1 in wood screw",
+    "category": "screw",
+    "spec": "zinc #8 coarse-thread wood screw, 1 in long",
+    "match_terms": ["screw", "wood", "fastener", "deck", "cabinet"],
+    "nominal_size": "#8",
+    "est_price_usd": 0.1,
+    "buy_links": [
+      { "vendor": "Home Depot", "url": "https://www.homedepot.com/s/%238%20x%201%20in%20wood%20screw" }
+    ]
+  }
+]

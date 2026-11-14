@@ -1,0 +1,30 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "label": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Label"
+    },
+    "part_ids": {
+      "items": {
+        "type": "string"
+      },
+      "minItems": 2,
+      "title": "Part Ids",
+      "type": "array"
+    }
+  },
+  "required": [
+    "part_ids"
+  ],
+  "title": "MergeRequest",
+  "type": "object"
+}

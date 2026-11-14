@@ -1,0 +1,4 @@
+[
+  { "scan_id": "scn_trap", "title": "Leaking kitchen P-trap", "scenario": "A", "thumbnail_uri": "scans/scn_trap/renders/thumbnail.png" },
+  { "scan_id": "scn_knob", "title": "Missing appliance knob", "scenario": "B", "thumbnail_uri": "scans/scn_knob/renders/thumbnail.png" }
+]

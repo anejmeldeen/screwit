@@ -1,0 +1,16 @@
+{
+  "scan_id": "scn_trap",
+  "created_at": "2026-11-14T10:00:00Z",
+  "input": { "type": "video", "uri": "scans/scn_trap/input/video.mov", "duration_s": 34.2, "container": "mov", "codec": "hevc", "hdr": true },
+  "status": "ready",
+  "reconstruction_revision": 1,
+  "stages": [
+    { "name": "frames",      "state": "done", "progress": 1.0, "message": "56 keyframes" },
+    { "name": "geometry",    "state": "done", "progress": 1.0 },
+    { "name": "scale",       "state": "done", "progress": 1.0, "message": "aruco, 41 views" },
+    { "name": "object_mask", "state": "done", "progress": 1.0 },
+    { "name": "splat",       "state": "done", "progress": 1.0 },
+    { "name": "mesh",        "state": "done", "progress": 1.0 },
+    { "name": "parts",       "state": "done", "progress": 1.0, "message": "4 parts" }
+  ]
+}

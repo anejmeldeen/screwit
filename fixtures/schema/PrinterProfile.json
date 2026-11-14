@@ -1,0 +1,105 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "build_volume_mm": {
+      "maxItems": 3,
+      "minItems": 3,
+      "prefixItems": [
+        {
+          "type": "number"
+        },
+        {
+          "type": "number"
+        },
+        {
+          "type": "number"
+        }
+      ],
+      "title": "Build Volume Mm",
+      "type": "array"
+    },
+    "density_g_cm3": {
+      "title": "Density G Cm3",
+      "type": "number"
+    },
+    "effective_strength_mpa": {
+      "additionalProperties": {
+        "type": "number"
+      },
+      "default": {},
+      "title": "Effective Strength Mpa",
+      "type": "object"
+    },
+    "infill_pct": {
+      "title": "Infill Pct",
+      "type": "integer"
+    },
+    "layer_height_mm": {
+      "title": "Layer Height Mm",
+      "type": "number"
+    },
+    "material": {
+      "title": "Material",
+      "type": "string"
+    },
+    "max_overhang_deg": {
+      "title": "Max Overhang Deg",
+      "type": "number"
+    },
+    "min_feature_mm": {
+      "title": "Min Feature Mm",
+      "type": "number"
+    },
+    "min_wall_mm": {
+      "title": "Min Wall Mm",
+      "type": "number"
+    },
+    "name": {
+      "title": "Name",
+      "type": "string"
+    },
+    "nozzle_mm": {
+      "title": "Nozzle Mm",
+      "type": "number"
+    },
+    "perimeters": {
+      "title": "Perimeters",
+      "type": "integer"
+    },
+    "radial_clearance_mm": {
+      "additionalProperties": {
+        "type": "number"
+      },
+      "propertyNames": {
+        "enum": [
+          "snug",
+          "sliding",
+          "press"
+        ]
+      },
+      "title": "Radial Clearance Mm",
+      "type": "object"
+    },
+    "volumetric_speed_mm3_s": {
+      "title": "Volumetric Speed Mm3 S",
+      "type": "number"
+    }
+  },
+  "required": [
+    "name",
+    "material",
+    "build_volume_mm",
+    "nozzle_mm",
+    "perimeters",
+    "min_wall_mm",
+    "max_overhang_deg",
+    "min_feature_mm",
+    "radial_clearance_mm",
+    "density_g_cm3",
+    "layer_height_mm",
+    "infill_pct",
+    "volumetric_speed_mm3_s"
+  ],
+  "title": "PrinterProfile",
+  "type": "object"
+}

@@ -1,0 +1,187 @@
+{
+  "cad_id": "cad_07",
+  "status": "ok",
+  "input_revisions": {
+    "reconstruction_revision": 1,
+    "part_measurement_revisions": {
+      "p2": 3
+    }
+  },
+  "stale": false,
+  "files": {
+    "stl": "scans/scn_knob/cad/cad_07/model.stl",
+    "step": "scans/scn_knob/cad/cad_07/model.step",
+    "source": "scans/scn_knob/cad/cad_07/model.py",
+    "preview": "scans/scn_knob/cad/cad_07/preview.png"
+  },
+  "placement": {
+    "translate_mm": [
+      0.0,
+      -4.0,
+      60.0
+    ],
+    "rotation_quat": [
+      4.3297802811774664e-17,
+      -0.7071067811865475,
+      0.7071067811865476,
+      4.3297802811774664e-17
+    ]
+  },
+  "checks": [
+    {
+      "name": "watertight",
+      "kind": "required",
+      "result": "pass",
+      "value": null,
+      "limit": null,
+      "fix": null,
+      "reason": null,
+      "input_source": null,
+      "note": null
+    },
+    {
+      "name": "fits_build_volume",
+      "kind": "required",
+      "result": "pass",
+      "value": 32.0,
+      "limit": 250.0,
+      "fix": null,
+      "reason": null,
+      "input_source": null,
+      "note": null
+    },
+    {
+      "name": "mate_p2_f1_diameter_clearance_mm",
+      "kind": "required",
+      "result": "pass",
+      "value": 0.12,
+      "limit": 0.12,
+      "fix": null,
+      "reason": null,
+      "input_source": "caliper",
+      "note": null
+    },
+    {
+      "name": "mate_p2_f1_flat_clearance_mm",
+      "kind": "required",
+      "result": "pass",
+      "value": 0.12,
+      "limit": 0.12,
+      "fix": null,
+      "reason": null,
+      "input_source": "user_confirmed",
+      "note": null
+    },
+    {
+      "name": "mate_p2_f1_flat_orientation_deg",
+      "kind": "required",
+      "result": "pass",
+      "value": 0.0,
+      "limit": 2.0,
+      "fix": null,
+      "reason": null,
+      "input_source": null,
+      "note": null
+    },
+    {
+      "name": "mate_p2_f1_engagement_mm",
+      "kind": "required",
+      "result": "pass",
+      "value": 16.0,
+      "limit": 8.0,
+      "fix": null,
+      "reason": null,
+      "input_source": null,
+      "note": null
+    },
+    {
+      "name": "mate_p2_f1_coaxial_offset_mm",
+      "kind": "required",
+      "result": "pass",
+      "value": 0.0,
+      "limit": 0.3,
+      "fix": null,
+      "reason": null,
+      "input_source": null,
+      "note": null
+    },
+    {
+      "name": "min_wall_thickness_mm",
+      "kind": "advisory",
+      "result": "pass",
+      "value": 2.39,
+      "limit": 1.2,
+      "fix": null,
+      "reason": null,
+      "input_source": null,
+      "note": "wall thickness from opposite-facing inward rays (1st percentile)"
+    },
+    {
+      "name": "max_unsupported_overhang_deg",
+      "kind": "advisory",
+      "result": "pass",
+      "value": 0.0,
+      "limit": 50.0,
+      "fix": null,
+      "reason": null,
+      "input_source": null,
+      "note": "best of 6 orientations: +Y down"
+    },
+    {
+      "name": "min_feature_mm",
+      "kind": "advisory",
+      "result": "pass",
+      "value": 22.0,
+      "limit": 0.8,
+      "fix": null,
+      "reason": null,
+      "input_source": null,
+      "note": "smallest overall extent; a true thin-feature scan needs the slicer"
+    },
+    {
+      "name": "minimum_surface_separation_mm",
+      "kind": "advisory",
+      "result": "pass",
+      "value": 0.001,
+      "limit": null,
+      "fix": null,
+      "reason": null,
+      "input_source": null,
+      "note": "unsigned distance to the scanned mesh; cannot prove no interference on its own"
+    },
+    {
+      "name": "interference_volume_mm3",
+      "kind": "advisory",
+      "result": "not_computed",
+      "value": null,
+      "limit": null,
+      "fix": null,
+      "reason": "mesh-boolean interference is a stretch goal; not enabled",
+      "input_source": null,
+      "note": null
+    },
+    {
+      "name": "strength_estimate",
+      "kind": "advisory",
+      "result": "not_computed",
+      "value": null,
+      "limit": null,
+      "fix": null,
+      "reason": "knobs carry no structural load",
+      "input_source": null,
+      "note": null
+    }
+  ],
+  "print_settings": {
+    "material": "PETG",
+    "layer_height_mm": 0.2,
+    "infill_pct": 40,
+    "orientation": "+Y down",
+    "supports": false,
+    "est_time_min": 35,
+    "est_material_g": 13,
+    "estimate_method": "volume_formula"
+  },
+  "notes": "Bore has 0.12 mm radial clearance from the coupon-calibrated profile; test-fit and scale 101% if tight. The fit evidence is the caliper value plus the tolerance coupon.",
+  "error": null
+}

@@ -1,0 +1,53 @@
+[
+  {
+    "part_id": "p1",
+    "reconstruction_revision": 1,
+    "measurement_revision": 1,
+    "label": "control panel",
+    "label_confidence": 0.77,
+    "description": "Flat front panel the knob shaft comes out of",
+    "mesh_uri": "scans/scn_knob/parts/p1.glb",
+    "thumbnail_uri": "scans/scn_knob/renders/p1.png",
+    "centroid_mm": [0.0, 0.0, 60.0],
+    "obb": { "center": [0.0, 0.0, 60.0], "extent": [120, 4, 120], "rotation_quat": [0, 0, 0, 1] },
+    "dimensions": [
+      { "name": "width", "derived_from": "p1_f1.extent_u" },
+      { "name": "height", "derived_from": "p1_f1.extent_v" }
+    ],
+    "features": [
+      { "feature_id": "p1_f1", "type": "plane",
+        "point_mm": [0.0, 0.0, 60.0], "normal": [0, -1, 0], "fit_rmse_mm": 0.5, "inlier_fraction": 0.93,
+        "extent_u": { "scan_mm": 119.0, "snapped_mm": null, "snap_rule": null, "caliper_mm": null, "user_confirmed": false, "preferred": "scan" },
+        "extent_v": { "scan_mm": 121.0, "snapped_mm": null, "snap_rule": null, "caliper_mm": null, "user_confirmed": false, "preferred": "scan" } }
+    ],
+    "material_guess": { "value": "painted steel", "confidence": 0.5 },
+    "source": "auto"
+  },
+  {
+    "part_id": "p2",
+    "reconstruction_revision": 1,
+    "measurement_revision": 3,
+    "label": "D-shaft",
+    "label_confidence": 0.74,
+    "description": "Control shaft with one flat side; the original knob is missing",
+    "mesh_uri": "scans/scn_knob/parts/p2.glb",
+    "thumbnail_uri": "scans/scn_knob/renders/p2.png",
+    "centroid_mm": [0.0, -10.0, 60.0],
+    "obb": { "center": [0.0, -10.0, 60.0], "extent": [7, 20, 7], "rotation_quat": [0.7071068, 0, 0, 0.7071068] },
+    "dimensions": [
+      { "name": "shaft_diameter", "derived_from": "p2_f1.radius", "factor": 2.0 },
+      { "name": "flat_depth", "derived_from": "p2_f1.flat_depth" },
+      { "name": "exposed_length", "derived_from": "p2_f1.length" }
+    ],
+    "features": [
+      { "feature_id": "p2_f1", "type": "d_shaft",
+        "axis_point_mm": [0.0, -2.0, 60.0], "axis_dir": [0, -1, 0], "fit_rmse_mm": 1.4, "inlier_fraction": 0.52,
+        "radius": { "scan_mm": 3.6, "snapped_mm": null, "snap_rule": null, "caliper_mm": 3.0, "user_confirmed": false, "preferred": "caliper" },
+        "length": { "scan_mm": 18.0, "snapped_mm": null, "snap_rule": null, "caliper_mm": null, "user_confirmed": false, "preferred": "scan" },
+        "flat_normal": [0, 0, 1],
+        "flat_depth": { "scan_mm": 1.5, "snapped_mm": null, "snap_rule": null, "caliper_mm": null, "user_confirmed": true, "preferred": "scan" } }
+    ],
+    "material_guess": { "value": "steel", "confidence": 0.6 },
+    "source": "user_edited"
+  }
+]

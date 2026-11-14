@@ -1,0 +1,341 @@
+{
+  "scan_id": "scn_knob",
+  "turns": [
+    {
+      "match": "(?i)\\b\\d+(\\.\\d+)?\\s*(mm)?\\b",
+      "events": [
+        {
+          "event": "tool_call",
+          "name": "set_measurement",
+          "args": {
+            "part_id": "p2",
+            "feature_id": "p2_f1",
+            "field": "radius",
+            "caliper_mm": 3.0
+          }
+        },
+        {
+          "event": "tool_call",
+          "name": "set_measurement",
+          "args": {
+            "part_id": "p2",
+            "feature_id": "p2_f1",
+            "field": "flat_depth",
+            "user_confirmed": true
+          }
+        },
+        {
+          "event": "tool_call",
+          "name": "create_cad",
+          "args": {
+            "template": "knob"
+          }
+        },
+        {
+          "event": "token",
+          "text": "Here is a 32 mm knob "
+        },
+        {
+          "event": "token",
+          "text": "with a D-bore for your 6 "
+        },
+        {
+          "event": "token",
+          "text": "mm shaft. The bore has 0.12 "
+        },
+        {
+          "event": "token",
+          "text": "mm of clearance per side from "
+        },
+        {
+          "event": "token",
+          "text": "your printer profile, every required check "
+        },
+        {
+          "event": "token",
+          "text": "passes, and it prints grip face "
+        },
+        {
+          "event": "token",
+          "text": "down with no supports."
+        },
+        {
+          "event": "card",
+          "card": {
+            "type": "cad_result",
+            "payload": {
+              "cad_id": "cad_07",
+              "status": "ok",
+              "input_revisions": {
+                "reconstruction_revision": 1,
+                "part_measurement_revisions": {
+                  "p2": 3
+                }
+              },
+              "stale": false,
+              "files": {
+                "stl": "scans/scn_knob/cad/cad_07/model.stl",
+                "step": "scans/scn_knob/cad/cad_07/model.step",
+                "source": "scans/scn_knob/cad/cad_07/model.py",
+                "preview": "scans/scn_knob/cad/cad_07/preview.png"
+              },
+              "placement": {
+                "translate_mm": [
+                  0.0,
+                  -4.0,
+                  60.0
+                ],
+                "rotation_quat": [
+                  4.3297802811774664e-17,
+                  -0.7071067811865475,
+                  0.7071067811865476,
+                  4.3297802811774664e-17
+                ]
+              },
+              "checks": [
+                {
+                  "name": "watertight",
+                  "kind": "required",
+                  "result": "pass",
+                  "value": null,
+                  "limit": null,
+                  "fix": null,
+                  "reason": null,
+                  "input_source": null,
+                  "note": null
+                },
+                {
+                  "name": "fits_build_volume",
+                  "kind": "required",
+                  "result": "pass",
+                  "value": 32.0,
+                  "limit": 250.0,
+                  "fix": null,
+                  "reason": null,
+                  "input_source": null,
+                  "note": null
+                },
+                {
+                  "name": "mate_p2_f1_diameter_clearance_mm",
+                  "kind": "required",
+                  "result": "pass",
+                  "value": 0.12,
+                  "limit": 0.12,
+                  "fix": null,
+                  "reason": null,
+                  "input_source": "caliper",
+                  "note": null
+                },
+                {
+                  "name": "mate_p2_f1_flat_clearance_mm",
+                  "kind": "required",
+                  "result": "pass",
+                  "value": 0.12,
+                  "limit": 0.12,
+                  "fix": null,
+                  "reason": null,
+                  "input_source": "user_confirmed",
+                  "note": null
+                },
+                {
+                  "name": "mate_p2_f1_flat_orientation_deg",
+                  "kind": "required",
+                  "result": "pass",
+                  "value": 0.0,
+                  "limit": 2.0,
+                  "fix": null,
+                  "reason": null,
+                  "input_source": null,
+                  "note": null
+                },
+                {
+                  "name": "mate_p2_f1_engagement_mm",
+                  "kind": "required",
+                  "result": "pass",
+                  "value": 16.0,
+                  "limit": 8.0,
+                  "fix": null,
+                  "reason": null,
+                  "input_source": null,
+                  "note": null
+                },
+                {
+                  "name": "mate_p2_f1_coaxial_offset_mm",
+                  "kind": "required",
+                  "result": "pass",
+                  "value": 0.0,
+                  "limit": 0.3,
+                  "fix": null,
+                  "reason": null,
+                  "input_source": null,
+                  "note": null
+                },
+                {
+                  "name": "min_wall_thickness_mm",
+                  "kind": "advisory",
+                  "result": "pass",
+                  "value": 2.39,
+                  "limit": 1.2,
+                  "fix": null,
+                  "reason": null,
+                  "input_source": null,
+                  "note": "wall thickness from opposite-facing inward rays (1st percentile)"
+                },
+                {
+                  "name": "max_unsupported_overhang_deg",
+                  "kind": "advisory",
+                  "result": "pass",
+                  "value": 0.0,
+                  "limit": 50.0,
+                  "fix": null,
+                  "reason": null,
+                  "input_source": null,
+                  "note": "best of 6 orientations: +Y down"
+                },
+                {
+                  "name": "min_feature_mm",
+                  "kind": "advisory",
+                  "result": "pass",
+                  "value": 22.0,
+                  "limit": 0.8,
+                  "fix": null,
+                  "reason": null,
+                  "input_source": null,
+                  "note": "smallest overall extent; a true thin-feature scan needs the slicer"
+                },
+                {
+                  "name": "minimum_surface_separation_mm",
+                  "kind": "advisory",
+                  "result": "pass",
+                  "value": 0.001,
+                  "limit": null,
+                  "fix": null,
+                  "reason": null,
+                  "input_source": null,
+                  "note": "unsigned distance to the scanned mesh; cannot prove no interference on its own"
+                },
+                {
+                  "name": "interference_volume_mm3",
+                  "kind": "advisory",
+                  "result": "not_computed",
+                  "value": null,
+                  "limit": null,
+                  "fix": null,
+                  "reason": "mesh-boolean interference is a stretch goal; not enabled",
+                  "input_source": null,
+                  "note": null
+                },
+                {
+                  "name": "strength_estimate",
+                  "kind": "advisory",
+                  "result": "not_computed",
+                  "value": null,
+                  "limit": null,
+                  "fix": null,
+                  "reason": "knobs carry no structural load",
+                  "input_source": null,
+                  "note": null
+                }
+              ],
+              "print_settings": {
+                "material": "PETG",
+                "layer_height_mm": 0.2,
+                "infill_pct": 40,
+                "orientation": "+Y down",
+                "supports": false,
+                "est_time_min": 35,
+                "est_material_g": 13,
+                "estimate_method": "volume_formula"
+              },
+              "notes": "Bore has 0.12 mm radial clearance from the coupon-calibrated profile; test-fit and scale 101% if tight. The fit evidence is the caliper value plus the tolerance coupon.",
+              "error": null
+            }
+          }
+        },
+        {
+          "event": "done",
+          "message_id": "mock_knob_2"
+        }
+      ]
+    },
+    {
+      "match": "(?i)knob|replace|print|make",
+      "events": [
+        {
+          "event": "tool_call",
+          "name": "get_part",
+          "args": {
+            "part_id": "p2"
+          }
+        },
+        {
+          "event": "highlight",
+          "part_ids": [
+            "p2"
+          ]
+        },
+        {
+          "event": "token",
+          "text": "I can design a replacement knob "
+        },
+        {
+          "event": "token",
+          "text": "for this D-shaft [[part:p2]]. The scan "
+        },
+        {
+          "event": "token",
+          "text": "puts the shaft at about 7 "
+        },
+        {
+          "event": "token",
+          "text": "mm across with a flat about "
+        },
+        {
+          "event": "token",
+          "text": "1.5 mm deep, but that is "
+        },
+        {
+          "event": "token",
+          "text": "too small for the scan to "
+        },
+        {
+          "event": "token",
+          "text": "measure reliably, and a knob needs "
+        },
+        {
+          "event": "token",
+          "text": "a snug fit. Could you measure "
+        },
+        {
+          "event": "token",
+          "text": "the shaft diameter with calipers, and "
+        },
+        {
+          "event": "token",
+          "text": "confirm the flat depth?"
+        },
+        {
+          "event": "done",
+          "message_id": "mock_knob_1"
+        }
+      ]
+    },
+    {
+      "match": ".*",
+      "events": [
+        {
+          "event": "token",
+          "text": "This is a recorded demo conversation. "
+        },
+        {
+          "event": "token",
+          "text": "Try asking for a replacement knob."
+        },
+        {
+          "event": "done",
+          "message_id": "mock_knob_default"
+        }
+      ]
+    }
+  ]
+}

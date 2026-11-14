@@ -1,0 +1,50 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "a_mm": {
+      "maxItems": 3,
+      "minItems": 3,
+      "prefixItems": [
+        {
+          "type": "number"
+        },
+        {
+          "type": "number"
+        },
+        {
+          "type": "number"
+        }
+      ],
+      "title": "A Mm",
+      "type": "array"
+    },
+    "b_mm": {
+      "maxItems": 3,
+      "minItems": 3,
+      "prefixItems": [
+        {
+          "type": "number"
+        },
+        {
+          "type": "number"
+        },
+        {
+          "type": "number"
+        }
+      ],
+      "title": "B Mm",
+      "type": "array"
+    },
+    "distance_mm": {
+      "title": "Distance Mm",
+      "type": "number"
+    }
+  },
+  "required": [
+    "distance_mm",
+    "a_mm",
+    "b_mm"
+  ],
+  "title": "MeasureResponse",
+  "type": "object"
+}

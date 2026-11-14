@@ -1,0 +1,57 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "expected_revision": {
+      "minimum": 0,
+      "title": "Expected Revision",
+      "type": "integer"
+    },
+    "known_length_mm": {
+      "exclusiveMinimum": 0,
+      "title": "Known Length Mm",
+      "type": "number"
+    },
+    "point_a_mm": {
+      "maxItems": 3,
+      "minItems": 3,
+      "prefixItems": [
+        {
+          "type": "number"
+        },
+        {
+          "type": "number"
+        },
+        {
+          "type": "number"
+        }
+      ],
+      "title": "Point A Mm",
+      "type": "array"
+    },
+    "point_b_mm": {
+      "maxItems": 3,
+      "minItems": 3,
+      "prefixItems": [
+        {
+          "type": "number"
+        },
+        {
+          "type": "number"
+        },
+        {
+          "type": "number"
+        }
+      ],
+      "title": "Point B Mm",
+      "type": "array"
+    }
+  },
+  "required": [
+    "point_a_mm",
+    "point_b_mm",
+    "known_length_mm",
+    "expected_revision"
+  ],
+  "title": "ScaleRequest",
+  "type": "object"
+}

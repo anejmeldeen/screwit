@@ -1,0 +1,178 @@
+{
+  "scene": "gso_real_glass",
+  "kind": "gso_real_gso_real_glass",
+  "portrait": false,
+  "board_detection_render": 89,
+  "board_detection_total": 90,
+  "board": {
+    "method": "aruco",
+    "found": true,
+    "corner_views": 24,
+    "residual_mm": 1.091,
+    "tilt_deg": 1.03,
+    "frame_origin": "board"
+  },
+  "splat": {
+    "source": "gaussian head",
+    "gaussians": 379651,
+    "note": "379651 gaussians from depth maps (gaussian head misaligned), gauss-align s=1.668 rmse=1.0% of depth, 10% inliers (0.26s)"
+  },
+  "scale": {
+    "scan_extent_mm_sorted": [
+      356.8,
+      256.8,
+      210.2
+    ],
+    "dimensions": {
+      "gso_real_glass_length_mm": {
+        "truth_mm": 205.0,
+        "nearest_scan_extent_mm": 210.2,
+        "err_mm": 5.2,
+        "err_pct": 2.5
+      },
+      "gso_real_glass_width_mm": {
+        "truth_mm": 37.6,
+        "nearest_scan_extent_mm": 210.2,
+        "err_mm": 172.6,
+        "err_pct": 458.8
+      },
+      "gso_real_glass_height_mm": {
+        "truth_mm": 204.6,
+        "nearest_scan_extent_mm": 210.2,
+        "err_mm": 5.6,
+        "err_pct": 2.7
+      },
+      "scaled_longest_horizontal_mm": {
+        "truth_mm": 205.0,
+        "nearest_scan_extent_mm": 210.2,
+        "err_mm": 5.2,
+        "err_pct": 2.5
+      }
+    }
+  },
+  "mesh": {
+    "triangles": 73414,
+    "watertight": false,
+    "broken_faces": 6,
+    "accuracy_mm": {
+      "median": 133.63,
+      "p90": 216.21,
+      "mean": 134.5
+    },
+    "completeness_mm": {
+      "median": 77.26,
+      "p90": 94.56,
+      "mean": 77.32
+    },
+    "true_surface_within_2mm_pct": 0.0,
+    "true_surface_within_5mm_pct": 0.0,
+    "scan_surface_in_object_region_pct": 0.0,
+    "object_region": {
+      "accuracy_mm_median": Infinity,
+      "completeness_mm_median": Infinity,
+      "true_surface_within_5mm_pct": 0.0
+    },
+    "scan_bbox_mm": [
+      422.7,
+      286.1,
+      229.1
+    ],
+    "true_bbox_mm": [
+      205.0,
+      37.6,
+      204.6
+    ]
+  },
+  "mask": {
+    "method": "scan-mesh silhouette vs true silhouette through recovered camera",
+    "mean_iou": 0.173,
+    "worst_iou": 0.0,
+    "frames": 16,
+    "per_frame": [
+      {
+        "frame": "0001.jpg",
+        "iou": 0.113,
+        "true_px": 22114,
+        "pred_px": 27110
+      },
+      {
+        "frame": "0005.jpg",
+        "iou": 0.0,
+        "true_px": 5615,
+        "pred_px": 31043
+      },
+      {
+        "frame": "0008.jpg",
+        "iou": 0.39,
+        "true_px": 20552,
+        "pred_px": 48150
+      },
+      {
+        "frame": "0012.jpg",
+        "iou": 0.097,
+        "true_px": 16599,
+        "pred_px": 32853
+      },
+      {
+        "frame": "0016.jpg",
+        "iou": 0.283,
+        "true_px": 15158,
+        "pred_px": 35850
+      },
+      {
+        "frame": "0019.jpg",
+        "iou": 0.114,
+        "true_px": 22073,
+        "pred_px": 26993
+      },
+      {
+        "frame": "0023.jpg",
+        "iou": 0.0,
+        "true_px": 5597,
+        "pred_px": 31183
+      },
+      {
+        "frame": "0027.jpg",
+        "iou": 0.341,
+        "true_px": 26458,
+        "pred_px": 58709
+      }
+    ]
+  },
+  "parts": {
+    "parts_found": 1,
+    "truth_parts": 1,
+    "note": "CPU live path makes ONE part per object (no real part segmenter wired); part names from the fake labeller",
+    "parts": [
+      {
+        "part_id": "p1",
+        "label": "part",
+        "features": [],
+        "dimensions_scan_mm": {
+          "length": 365.34352195490953,
+          "width": 259.35654138744746,
+          "thickness": 207.39468833675488
+        }
+      }
+    ],
+    "truth": [
+      {
+        "part": "glossy",
+        "feature": "box",
+        "length_mm": 205.0,
+        "height_mm": 204.61004633879298
+      }
+    ]
+  },
+  "stage_times_s": {
+    "frames": 8.2,
+    "geometry": 57.17,
+    "scale": 2.5,
+    "object_mask": 3.1,
+    "splat": 0.26,
+    "mesh": 125.1,
+    "parts": 10.41
+  },
+  "attribution": "Google Research, 'Ecoforms_Plant_Saucer_SQ8COR', Gazebo Fuel, CC BY 4.0",
+  "composite_image": "/local/home/brancli/screwit-hard/gso_real_glass/run/composite.png"
+}

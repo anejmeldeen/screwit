@@ -1,0 +1,49 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "input_type": {
+      "enum": [
+        "video",
+        "photos",
+        "mesh"
+      ],
+      "title": "Input Type",
+      "type": "string"
+    },
+    "mesh_units": {
+      "anyOf": [
+        {
+          "enum": [
+            "metres",
+            "millimetres"
+          ],
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Mesh Units"
+    },
+    "photo_count": {
+      "anyOf": [
+        {
+          "maximum": 60,
+          "minimum": 1,
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Photo Count"
+    }
+  },
+  "required": [
+    "input_type"
+  ],
+  "title": "CreateScanRequest",
+  "type": "object"
+}

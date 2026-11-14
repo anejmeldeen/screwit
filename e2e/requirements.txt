@@ -1,0 +1,6 @@
+# Pinned test deps for the X3 Playwright end-to-end suite.
+# Install into the shared venv with:
+#   ~/.local/bin/uv pip install -p <main>/backend/.venv/bin/python -r e2e/requirements.txt
+# then install the chromium browser (see run_all.sh; honours PLAYWRIGHT_BROWSERS_PATH).
+playwright==1.65.2
+pytest-playwright==0.10.0

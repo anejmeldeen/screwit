@@ -1,0 +1,8 @@
+{
+  "name": "screwit-optimize-tools",
+  "private": true,
+  "description": "Pinned gltfpack binary for X5 mesh compression (meshopt). See backend/screwit/optimize/README.md.",
+  "dependencies": {
+    "gltfpack": "1.3.0"
+  }
+}

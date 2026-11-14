@@ -1,0 +1,19 @@
+{
+  "plan_id": "pln_trap_01",
+  "intent": "fix_leak",
+  "diagnosis": { "summary": "Leak at the J-bend slip joint, most likely a worn or misaligned slip washer.", "part_ids": ["p3", "p4"], "confidence": 0.65 },
+  "safety": ["Put a bucket under the trap before loosening the nuts.", "Hand-tighten plastic slip nuts; pliers can crack them."],
+  "tools": ["bucket", "rag", "channel-lock pliers (optional, for a stuck nut only)"],
+  "steps": [
+    { "n": 1, "text": "Put a bucket under the trap and hand-loosen slip nut [[part:p3]] counter-clockwise.", "part_ids": ["p3"] },
+    { "n": 2, "text": "Slide the nut up and pull out the old washer [[part:p4]].", "part_ids": ["p4"] },
+    { "n": 3, "text": "Fit the new 1-1/2 in washer with its flat side against the nut and its tapered side toward the fitting.", "part_ids": ["p4"] },
+    { "n": 4, "text": "Seat the J-bend, hand-tighten the nut, run water for a minute and check for drips.", "part_ids": ["p2", "p3"] }
+  ],
+  "bom": [
+    { "name": "1-1/2 in slip-joint washer", "spec": "polyethylene, beveled, fits 1-1/2 in tubular drain", "qty": 2, "est_price_usd": 3.0,
+      "buy_links": [{ "vendor": "Home Depot", "url": "https://www.homedepot.com/s/1-1%252F2%2520in%2520slip%2520joint%2520washer" }] }
+  ],
+  "printable": [],
+  "followups": ["Want me to show you which way the bevel faces?"]
+}

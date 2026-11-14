@@ -1,0 +1,54 @@
+# Screw It backing services: Redis (queue) and Postgres (records). SPEC 3.1/3.3, AGENTS.md.
+#
+# Security posture (builder-security, SPEC 3.3):
+# - No port is published to the host's public interfaces. Other containers reach these over the
+#   compose network `screwit` by service name; no `ports:` entry is present at all. A developer who
+#   needs a shell into Postgres or Redis uses an SSH local port-forward to this host, never a
+#   published port. If you MUST publish for local inspection, publish to 127.0.0.1 only, e.g.
+#   `ports: ["127.0.0.1:5432:5432"]` — never a bare `5432:5432`, which binds 0.0.0.0 and bypasses the
+#   host firewall.
+# - Credentials come from the environment via `${VAR:?...}`, which fails fast if unset. No credential
+#   value appears in this file or in any committed config. Copy .env.example to .env and fill it in;
+#   .env is gitignored.
+# - The databases keep their own authentication on (no `trust`, no `--noauth`, no empty password).
+
+name: screwit
+
+services:
+  redis:
+    image: redis:7-alpine
+    # Redis binds to all interfaces INSIDE its container, which is correct: the boundary is that no
+    # port is published, so it is reachable only on the compose network. A password is required so a
+    # compromised peer container still cannot use it unauthenticated.
+    command: ["redis-server", "--requirepass", "${REDIS_PASSWORD:?set in .env}", "--save", "60", "1"]
+    networks: [screwit]
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:?set in .env}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set in .env}
+      POSTGRES_DB: ${POSTGRES_DB:?set in .env}
+    # No `ports:` — Postgres is reachable only on the compose network, as the API and worker need.
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    networks: [screwit]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+
+networks:
+  screwit:
+    driver: bridge
+
+volumes:
+  pgdata:

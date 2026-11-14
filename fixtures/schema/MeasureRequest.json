@@ -1,0 +1,59 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "a": {
+      "anyOf": [
+        {
+          "maxItems": 3,
+          "minItems": 3,
+          "prefixItems": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "number"
+            },
+            {
+              "type": "number"
+            }
+          ],
+          "type": "array"
+        },
+        {
+          "type": "string"
+        }
+      ],
+      "title": "A"
+    },
+    "b": {
+      "anyOf": [
+        {
+          "maxItems": 3,
+          "minItems": 3,
+          "prefixItems": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "number"
+            },
+            {
+              "type": "number"
+            }
+          ],
+          "type": "array"
+        },
+        {
+          "type": "string"
+        }
+      ],
+      "title": "B"
+    }
+  },
+  "required": [
+    "a",
+    "b"
+  ],
+  "title": "MeasureRequest",
+  "type": "object"
+}

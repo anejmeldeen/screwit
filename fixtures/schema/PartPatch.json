@@ -1,0 +1,85 @@
+{
+  "$defs": {
+    "MeasurementEdit": {
+      "additionalProperties": false,
+      "properties": {
+        "caliper_mm": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Caliper Mm"
+        },
+        "feature_id": {
+          "title": "Feature Id",
+          "type": "string"
+        },
+        "field": {
+          "title": "Field",
+          "type": "string"
+        },
+        "user_confirmed": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "User Confirmed"
+        }
+      },
+      "required": [
+        "feature_id",
+        "field"
+      ],
+      "title": "MeasurementEdit",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "description": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Description"
+    },
+    "label": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Label"
+    },
+    "measurements": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/MeasurementEdit"
+      },
+      "title": "Measurements",
+      "type": "array"
+    }
+  },
+  "title": "PartPatch",
+  "type": "object"
+}

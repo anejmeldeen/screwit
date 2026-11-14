@@ -1,0 +1,23 @@
+# Containment image for untrusted media probing (SPEC 3.3, P5 MediaValidator).
+#
+# Small pinned image with ffmpeg (HEVC/VP9 decode + tone-map filters) and python3 + Pillow, so every
+# ffmpeg probe/decode and every photo header read runs inside `docker run --rm --network none
+# --read-only --cap-drop ALL --security-opt no-new-privileges --user 65534:65534 --pids-limit ...
+# --memory ... --cpus ...` with only the per-job dir bind-mounted writable. screwit.storage.containment
+# invokes `ffmpeg`/`python3` by bare name, so both must be on PATH in the image.
+#
+# Build (tag must match SCREWIT_MEDIA_IMAGE, default screwit-media:latest):
+#   docker build -f deploy/Dockerfile.media -t screwit-media:latest .
+
+FROM python:3.12-slim-bookworm
+
+# ffmpeg with the codecs phone uploads use; no recommends to keep the image small.
+RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg && \
+    rm -rf /var/lib/apt/lists/*
+
+# Pillow for photo header/EXIF reads (pinned).
+RUN pip install --no-cache-dir "Pillow==11.0.0"
+
+# Runs unprivileged as nobody; the job dir is bind-mounted at /work by the caller.
+USER 65534:65534
+WORKDIR /work

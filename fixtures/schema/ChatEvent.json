@@ -1,0 +1,791 @@
+{
+  "$defs": {
+    "BomLine": {
+      "additionalProperties": false,
+      "properties": {
+        "buy_links": {
+          "items": {
+            "$ref": "#/$defs/BuyLink"
+          },
+          "title": "Buy Links",
+          "type": "array"
+        },
+        "est_price_usd": {
+          "minimum": 0,
+          "title": "Est Price Usd",
+          "type": "number"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "qty": {
+          "minimum": 1,
+          "title": "Qty",
+          "type": "integer"
+        },
+        "spec": {
+          "title": "Spec",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "spec",
+        "qty",
+        "est_price_usd",
+        "buy_links"
+      ],
+      "title": "BomLine",
+      "type": "object"
+    },
+    "BuyLink": {
+      "additionalProperties": false,
+      "properties": {
+        "url": {
+          "title": "Url",
+          "type": "string"
+        },
+        "vendor": {
+          "title": "Vendor",
+          "type": "string"
+        }
+      },
+      "required": [
+        "vendor",
+        "url"
+      ],
+      "title": "BuyLink",
+      "type": "object"
+    },
+    "CadFiles": {
+      "additionalProperties": false,
+      "properties": {
+        "preview": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Preview"
+        },
+        "source": {
+          "title": "Source",
+          "type": "string"
+        },
+        "step": {
+          "title": "Step",
+          "type": "string"
+        },
+        "stl": {
+          "title": "Stl",
+          "type": "string"
+        }
+      },
+      "required": [
+        "stl",
+        "step",
+        "source",
+        "preview"
+      ],
+      "title": "CadFiles",
+      "type": "object"
+    },
+    "CadResult": {
+      "additionalProperties": false,
+      "properties": {
+        "cad_id": {
+          "title": "Cad Id",
+          "type": "string"
+        },
+        "checks": {
+          "items": {
+            "$ref": "#/$defs/Check"
+          },
+          "title": "Checks",
+          "type": "array"
+        },
+        "error": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Error"
+        },
+        "files": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CadFiles"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "input_revisions": {
+          "$ref": "#/$defs/InputRevisions"
+        },
+        "notes": {
+          "title": "Notes",
+          "type": "string"
+        },
+        "placement": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Placement"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "print_settings": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/PrintSettings"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "stale": {
+          "title": "Stale",
+          "type": "boolean"
+        },
+        "status": {
+          "enum": [
+            "ok",
+            "failed_checks",
+            "error"
+          ],
+          "title": "Status",
+          "type": "string"
+        }
+      },
+      "required": [
+        "cad_id",
+        "status",
+        "input_revisions",
+        "stale",
+        "files",
+        "checks",
+        "print_settings",
+        "notes"
+      ],
+      "title": "CadResult",
+      "type": "object"
+    },
+    "CadResultCard": {
+      "additionalProperties": false,
+      "properties": {
+        "payload": {
+          "$ref": "#/$defs/CadResult"
+        },
+        "type": {
+          "const": "cad_result",
+          "default": "cad_result",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "payload"
+      ],
+      "title": "CadResultCard",
+      "type": "object"
+    },
+    "CardEvent": {
+      "additionalProperties": false,
+      "properties": {
+        "card": {
+          "discriminator": {
+            "mapping": {
+              "cad_result": "#/$defs/CadResultCard",
+              "parts_to_buy": "#/$defs/PartsToBuyCard",
+              "repair_plan": "#/$defs/RepairPlanCard"
+            },
+            "propertyName": "type"
+          },
+          "oneOf": [
+            {
+              "$ref": "#/$defs/RepairPlanCard"
+            },
+            {
+              "$ref": "#/$defs/CadResultCard"
+            },
+            {
+              "$ref": "#/$defs/PartsToBuyCard"
+            }
+          ],
+          "title": "Card"
+        },
+        "event": {
+          "const": "card",
+          "default": "card",
+          "title": "Event",
+          "type": "string"
+        }
+      },
+      "required": [
+        "card"
+      ],
+      "title": "CardEvent",
+      "type": "object"
+    },
+    "Check": {
+      "additionalProperties": false,
+      "properties": {
+        "fix": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Fix"
+        },
+        "input_source": {
+          "anyOf": [
+            {
+              "enum": [
+                "scan",
+                "snapped",
+                "caliper",
+                "user_confirmed"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Input Source"
+        },
+        "kind": {
+          "enum": [
+            "required",
+            "advisory"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "limit": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Limit"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "note": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Note"
+        },
+        "reason": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Reason"
+        },
+        "result": {
+          "enum": [
+            "pass",
+            "fail",
+            "not_computed"
+          ],
+          "title": "Result",
+          "type": "string"
+        },
+        "value": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Value"
+        }
+      },
+      "required": [
+        "name",
+        "kind",
+        "result"
+      ],
+      "title": "Check",
+      "type": "object"
+    },
+    "Diagnosis": {
+      "additionalProperties": false,
+      "properties": {
+        "confidence": {
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Confidence",
+          "type": "number"
+        },
+        "part_ids": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Part Ids",
+          "type": "array"
+        },
+        "summary": {
+          "title": "Summary",
+          "type": "string"
+        }
+      },
+      "required": [
+        "summary",
+        "part_ids",
+        "confidence"
+      ],
+      "title": "Diagnosis",
+      "type": "object"
+    },
+    "DoneEvent": {
+      "additionalProperties": false,
+      "properties": {
+        "event": {
+          "const": "done",
+          "default": "done",
+          "title": "Event",
+          "type": "string"
+        },
+        "message_id": {
+          "title": "Message Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "message_id"
+      ],
+      "title": "DoneEvent",
+      "type": "object"
+    },
+    "ErrorEvent": {
+      "additionalProperties": false,
+      "properties": {
+        "event": {
+          "const": "error",
+          "default": "error",
+          "title": "Event",
+          "type": "string"
+        },
+        "message": {
+          "title": "Message",
+          "type": "string"
+        }
+      },
+      "required": [
+        "message"
+      ],
+      "title": "ErrorEvent",
+      "type": "object"
+    },
+    "HighlightEvent": {
+      "additionalProperties": false,
+      "properties": {
+        "event": {
+          "const": "highlight",
+          "default": "highlight",
+          "title": "Event",
+          "type": "string"
+        },
+        "part_ids": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Part Ids",
+          "type": "array"
+        }
+      },
+      "required": [
+        "part_ids"
+      ],
+      "title": "HighlightEvent",
+      "type": "object"
+    },
+    "InputRevisions": {
+      "additionalProperties": false,
+      "properties": {
+        "part_measurement_revisions": {
+          "additionalProperties": {
+            "type": "integer"
+          },
+          "title": "Part Measurement Revisions",
+          "type": "object"
+        },
+        "reconstruction_revision": {
+          "title": "Reconstruction Revision",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "reconstruction_revision",
+        "part_measurement_revisions"
+      ],
+      "title": "InputRevisions",
+      "type": "object"
+    },
+    "PartsToBuyCard": {
+      "additionalProperties": false,
+      "properties": {
+        "payload": {
+          "items": {
+            "$ref": "#/$defs/BomLine"
+          },
+          "title": "Payload",
+          "type": "array"
+        },
+        "type": {
+          "const": "parts_to_buy",
+          "default": "parts_to_buy",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "payload"
+      ],
+      "title": "PartsToBuyCard",
+      "type": "object"
+    },
+    "Placement": {
+      "additionalProperties": false,
+      "properties": {
+        "rotation_quat": {
+          "maxItems": 4,
+          "minItems": 4,
+          "prefixItems": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "number"
+            },
+            {
+              "type": "number"
+            },
+            {
+              "type": "number"
+            }
+          ],
+          "title": "Rotation Quat",
+          "type": "array"
+        },
+        "translate_mm": {
+          "maxItems": 3,
+          "minItems": 3,
+          "prefixItems": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "number"
+            },
+            {
+              "type": "number"
+            }
+          ],
+          "title": "Translate Mm",
+          "type": "array"
+        }
+      },
+      "required": [
+        "translate_mm",
+        "rotation_quat"
+      ],
+      "title": "Placement",
+      "type": "object"
+    },
+    "PrintSettings": {
+      "additionalProperties": false,
+      "properties": {
+        "est_material_g": {
+          "title": "Est Material G",
+          "type": "integer"
+        },
+        "est_time_min": {
+          "title": "Est Time Min",
+          "type": "integer"
+        },
+        "estimate_method": {
+          "enum": [
+            "volume_formula",
+            "slicer"
+          ],
+          "title": "Estimate Method",
+          "type": "string"
+        },
+        "infill_pct": {
+          "title": "Infill Pct",
+          "type": "integer"
+        },
+        "layer_height_mm": {
+          "title": "Layer Height Mm",
+          "type": "number"
+        },
+        "material": {
+          "title": "Material",
+          "type": "string"
+        },
+        "orientation": {
+          "title": "Orientation",
+          "type": "string"
+        },
+        "supports": {
+          "title": "Supports",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "material",
+        "layer_height_mm",
+        "infill_pct",
+        "orientation",
+        "supports",
+        "est_time_min",
+        "est_material_g",
+        "estimate_method"
+      ],
+      "title": "PrintSettings",
+      "type": "object"
+    },
+    "RepairPlan": {
+      "additionalProperties": false,
+      "properties": {
+        "bom": {
+          "items": {
+            "$ref": "#/$defs/BomLine"
+          },
+          "title": "Bom",
+          "type": "array"
+        },
+        "diagnosis": {
+          "$ref": "#/$defs/Diagnosis"
+        },
+        "followups": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Followups",
+          "type": "array"
+        },
+        "intent": {
+          "title": "Intent",
+          "type": "string"
+        },
+        "plan_id": {
+          "title": "Plan Id",
+          "type": "string"
+        },
+        "printable": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Printable",
+          "type": "array"
+        },
+        "safety": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Safety",
+          "type": "array"
+        },
+        "steps": {
+          "items": {
+            "$ref": "#/$defs/Step"
+          },
+          "title": "Steps",
+          "type": "array"
+        },
+        "tools": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Tools",
+          "type": "array"
+        }
+      },
+      "required": [
+        "plan_id",
+        "intent",
+        "diagnosis",
+        "safety",
+        "tools",
+        "steps",
+        "bom",
+        "printable",
+        "followups"
+      ],
+      "title": "RepairPlan",
+      "type": "object"
+    },
+    "RepairPlanCard": {
+      "additionalProperties": false,
+      "properties": {
+        "payload": {
+          "$ref": "#/$defs/RepairPlan"
+        },
+        "type": {
+          "const": "repair_plan",
+          "default": "repair_plan",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "payload"
+      ],
+      "title": "RepairPlanCard",
+      "type": "object"
+    },
+    "Step": {
+      "additionalProperties": false,
+      "properties": {
+        "n": {
+          "minimum": 1,
+          "title": "N",
+          "type": "integer"
+        },
+        "part_ids": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Part Ids",
+          "type": "array"
+        },
+        "text": {
+          "title": "Text",
+          "type": "string"
+        }
+      },
+      "required": [
+        "n",
+        "text"
+      ],
+      "title": "Step",
+      "type": "object"
+    },
+    "TokenEvent": {
+      "additionalProperties": false,
+      "properties": {
+        "event": {
+          "const": "token",
+          "default": "token",
+          "title": "Event",
+          "type": "string"
+        },
+        "text": {
+          "title": "Text",
+          "type": "string"
+        }
+      },
+      "required": [
+        "text"
+      ],
+      "title": "TokenEvent",
+      "type": "object"
+    },
+    "ToolCallEvent": {
+      "additionalProperties": false,
+      "properties": {
+        "args": {
+          "additionalProperties": true,
+          "title": "Args",
+          "type": "object"
+        },
+        "event": {
+          "const": "tool_call",
+          "default": "tool_call",
+          "title": "Event",
+          "type": "string"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "args"
+      ],
+      "title": "ToolCallEvent",
+      "type": "object"
+    }
+  },
+  "discriminator": {
+    "mapping": {
+      "card": "#/$defs/CardEvent",
+      "done": "#/$defs/DoneEvent",
+      "error": "#/$defs/ErrorEvent",
+      "highlight": "#/$defs/HighlightEvent",
+      "token": "#/$defs/TokenEvent",
+      "tool_call": "#/$defs/ToolCallEvent"
+    },
+    "propertyName": "event"
+  },
+  "oneOf": [
+    {
+      "$ref": "#/$defs/TokenEvent"
+    },
+    {
+      "$ref": "#/$defs/ToolCallEvent"
+    },
+    {
+      "$ref": "#/$defs/HighlightEvent"
+    },
+    {
+      "$ref": "#/$defs/CardEvent"
+    },
+    {
+      "$ref": "#/$defs/DoneEvent"
+    },
+    {
+      "$ref": "#/$defs/ErrorEvent"
+    }
+  ],
+  "title": "ChatEvent"
+}

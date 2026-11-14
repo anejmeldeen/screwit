@@ -1,0 +1,156 @@
+{
+  "$defs": {
+    "FailureHypothesis": {
+      "additionalProperties": false,
+      "properties": {
+        "evidence": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Evidence",
+          "type": "array"
+        },
+        "likelihood": {
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Likelihood",
+          "type": "number"
+        },
+        "mode": {
+          "title": "Mode",
+          "type": "string"
+        },
+        "part_id": {
+          "title": "Part Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "part_id",
+        "mode",
+        "evidence",
+        "likelihood"
+      ],
+      "title": "FailureHypothesis",
+      "type": "object"
+    },
+    "Relation": {
+      "additionalProperties": false,
+      "properties": {
+        "a": {
+          "title": "A",
+          "type": "string"
+        },
+        "b": {
+          "title": "B",
+          "type": "string"
+        },
+        "confidence": {
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Confidence",
+          "type": "number"
+        },
+        "note": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Note"
+        },
+        "type": {
+          "enum": [
+            "threaded",
+            "press_fit",
+            "fastened",
+            "hinged",
+            "sliding",
+            "seals",
+            "glued",
+            "rests_on",
+            "unknown"
+          ],
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "a",
+        "b",
+        "type",
+        "confidence"
+      ],
+      "title": "Relation",
+      "type": "object"
+    },
+    "SceneObject": {
+      "additionalProperties": false,
+      "properties": {
+        "category": {
+          "title": "Category",
+          "type": "string"
+        },
+        "summary": {
+          "title": "Summary",
+          "type": "string"
+        }
+      },
+      "required": [
+        "category",
+        "summary"
+      ],
+      "title": "SceneObject",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "failure_hypotheses": {
+      "items": {
+        "$ref": "#/$defs/FailureHypothesis"
+      },
+      "title": "Failure Hypotheses",
+      "type": "array"
+    },
+    "function": {
+      "title": "Function",
+      "type": "string"
+    },
+    "object": {
+      "$ref": "#/$defs/SceneObject"
+    },
+    "parts": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Parts",
+      "type": "array"
+    },
+    "relations": {
+      "items": {
+        "$ref": "#/$defs/Relation"
+      },
+      "title": "Relations",
+      "type": "array"
+    },
+    "scan_id": {
+      "title": "Scan Id",
+      "type": "string"
+    }
+  },
+  "required": [
+    "scan_id",
+    "object",
+    "parts",
+    "relations",
+    "function",
+    "failure_hypotheses"
+  ],
+  "title": "SceneGraph",
+  "type": "object"
+}
