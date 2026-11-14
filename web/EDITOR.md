@@ -4,7 +4,7 @@
 
 - Each Parts card has **Hide/Show** and **Isolate…**. **Show all** restores hidden components.
 - Isolate opens a separate modal viewing window with its own orbit controls and measurement state. Close or Escape returns to the assembly. Isolation does not change assembly visibility or source data.
-- Explode separates parts around the assembly center and resolves overlapping bounding spheres. It preserves each part's internal geometry. The camera reframes the exploded assembly. The slider at zero restores the original placement exactly.
+- Explode separates parts around the assembly center and resolves overlapping bounding spheres. It preserves each part's internal geometry. Separating parts preserves the current camera angle, target, and zoom. The slider at zero restores the original placement exactly.
 - Hiding parts, exploding, or measuring uses the component meshes even on a phone. Whole-object mobile meshes and splats do not carry selectable component identities. Show all components before returning to Splat.
 
 ## Measurements
@@ -24,7 +24,7 @@ These are measurements of the reconstructed triangle mesh, not exact analytic CA
 
 The editor uses the homepage yellow (#f1d45d) on warm charcoal, with brighter grid lines and bold dark button labels. Measurement tables wrap labels and stay within their cards.
 
-Drag the yellow divider handles to resize Parts and Assistant, or focus a handle and use arrow keys (Home/End select the minimum/maximum). Wide screens resize panel widths; narrower layouts resize stacked panel heights. The viewer retains a minimum usable size.
+Drag the yellow divider handles to resize Parts and Assistant, or focus a handle and use arrow keys (Home/End select the minimum/maximum). Wide screens resize panel widths; narrower layouts resize stacked panel heights. Panels can expand into the available window space, leaving a 220px minimum viewer area; stacked panels can grow to at least 1600px tall.
 
 The HQ/Phone switch has been removed. All devices use editable per-component meshes; splat quality is selected automatically from device capability.
 

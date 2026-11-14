@@ -5,6 +5,7 @@ import { streamChat } from "@/lib/sse";
 import { markOnce, PERF_MARKS } from "@/lib/perf";
 import type { ChatEvent } from "@/lib/contracts.gen";
 import { PartText } from "@/components/cards/PartText";
+import { ScrewyIcon } from "@/components/ScrewyIcon";
 import { Spinner } from "@/components/ui";
 
 // Markdown (react-markdown + remark-gfm + micromark, ~49 KB) and the rich cards
@@ -140,14 +141,14 @@ export function ChatPanel({
 
   return (
     <div className="chat-panel">
-      <header className="chat-heading"><span className="chat-mark" aria-hidden="true">✳</span><div><h2>Assistant</h2><p>Work on your object.</p></div></header>
+      <header className="chat-heading"><span className="chat-mark screwy-avatar"><ScrewyIcon /></span><div><h2>Screwy</h2><p>Let’s build.</p></div></header>
       <div ref={scrollRef} className="chat-messages">
         {messages.length === 0 ? (
           <div className="chat-empty">
-            <h3>What would you like to change?</h3>
-            <p>Select a part in the viewer, or ask a question here.</p>
+            <h3>Hi, I’m Screwy.</h3>
+            <p>What would you like to change? Select a part or tell me what you have in mind.</p>
             <div className="chat-suggestions">
-              {["Explain the parts", "Help me fix this", "Make a replacement"].map((prompt) => <button type="button" key={prompt} onClick={() => setInput(prompt)}>{prompt}<span aria-hidden="true">↗</span></button>)}
+              {["Explain the parts", "Help me fix this", "Make a replacement"].map((prompt) => <button type="button" key={prompt} onClick={() => setInput(prompt)}>{prompt}</button>)}
             </div>
           </div>
         ) : null}
@@ -161,7 +162,7 @@ export function ChatPanel({
         ))}
         {streaming ? (
           <div className="pl-1">
-            <Spinner label="thinking…" />
+            <Spinner label="Screwy is thinking…" />
           </div>
         ) : null}
         {error ? <p className="text-sm text-rose-800">{error}</p> : null}
@@ -208,8 +209,8 @@ export function ChatPanel({
             }
           }}
           rows={2}
-          aria-label="Message the assistant"
-          placeholder="Ask a question or describe a change…"
+          aria-label="Message Screwy"
+          placeholder="Ask Screwy…"
           className="chat-input"
         />
         <button
@@ -218,7 +219,7 @@ export function ChatPanel({
           disabled={streaming || !input.trim()}
           className="chat-send" aria-label="Send message"
         >
-          <span aria-hidden="true">↑</span>
+          <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m21 3-7 18-4-7-7-4 18-7Z" /><path d="m10 14 5-5" /></svg>
         </button>
       </div>
     </div>
@@ -237,7 +238,7 @@ const MessageRow = memo(function MessageRow({
   onShowCad: (cad: Record<string, unknown>) => void;
 }) {
   return (
-    <div className={`chat-message ${msg.role === "user" ? "from-user" : "from-assistant"}`}><span className="chat-author">{msg.role === "user" ? "You" : "Assistant"}</span>
+    <div className={`chat-message ${msg.role === "user" ? "from-user" : "from-assistant"}`}><span className="chat-author">{msg.role === "assistant" ? <span className="screwy-message-avatar"><ScrewyIcon /></span> : null}{msg.role === "user" ? "You" : "Screwy"}</span>
       {msg.text ? (
         <div
           data-testid={msg.role === "assistant" ? "assistant-message" : undefined}

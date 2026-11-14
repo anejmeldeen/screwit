@@ -178,3 +178,10 @@ button:disabled { cursor: not-allowed; }
 .example-card:hover .example-drawing { transform:translateY(-3px); }
 .export-heading { font-weight:600; margin-bottom:8px; }
 .workbench-parts>.part-downloads { margin-bottom:14px; border:1px solid #77715d; border-radius:9px; padding:12px; }
+
+.chat-heading .screwy-avatar { width:44px; height:48px; background:transparent; flex-shrink:0; }
+.screwy-avatar svg { width:38px; height:44px; }
+.from-assistant .chat-author { display:flex; align-items:center; gap:7px; }
+.screwy-message-avatar { display:inline-flex; width:21px; height:25px; }
+.screwy-message-avatar svg { width:100%; height:100%; }
+.chat-send { display:grid; place-items:center; }

@@ -30,7 +30,6 @@ export function PartDownloads({ scanId, part }: { scanId: string; part?: Part })
       <button disabled={!!busy} onClick={() => download("stp")}>{busy === "stp" ? "Preparing STEP…" : "Download STEP (.stp)"}</button>
       <button disabled={!!busy} onClick={() => download("stl")}>{busy === "stl" ? "Preparing STL…" : "Download STL"}</button>
     </div>
-    <p>Generated from the current saved geometry in millimetres. STEP contains mesh facets.</p>
     {error ? <p role="alert">{error}</p> : null}
   </div>;
 }

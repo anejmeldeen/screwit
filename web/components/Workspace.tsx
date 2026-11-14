@@ -42,8 +42,12 @@ export function Workspace({
   }, []);
   const wide = gridWidth >= 1280;
   const stacked = gridWidth < 760;
-  const actualChatWidth = Math.min(chatWidth, Math.max(260, gridWidth - 400));
-  const actualPartsHeight = stacked ? partsHeight : Math.min(partsHeight, Math.max(160, gridHeight - 240));
+  // Keep only a small usable viewer area; panels can use the remaining space.
+  const actualPartsWidth = Math.min(partsWidth, Math.max(240, gridWidth - 260 - 244));
+  const maxChatWidth = Math.max(260, gridWidth - (wide ? actualPartsWidth + 244 : 232));
+  const actualChatWidth = Math.min(chatWidth, maxChatWidth);
+  const maxPartsWidth = Math.max(240, gridWidth - actualChatWidth - 244);
+  const actualPartsHeight = stacked ? partsHeight : Math.min(partsHeight, Math.max(160, gridHeight - 232));
 
   const [selectedId, setSelectedId] = useState<string | null>(initialPartId);
   const [hoveredId, setHoveredId] = useState<string | null>(null);
@@ -115,7 +119,7 @@ export function Workspace({
       {!scanError && (!scan || (scan.status !== "ready" && scan.status !== "failed")) ? <div className="workbench-notice" role="status">Preparing your object…</div> : null}
       {scaleWarnings(recon?.scale ?? null).map((warning) => <div key={warning.id} className="workbench-notice" role="note">{warning.message}</div>)}
       <div ref={gridRef} className="workbench-grid" style={{
-        "--parts-width": `${partsWidth}px`, "--chat-width": `${actualChatWidth}px`,
+        "--parts-width": `${actualPartsWidth}px`, "--chat-width": `${actualChatWidth}px`,
         "--parts-height": `${actualPartsHeight}px`, "--chat-height": `${chatHeight}px`,
       } as CSSProperties}>
         <section className="workbench-viewer" aria-label="3D viewer">
@@ -140,8 +144,8 @@ export function Workspace({
         </section>
 
         <ResizeHandle label="Resize parts panel" className="parts-resizer" orientation={wide ? "vertical" : "horizontal"}
-          value={wide ? partsWidth : actualPartsHeight} min={wide ? 240 : 160}
-          max={wide ? 450 : stacked ? 700 : Math.max(160, gridHeight - 240)} reverse={!stacked}
+          value={wide ? actualPartsWidth : actualPartsHeight} min={wide ? 240 : 160}
+          max={wide ? maxPartsWidth : stacked ? Math.max(1600, gridHeight * 2) : Math.max(160, gridHeight - 232)} reverse={!stacked}
           onChange={wide ? setPartsWidth : setPartsHeight} />
         <section className="workbench-parts" aria-label="Object parts">
           <div className="mb-2 flex items-center justify-between">
@@ -168,7 +172,7 @@ export function Workspace({
 
         <ResizeHandle label="Resize assistant panel" className="chat-resizer" orientation={stacked ? "horizontal" : "vertical"}
           value={stacked ? chatHeight : actualChatWidth} min={stacked ? 280 : 260}
-          max={stacked ? 900 : Math.min(500, Math.max(260, gridWidth - 400))} reverse={!stacked}
+          max={stacked ? Math.max(1600, gridHeight * 2) : maxChatWidth} reverse={!stacked}
           onChange={stacked ? setChatHeight : setChatWidth} />
         <section className="workbench-chat" aria-label="Assistant">
           <ChatPanel
