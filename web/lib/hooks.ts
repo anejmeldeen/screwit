@@ -41,13 +41,18 @@ export function useScan(scanId: string) {
   return { scan, error };
 }
 
-// Reconstruction is fetched once the scale stage is done (it carries
-// scan_to_web and the asset URIs). Re-fetched when reconstruction_revision moves.
+// Reconstruction.json is written by the pipeline only AFTER the mesh stage (it carries the mesh and
+// splat URIs). Fetching on scaleDone was too early: scale finishes mid-pipeline, before
+// reconstruction.json exists, so the viewer got a 404/stale result and -- since the revision never
+// moved -- never re-fetched, leaving the model empty until a manual reload. Fetch once the mesh
+// stage is done (reconstruction.json now exists), and re-fetch when reconstruction_revision moves
+// (a /scale rescale) or the scan reaches a terminal state.
 export function useReconstruction(scanId: string, scan: Scan | null) {
   const [recon, setRecon] = useState<Reconstruction | null>(null);
   const [error, setError] = useState<string | null>(null);
   const lastRev = useRef<number | null>(null);
-  const scaleDone = isStageDone(scan, "scale");
+  const meshDone = isStageDone(scan, "mesh");
+  const terminal = scan?.status === "ready" || scan?.status === "failed";
   const rev = scan?.reconstruction_revision ?? null;
 
   const refresh = useCallback(() => {
@@ -58,11 +63,11 @@ export function useReconstruction(scanId: string, scan: Scan | null) {
   }, [scanId]);
 
   useEffect(() => {
-    if (!scaleDone) return;
-    if (lastRev.current === rev) return;
+    if (!meshDone && !terminal) return;
+    if (lastRev.current === rev && recon !== null) return;
     lastRev.current = rev;
     refresh();
-  }, [scaleDone, rev, refresh]);
+  }, [meshDone, terminal, rev, refresh, recon]);
 
   return { recon, error, refresh };
 }
