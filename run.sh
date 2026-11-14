@@ -172,21 +172,23 @@ start() {
   ensure_installed
 
   info "Starting backend → http://127.0.0.1:${SCREWIT_PORT:-8000}  (device=${SCREWIT_DEVICE:-cpu}, SAM3=${SCREWIT_SAM3:-0})"
-  ( cd "$ROOT" && \
-    SCREWIT_MODE=live \
-    SCREWIT_DEVICE="${SCREWIT_DEVICE:-cpu}" \
-    SCREWIT_CPU_VIEW_CAP="${SCREWIT_CPU_VIEW_CAP:-8}" \
-    SCREWIT_INFER_GS="${SCREWIT_INFER_GS:-0}" \
-    SCREWIT_PORT="${SCREWIT_PORT:-8000}" \
-    SCREWIT_DATA_DIR="$DATA_DIR" \
-    SCREWIT_LLM="${SCREWIT_LLM:-openrouter}" \
-    SCREWIT_MODEL="${SCREWIT_MODEL:-anthropic/claude-sonnet-4.5}" \
-    HF_HOME="$HF_DIR" \
-    ${HF_TOKEN:+HF_TOKEN="$HF_TOKEN"} \
-    SCREWIT_SAM3="${SCREWIT_SAM3:-0}" \
-    SCREWIT_RELOAD="${SCREWIT_RELOAD:-0}" \
-    ${SCREWIT_SAM3_BACKEND:+SCREWIT_SAM3_BACKEND="$SCREWIT_SAM3_BACKEND"} \
-    "$PY" -m screwit.app >"$BE_LOG" 2>&1 ) &
+  (
+    cd "$ROOT"
+    export SCREWIT_MODE=live
+    export SCREWIT_DEVICE="${SCREWIT_DEVICE:-cpu}"
+    export SCREWIT_CPU_VIEW_CAP="${SCREWIT_CPU_VIEW_CAP:-8}"
+    export SCREWIT_INFER_GS="${SCREWIT_INFER_GS:-0}"
+    export SCREWIT_PORT="${SCREWIT_PORT:-8000}"
+    export SCREWIT_DATA_DIR="$DATA_DIR"
+    export SCREWIT_LLM="${SCREWIT_LLM:-openrouter}"
+    export SCREWIT_MODEL="${SCREWIT_MODEL:-anthropic/claude-sonnet-4.5}"
+    export HF_HOME="$HF_DIR"
+    export SCREWIT_SAM3="${SCREWIT_SAM3:-0}"
+    export SCREWIT_RELOAD="${SCREWIT_RELOAD:-0}"
+    [ -n "${HF_TOKEN:-}" ] && export HF_TOKEN
+    [ -n "${SCREWIT_SAM3_BACKEND:-}" ] && export SCREWIT_SAM3_BACKEND
+    exec "$PY" -m screwit.app
+  ) >"$BE_LOG" 2>&1 &
   echo $! >"$BE_PID"
 
   if command -v npm >/dev/null 2>&1; then
