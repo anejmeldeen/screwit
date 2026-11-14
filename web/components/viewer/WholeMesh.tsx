@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo } from "react";
+import { Mesh, MeshStandardMaterial } from "three";
 import { useLoader } from "@react-three/fiber";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { configureGltfLoader } from "./gltf";
@@ -14,7 +15,30 @@ export function WholeMesh({ url, visible }: { url: string; visible: boolean }) {
   const gltf = useLoader(GLTFLoader, url, (loader) => {
     configureGltfLoader(loader as GLTFLoader);
   });
-  const scene = useMemo(() => gltf.scene.clone(true), [gltf]);
+  const scene = useMemo(() => {
+    const clone = gltf.scene.clone(true);
+    clone.traverse((object) => {
+      if (!(object instanceof Mesh)) return;
+      const materials = Array.isArray(object.material) ? object.material : [object.material];
+      const display = materials.map((source) => {
+        const material = source.clone();
+        if (material instanceof MeshStandardMaterial) {
+          material.metalness = 0;
+          material.roughness = 0.85;
+        }
+        return material;
+      });
+      object.material = Array.isArray(object.material) ? display : display[0];
+    });
+    return clone;
+  }, [gltf]);
+  useEffect(() => () => {
+    scene.traverse((object) => {
+      if (!(object instanceof Mesh)) return;
+      const materials = Array.isArray(object.material) ? object.material : [object.material];
+      materials.forEach((material) => material.dispose());
+    });
+  }, [scene]);
 
   // First whole-object mesh drawn marks the viewer's first-mesh timestamp.
   useEffect(() => {

@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef } from "react";
 import { useLoader } from "@react-three/fiber";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
-import { Box3, Color, Group, Mesh, Vector3 } from "three";
+import { Box3, Color, Group, Mesh, MeshStandardMaterial, Vector3 } from "three";
 import type { Part } from "@/lib/contracts.gen";
 import { assetUrl } from "@/lib/storage";
 import { configureGltfLoader } from "./gltf";
@@ -31,9 +31,11 @@ function PartMesh({
   onHover,
   onSelect,
   registerCentroid,
+  assemblyCenter,
 }: {
   part: Part;
   index: number;
+  assemblyCenter: Vector3;
   selected: boolean;
   hovered: boolean;
   explode: number;
@@ -44,7 +46,23 @@ function PartMesh({
   const { gltf } = usePartGltf(assetUrl(part.mesh_uri));
   const groupRef = useRef<Group>(null);
 
-  const scene = useMemo(() => gltf.scene.clone(true), [gltf]);
+  const scene = useMemo(() => {
+    const clone = gltf.scene.clone(true);
+    clone.traverse((object) => {
+      if (!(object instanceof Mesh)) return;
+      // Own the display material: glTF defaults to metalness=1, and baked
+      // vertex colors otherwise multiply (darken) the part palette.
+      object.material = new MeshStandardMaterial({
+        color: partColor(index), metalness: 0, roughness: 0.85,
+      });
+    });
+    return clone;
+  }, [gltf, index]);
+  useEffect(() => () => {
+    scene.traverse((object) => {
+      if (object instanceof Mesh) (object.material as MeshStandardMaterial).dispose();
+    });
+  }, [scene]);
   const baseColor = useMemo(() => new Color(partColor(index)), [index]);
 
   // The first part mesh to draw marks the viewer's first-mesh timestamp.
@@ -52,14 +70,14 @@ function PartMesh({
     markOnce(PERF_MARKS.firstMesh);
   }, [scene]);
 
-  // Explode direction: unit vector from scan origin to the part centroid, in
+  // Explode direction: unit vector from assembly center to the part centroid, in
   // scan-frame mm. Offset grows with the slider.
   const dir = useMemo(() => {
     const c = part.centroid_mm as unknown as number[];
-    const v = new Vector3(c[0], c[1], c[2]);
+    const v = new Vector3(c[0], c[1], c[2]).sub(assemblyCenter);
     const len = v.length();
-    return len > 1e-6 ? v.clone().normalize() : new Vector3(0, 0, 0);
-  }, [part.centroid_mm]);
+    return len > 1e-6 ? v.clone().normalize() : new Vector3(index % 2 === 0 ? 1 : -1, 0, 0);
+  }, [part.centroid_mm, assemblyCenter, index]);
 
   useEffect(() => {
     scene.traverse((o) => {
@@ -158,6 +176,14 @@ export function PartMeshes({
   onSelect: (id: string) => void;
   registerCentroid: (id: string, worldCentroid: Vector3) => void;
 }) {
+  const assemblyCenter = useMemo(() => {
+    const center = new Vector3();
+    for (const part of parts) {
+      const c = part.centroid_mm as unknown as number[];
+      center.add(new Vector3(c[0], c[1], c[2]));
+    }
+    return parts.length ? center.divideScalar(parts.length) : center;
+  }, [parts]);
   if (!visible) return null;
   return (
     <group>
@@ -166,6 +192,7 @@ export function PartMeshes({
           key={p.part_id}
           part={p}
           index={i}
+          assemblyCenter={assemblyCenter}
           selected={selectedId === p.part_id}
           hovered={hoveredId === p.part_id}
           explode={explode}

@@ -92,7 +92,7 @@ export function ViewerPanel({
   const [splatRequested, setSplatRequested] = useState(false);
 
   useEffect(() => {
-    setQuality(detectQuality());
+    setQuality(isPhone() ? "mobile" : detectQuality());
     setPhone(isPhone());
     prewarmViewer();
   }, []);
@@ -130,8 +130,8 @@ export function ViewerPanel({
   // one exists (keeps first-mesh under budget on slow 4G); desktop uses the
   // per-part meshes (picking, colours, explode).
   const mobileMeshUri = useMemo(
-    () => (phone && recon?.mesh_mobile_uri ? recon.mesh_mobile_uri : null),
-    [phone, recon],
+    () => (quality === "mobile" && explode === 0 && !selectedId && recon?.mesh_mobile_uri ? recon.mesh_mobile_uri : null),
+    [quality, explode, selectedId, recon],
   );
   const needsScale = recon?.scale?.method === "learned";
 
@@ -271,8 +271,14 @@ export function ViewerPanel({
             max={1}
             step={0.01}
             value={explode}
-            onChange={(e) => setExplode(parseFloat(e.target.value))}
-            onMouseDown={() => mode === "splat" && setMode("mesh")}
+            onChange={(e) => {
+              setMode("mesh");
+              setQuality("desktop");
+              setExplode(parseFloat(e.target.value));
+            }}
+            disabled={parts.length < 2}
+            aria-valuetext={`${Math.round(explode * 100)}% separated`}
+            title={parts.length < 2 ? "Explode needs at least two parts" : "Separate parts"}
           />
         </label>
 
