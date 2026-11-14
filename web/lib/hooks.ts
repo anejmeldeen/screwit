@@ -1,9 +1,40 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { api } from "./api";
 import { subscribeScanEvents } from "./sse";
 import type { Part, Reconstruction, Scan } from "./contracts.gen";
+
+// A number that persists across reloads in localStorage. Reads synchronously before the first paint
+// (useLayoutEffect) so a resizable panel renders at its saved size immediately, with no visible snap
+// from the default to the stored value. SSR-safe: starts from the default, hydrates before paint.
+export function usePersistentNumber(key: string, initial: number): [number, (v: number) => void] {
+  const [value, setValue] = useState(initial);
+  useLayoutEffect(() => {
+    try {
+      const raw = window.localStorage.getItem(key);
+      if (raw !== null) {
+        const n = parseFloat(raw);
+        if (!Number.isNaN(n)) setValue(n);
+      }
+    } catch {
+      /* localStorage unavailable (private mode) -> keep the default */
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [key]);
+  const set = useCallback(
+    (v: number) => {
+      setValue(v);
+      try {
+        window.localStorage.setItem(key, String(v));
+      } catch {
+        /* ignore persistence failure */
+      }
+    },
+    [key],
+  );
+  return [value, set];
+}
 
 export function stageState(scan: Scan | null, name: string) {
   return scan?.stages.find((s) => s.name === name)?.state;

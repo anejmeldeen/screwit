@@ -1,7 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
-import { useScan, useReconstruction, useParts, isStageDone } from "@/lib/hooks";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { useScan, useReconstruction, useParts, isStageDone, usePersistentNumber } from "@/lib/hooks";
 import { scaleWarnings } from "@/lib/scaleWarnings";
 import { ViewerPanel } from "@/components/viewer/ViewerPanel";
 import { PartsPanel } from "@/components/PartsPanel";
@@ -28,13 +28,21 @@ export function Workspace({
   const gridRef = useRef<HTMLDivElement>(null);
   const [gridWidth, setGridWidth] = useState(0);
   const [gridHeight, setGridHeight] = useState(0);
-  const [partsWidth, setPartsWidth] = useState(310);
-  const [chatWidth, setChatWidth] = useState(340);
-  const [partsHeight, setPartsHeight] = useState(280);
-  const [chatHeight, setChatHeight] = useState(480);
-  useEffect(() => {
+  const [partsWidth, setPartsWidth] = usePersistentNumber("ui.partsWidth", 310);
+  const [chatWidth, setChatWidth] = usePersistentNumber("ui.chatWidth", 340);
+  const [partsHeight, setPartsHeight] = usePersistentNumber("ui.partsHeight", 280);
+  const [chatHeight, setChatHeight] = usePersistentNumber("ui.chatHeight", 480);
+  // Measure the grid synchronously BEFORE the first paint (useLayoutEffect), so the responsive
+  // layout (wide/stacked, panel clamps) is computed from the real width on frame one. Measuring in
+  // a plain effect left gridWidth at 0 for the first paint -> the layout rendered stacked/narrow and
+  // then visibly SNAPPED to the real layout once the ResizeObserver fired. Seed from the current
+  // client rect, then keep it live with the observer.
+  useLayoutEffect(() => {
     const grid = gridRef.current;
     if (!grid) return;
+    const rect = grid.getBoundingClientRect();
+    setGridWidth(rect.width);
+    setGridHeight(rect.height);
     const observer = new ResizeObserver(([entry]) => {
       setGridWidth(entry.contentRect.width); setGridHeight(entry.contentRect.height);
     });
