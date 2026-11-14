@@ -15,7 +15,7 @@ export function MarkdownMessage({
   onPartChip: (id: string) => void;
 }) {
   return (
-    <div className="prose prose-invert prose-sm max-w-none">
+    <div className="prose prose-sm max-w-none">
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
         components={{

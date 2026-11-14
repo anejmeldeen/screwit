@@ -26,22 +26,22 @@ export function RepairPlanCard({
   return (
     <div
       data-testid="chat-card-repair-plan"
-      className="rounded-lg border border-slate-700 bg-slate-900/70 p-3"
+      className="rounded-lg border border-line bg-wash p-3"
     >
       <div className="mb-2 flex items-center gap-2">
         <Badge tone="sky">Repair plan</Badge>
         {diagnosis?.confidence != null ? (
-          <span className="text-xs text-slate-400">
+          <span className="text-xs text-muted">
             confidence {(Number(diagnosis.confidence) * 100).toFixed(0)}%
           </span>
         ) : null}
       </div>
       {diagnosis?.summary ? (
-        <p className="mb-2 text-sm text-slate-200">{String(diagnosis.summary)}</p>
+        <p className="mb-2 text-sm text-ink">{String(diagnosis.summary)}</p>
       ) : null}
 
       {safety.length ? (
-        <div className="mb-2 rounded border border-amber-600/40 bg-amber-900/20 p-2 text-xs text-amber-200">
+        <div className="mb-2 rounded border border-amber-600/40 bg-amber-100 p-2 text-xs text-amber-800">
           <p className="font-semibold">Safety</p>
           <ul className="list-disc pl-4">
             {safety.map((s, i) => (
@@ -52,7 +52,7 @@ export function RepairPlanCard({
       ) : null}
 
       {tools.length ? (
-        <p className="mb-2 text-xs text-slate-400">Tools: {tools.join(", ")}</p>
+        <p className="mb-2 text-xs text-muted">Tools: {tools.join(", ")}</p>
       ) : null}
 
       <ol className="space-y-1.5">
@@ -86,7 +86,7 @@ export function PartsToBuyCard({ payload }: { payload: AnyRecord[] }) {
   return (
     <div
       data-testid="chat-card-parts-to-buy"
-      className="rounded-lg border border-slate-700 bg-slate-900/70 p-3"
+      className="rounded-lg border border-line bg-wash p-3"
     >
       <div className="mb-2">
         <Badge tone="green">Parts to buy</Badge>
@@ -100,12 +100,12 @@ export function PartsToBuyCard({ payload }: { payload: AnyRecord[] }) {
                 <span className="font-medium">
                   {String(it.name)} ×{Number(it.qty ?? 1)}
                 </span>
-                <span className="text-slate-300">
+                <span className="text-ink">
                   ${Number(it.est_price_usd ?? 0).toFixed(2)}
                 </span>
               </div>
               {it.spec ? (
-                <p className="text-xs text-slate-400">{String(it.spec)}</p>
+                <p className="text-xs text-muted">{String(it.spec)}</p>
               ) : null}
               {links.length ? (
                 <div className="mt-1 flex flex-wrap gap-2">
@@ -126,7 +126,7 @@ export function PartsToBuyCard({ payload }: { payload: AnyRecord[] }) {
           );
         })}
       </ul>
-      <p className="mt-2 border-t border-slate-800 pt-2 text-right text-sm font-semibold">
+      <p className="mt-2 border-t border-line pt-2 text-right text-sm font-semibold">
         Total: ${total.toFixed(2)}
       </p>
     </div>
@@ -150,13 +150,13 @@ export function CadResultCard({
   return (
     <div
       data-testid="chat-card-cad-result"
-      className="rounded-lg border border-orange-700/60 bg-slate-900/70 p-3"
+      className="rounded-lg border border-orange-700/60 bg-wash p-3"
     >
       <div className="mb-2 flex items-center gap-2">
         <Badge tone="amber">CAD result</Badge>
         <span
           className={`text-xs ${
-            payload.status === "ok" ? "text-emerald-300" : "text-rose-300"
+            payload.status === "ok" ? "text-emerald-800" : "text-rose-800"
           }`}
         >
           {String(payload.status)}
@@ -173,7 +173,7 @@ export function CadResultCard({
         <img
           src={assetUrl(String(files.preview))}
           alt="CAD preview"
-          className="mb-2 max-h-40 rounded border border-slate-800 bg-slate-800 object-contain"
+          className="mb-2 max-h-40 rounded border border-line bg-wash object-contain"
           onError={(e) =>
             ((e.currentTarget as HTMLImageElement).style.display = "none")
           }
@@ -182,7 +182,7 @@ export function CadResultCard({
 
       {/* Required checks: pass/fail */}
       <div className="mb-2">
-        <p className="text-xs font-semibold text-slate-300">Required checks</p>
+        <p className="text-xs font-semibold text-ink">Required checks</p>
         <ul className="mt-1 space-y-0.5 text-xs">
           {required.map((c, i) => (
             <li
@@ -191,15 +191,15 @@ export function CadResultCard({
               data-result={String(c.result)}
               className="flex items-center justify-between gap-2"
             >
-              <span className="text-slate-300">{String(c.name)}</span>
+              <span className="text-ink">{String(c.name)}</span>
               <span className="flex items-center gap-2">
                 {c.input_source ? (
-                  <span className="text-slate-500">
+                  <span className="text-muted">
                     {String(c.input_source)}
                   </span>
                 ) : null}
                 {c.value != null ? (
-                  <span className="text-slate-400">
+                  <span className="text-muted">
                     {Number(c.value)}
                     {c.limit != null ? ` / ${Number(c.limit)}` : ""}
                   </span>
@@ -216,7 +216,7 @@ export function CadResultCard({
       {/* Advisory checks: values, incl not_computed reasons */}
       {advisory.length ? (
         <details className="mb-2 text-xs">
-          <summary className="cursor-pointer text-slate-400">
+          <summary className="cursor-pointer text-muted">
             Advisory checks
           </summary>
           <ul className="mt-1 space-y-0.5">
@@ -227,8 +227,8 @@ export function CadResultCard({
                 data-result={String(c.result)}
                 className="flex items-center justify-between gap-2"
               >
-                <span className="text-slate-400">{String(c.name)}</span>
-                <span className="text-slate-400">
+                <span className="text-muted">{String(c.name)}</span>
+                <span className="text-muted">
                   {c.result === "not_computed"
                     ? `not computed — ${String(c.reason ?? "")}`
                     : `${c.value != null ? Number(c.value) : ""}${
@@ -242,7 +242,7 @@ export function CadResultCard({
       ) : null}
 
       {/* Print settings */}
-      <div className="mb-2 text-xs text-slate-400">
+      <div className="mb-2 text-xs text-muted">
         {print.material ? <span>{String(print.material)} · </span> : null}
         {print.layer_height_mm ? (
           <span>{String(print.layer_height_mm)} mm layers · </span>
@@ -256,7 +256,7 @@ export function CadResultCard({
           <a
             href={assetUrl(String(files.stl))}
             download
-            className="rounded border border-slate-600 px-2 py-1 hover:border-slate-400"
+            className="rounded border border-line px-2 py-1 hover:border-line"
           >
             Download STL
           </a>
@@ -265,20 +265,20 @@ export function CadResultCard({
           <a
             href={assetUrl(String(files.step))}
             download
-            className="rounded border border-slate-600 px-2 py-1 hover:border-slate-400"
+            className="rounded border border-line px-2 py-1 hover:border-line"
           >
             Download STEP
           </a>
         ) : null}
         <button
           onClick={() => onShowInViewer(payload)}
-          className="rounded border border-orange-600 px-2 py-1 text-orange-300 hover:bg-orange-900/30"
+          className="rounded border border-orange-600 px-2 py-1 text-orange-800 hover:bg-orange-100"
         >
           Show in viewer
         </button>
       </div>
       {payload.notes ? (
-        <p className="mt-2 text-xs text-slate-500">{String(payload.notes)}</p>
+        <p className="mt-2 text-xs text-muted">{String(payload.notes)}</p>
       ) : null}
     </div>
   );

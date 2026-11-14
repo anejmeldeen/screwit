@@ -7,10 +7,18 @@ staleness paths touch only CAD results that pinned the affected parts.
 
 from __future__ import annotations
 
+import io
+import json
+import uuid
+
 from fastapi import APIRouter, HTTPException
+from pydantic import BaseModel
+from sqlmodel import select
 
 from screwit.app import signing
+from screwit.app.db import MergeHistoryRow, db_session
 from screwit.app.deps import RegistryDep
+from screwit.app.fakes import _apply_patch
 from screwit.app.registry import Registry
 from screwit.app.store import ScanStore
 from screwit.contracts import (
@@ -19,6 +27,7 @@ from screwit.contracts import (
     MergeRequest,
     Part,
     PartPatch,
+    SceneGraph,
 )
 
 router = APIRouter()
@@ -41,7 +50,8 @@ def patch_part(scan_id: str, part_id: str, patch: PartPatch,
     if before is None:
         raise HTTPException(status_code=404, detail="part not found")
     try:
-        updated = reg.perception.patch_part(scan_id, part_id, patch, reg.storage)
+        updated = (_apply_patch(before, patch) if reg.settings.is_mock
+                   else reg.perception.patch_part(scan_id, part_id, patch, reg.storage))
     except (KeyError, ValueError) as e:
         raise HTTPException(status_code=400, detail=str(e)) from None
     store.save_part(scan_id, updated)
@@ -55,12 +65,17 @@ def patch_part(scan_id: str, part_id: str, patch: PartPatch,
 @router.post("/scans/{scan_id}/parts/merge", response_model=Part)
 def merge_parts(scan_id: str, req: MergeRequest, reg: RegistryDep) -> Part:
     store = _store(reg)
-    before_ids = {p.part_id for p in store.list_parts(scan_id)}
+    before = store.list_parts(scan_id)
+    before_ids = {p.part_id for p in before}
+    if len(set(req.part_ids)) < 2:
+        raise HTTPException(status_code=400, detail="Choose two different parts")
     missing = [pid for pid in req.part_ids if pid not in before_ids]
     if missing:
         raise HTTPException(status_code=404, detail=f"unknown part(s): {missing}")
 
-    merged = reg.perception.merge_parts(scan_id, req, reg.storage)
+    graph = store.get_scene_graph(scan_id)
+    merged = (_merge_demo(reg, before, req, scan_id) if reg.settings.is_mock
+              else reg.perception.merge_parts(scan_id, req, reg.storage))
 
     # Retire the sources, add the merged part, stale CAD that referenced any retired part (SPEC 5).
     kept = [p for p in store.list_parts(scan_id) if p.part_id not in set(req.part_ids)]
@@ -69,6 +84,11 @@ def merge_parts(scan_id: str, req: MergeRequest, reg: RegistryDep) -> Part:
 
     retired = _retired_ids(reg, req, before_ids, kept)
     store.mark_cad_stale(scan_id, store.cad_jobs_referencing(scan_id, retired))
+    with db_session() as session:
+        session.add(MergeHistoryRow(scan_id=scan_id, before_json=_parts_json(before),
+                                   after_json=_parts_json(kept),
+                                   graph_json=graph.model_dump_json() if graph else None))
+        session.commit()
     return signing.part(reg.storage, merged)
 
 
@@ -103,3 +123,93 @@ def measure(scan_id: str, req: MeasureRequest, reg: RegistryDep) -> MeasureRespo
         return reg.perception.measure(scan_id, req, reg.storage)
     except KeyError as e:
         raise HTTPException(status_code=404, detail=f"unknown part {e}") from None
+
+
+class EditHistory(BaseModel):
+    can_undo: bool
+    can_restore_example: bool
+
+
+def _parts_json(parts: list[Part]) -> str:
+    return json.dumps([p.model_dump(mode="json") for p in sorted(parts, key=lambda p: p.part_id)], sort_keys=True)
+
+
+def _merge_demo(reg: Registry, before: list[Part], req: MergeRequest, scan_id: str) -> Part:
+    import numpy as np
+    import trimesh
+
+    sources = [p for p in before if p.part_id in req.part_ids]
+    meshes = []
+    for source in sources:
+        scene = trimesh.load(io.BytesIO(reg.storage.get_bytes(source.mesh_uri)), file_type="glb", force="scene")
+        meshes.append(scene.to_geometry())
+    mesh = trimesh.util.concatenate(meshes)
+    part_id = "merged_" + uuid.uuid4().hex[:12]
+    key = f"scans/{scan_id}/parts/{part_id}.glb"
+    dest = reg.settings.data_dir / "generated" / key
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    dest.write_bytes(mesh.export(file_type="glb"))
+    center = mesh.bounds.mean(axis=0).tolist()
+    raw = sources[0].model_dump()
+    raw.update(part_id=part_id, label=req.label or " + ".join(p.label for p in sources),
+               mesh_uri=key, centroid_mm=center, measurement_revision=1, source="user_edited",
+               features=[], dimensions=[],
+               obb={"center": center, "extent": np.maximum(mesh.extents, 0.001).tolist(),
+                    "rotation_quat": [0, 0, 0, 1]},
+               description="Combined parts: " + ", ".join(p.label for p in sources))
+    return Part.model_validate(raw)
+
+
+@router.get("/scans/{scan_id}/parts/history", response_model=EditHistory)
+def edit_history(scan_id: str, reg: RegistryDep) -> EditHistory:
+    with db_session() as session:
+        row = session.exec(select(MergeHistoryRow).where(
+            MergeHistoryRow.scan_id == scan_id, MergeHistoryRow.undone == False  # noqa: E712
+        ).order_by(MergeHistoryRow.id.desc())).first()
+        return EditHistory(can_undo=row is not None,
+                           can_restore_example=reg.settings.is_mock and bool(reg.data.parts(scan_id)))
+
+
+@router.post("/scans/{scan_id}/parts/undo", response_model=list[Part])
+def undo_merge(scan_id: str, reg: RegistryDep) -> list[Part]:
+    store = _store(reg)
+    with db_session() as session:
+        row = session.exec(select(MergeHistoryRow).where(
+            MergeHistoryRow.scan_id == scan_id, MergeHistoryRow.undone == False  # noqa: E712
+        ).order_by(MergeHistoryRow.id.desc())).first()
+        if row is None:
+            raise HTTPException(status_code=409, detail="No merge to undo")
+        current = store.list_parts(scan_id)
+        if _parts_json(current) != row.after_json:
+            raise HTTPException(status_code=409, detail="Parts changed after this merge; undo would overwrite edits")
+        restored = [Part.model_validate(p) for p in json.loads(row.before_json)]
+        if not reg.settings.is_mock:
+            reg.storage.put_bytes(f"scans/{scan_id}/parts.json", row.before_json.encode(), "application/json")
+            if row.graph_json:
+                reg.storage.put_bytes(f"scans/{scan_id}/scene_graph.json", row.graph_json.encode(), "application/json")
+        store.save_parts(scan_id, restored)
+        if row.graph_json:
+            graph = SceneGraph.model_validate_json(row.graph_json)
+            store.save_scene_graph(graph, restored[0].reconstruction_revision)
+        store.mark_cad_stale(scan_id, store.cad_jobs_referencing(scan_id, {p.part_id for p in current}))
+        row.undone = True
+        session.add(row)
+        session.commit()
+    return signing.parts(reg.storage, restored)
+
+
+@router.post("/scans/{scan_id}/parts/restore-example", response_model=list[Part])
+def restore_example(scan_id: str, reg: RegistryDep) -> list[Part]:
+    original = reg.data.parts(scan_id) if reg.settings.is_mock else []
+    if not original:
+        raise HTTPException(status_code=404, detail="This is not a demo example")
+    store = _store(reg)
+    current = store.list_parts(scan_id)
+    store.mark_cad_stale(scan_id, store.cad_jobs_referencing(scan_id, {p.part_id for p in current}))
+    store.save_parts(scan_id, original)
+    with db_session() as session:
+        for row in session.exec(select(MergeHistoryRow).where(MergeHistoryRow.scan_id == scan_id)).all():
+            row.undone = True
+            session.add(row)
+        session.commit()
+    return signing.parts(reg.storage, original)

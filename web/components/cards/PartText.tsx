@@ -20,7 +20,7 @@ export function PartText({
             <button
               key={i}
               onClick={() => onPartChip(m[1])}
-              className="mx-0.5 rounded bg-sky-800/70 px-1 text-sky-200 hover:bg-sky-700"
+              className="mx-0.5 rounded bg-sky-100 px-1 text-sky-800 hover:bg-sky-100"
             >
               {m[1]}
             </button>

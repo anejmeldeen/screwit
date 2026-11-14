@@ -2,9 +2,10 @@
 
 import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
-import { Matrix4, Vector3, PerspectiveCamera, GridHelper } from "three";
+import { Matrix4, Vector3, PerspectiveCamera, GridHelper, Box3, Quaternion } from "three";
 import { OrbitControls as OrbitControlsImpl } from "three/examples/jsm/controls/OrbitControls.js";
 import type { CadResult, Part, Reconstruction } from "@/lib/contracts.gen";
+import { explodeOffsets, type FeaturePick, type MeasureMode } from "@/lib/editorGeometry";
 import { scanToWebMatrix } from "@/lib/transform";
 import { PartMeshes } from "./PartMeshes";
 import { MeasureLayer, PickedPoint } from "./MeasureLayer";
@@ -28,6 +29,10 @@ export interface ViewerCadOverlay {
 }
 
 export interface ViewerProps {
+  hiddenPartIds?: string[];
+  measureMode?: MeasureMode | null;
+  featurePicks?: FeaturePick[];
+  onFeaturePick?: (p: FeaturePick) => void;
   recon: Reconstruction;
   parts: Part[];
   splatUri: string | null; // already resolved for quality
@@ -108,7 +113,8 @@ function FocusController({
   );
   const camera = useThree((s) => s.camera);
   const goal = useRef<Vector3 | null>(null);
-  if (target && goal.current !== target) goal.current = target;
+  const invalidate = useThree(s => s.invalidate);
+  useEffect(() => { goal.current = target; invalidate(); }, [target, invalidate]);
 
   useFrame(() => {
     if (!goal.current || !controls) return;
@@ -122,6 +128,41 @@ function FocusController({
     controls.update();
     if (t.distanceTo(goal.current) < 0.001) goal.current = null;
   });
+  return null;
+}
+
+function FitObject({ parts, matrix, explode }: { parts: Part[]; matrix: Matrix4; explode: number }) {
+  const camera = useThree((s) => s.camera);
+  const controls = useThree((s) => s.controls as unknown as OrbitControlsImpl | null);
+  const size = useThree((s) => s.size);
+  const invalidate = useThree((s) => s.invalidate);
+  const bounds = useMemo(() => {
+    const box = new Box3();
+    const offsets = explodeOffsets(parts);
+    for (const part of parts) {
+      const center = part.obb.center as unknown as number[];
+      const extent = part.obb.extent as unknown as number[];
+      const rotation = new Quaternion().fromArray(part.obb.rotation_quat as unknown as number[]);
+      for (const x of [-1, 1]) for (const y of [-1, 1]) for (const z of [-1, 1]) {
+        box.expandByPoint(new Vector3(x * extent[0] / 2, y * extent[1] / 2, z * extent[2] / 2)
+          .applyQuaternion(rotation).add(new Vector3(...center))
+          .addScaledVector(offsets.get(part.part_id)!, explode).applyMatrix4(matrix));
+      }
+    }
+    return box;
+  }, [parts, matrix, explode]);
+  useEffect(() => {
+    if (!controls || bounds.isEmpty()) return;
+    const center = bounds.getCenter(new Vector3());
+    const radius = Math.max(bounds.getSize(new Vector3()).length() / 2, 0.025);
+    const vertical = (camera as PerspectiveCamera).fov * Math.PI / 360;
+    const horizontal = Math.atan(Math.tan(vertical) * size.width / size.height);
+    const distance = radius / Math.sin(Math.min(vertical, horizontal)) * 1.25;
+    camera.position.copy(center).add(new Vector3(1, .65, 1).normalize().multiplyScalar(distance));
+    controls.target.copy(center);
+    controls.update();
+    invalidate();
+  }, [bounds, camera, controls, size.width, size.height, invalidate]);
   return null;
 }
 
@@ -143,6 +184,7 @@ function FpsSampler({ onSample }: { onSample?: (fps: number) => void }) {
 export function Viewer(props: ViewerProps) {
   const {
     recon,
+    hiddenPartIds = [], measureMode = null, featurePicks = [], onFeaturePick = () => {},
     parts,
     splatUri,
     mobileMeshUri,
@@ -164,7 +206,7 @@ export function Viewer(props: ViewerProps) {
 
   const parentMatrix = useMemo(() => scanToWebMatrix(recon), [recon]);
   const gridHelper = useMemo(() => {
-    const g = new GridHelper(2, 40, 0x334155, 0x1f2937);
+    const g = new GridHelper(2, 40, 0x647076, 0x1f2937);
     return g;
   }, []);
   const { map: centroids, register } = useCentroidRegistry();
@@ -180,6 +222,8 @@ export function Viewer(props: ViewerProps) {
   if (!focusPartId) lastFocus.current = null;
 
   const placement = cadOverlay?.placement ?? null;
+  const editing = measureActive || explode > 0 || hiddenPartIds.length > 0;
+  const meshVisible = mode === "mesh" || editing;
 
   return (
     <Canvas
@@ -193,7 +237,7 @@ export function Viewer(props: ViewerProps) {
         (camera as PerspectiveCamera).lookAt(0, 0.05, 0);
       }}
     >
-      <color attach="background" args={["#0b1120"]} />
+      <color attach="background" args={["#252a2d"]} />
       <ambientLight intensity={0.8} />
       <directionalLight position={[1, 2, 1]} intensity={1.1} />
       <directionalLight position={[-1, 1, -1]} intensity={0.4} />
@@ -211,19 +255,23 @@ export function Viewer(props: ViewerProps) {
               Mounting is what fetches Spark + the .spz, so a phone never
               downloads the splat unasked. It is hidden until splat mode. */}
           {splatAllowed && splatUri ? (
-            <SplatLayer url={splatUri} visible={mode === "splat"} />
+            <SplatLayer url={splatUri} visible={mode === "splat" && !editing} />
           ) : null}
         </Suspense>
 
         <Suspense fallback={null}>
-          {mobileMeshUri ? (
+          {mobileMeshUri && !editing ? (
             // Phone path: one light whole-object mesh.
-            <WholeMesh url={mobileMeshUri} visible={mode === "mesh"} />
+            <WholeMesh url={mobileMeshUri} visible={meshVisible} />
           ) : (
             // Desktop path: per-part meshes with picking, colours and explode.
             <PartMeshes
               parts={parts}
-              visible={mode === "mesh"}
+              hiddenPartIds={hiddenPartIds}
+              measureMode={measureActive ? (measureMode ?? "point") : null}
+              featurePicks={featurePicks} onFeaturePick={onFeaturePick}
+              onMeasurePick={onMeasurePick}
+              visible={meshVisible}
               selectedId={selectedId}
               hoveredId={hoveredId}
               explode={explode}
@@ -245,14 +293,12 @@ export function Viewer(props: ViewerProps) {
         ) : null}
 
         <MeasureLayer
-          active={measureActive}
-          parentMatrix={parentMatrix}
           points={measurePoints}
-          onPick={onMeasurePick}
         />
       </group>
 
       <OrbitControlsLite />
+      <FitObject parts={parts} matrix={parentMatrix} explode={explode} />
       <FocusController target={focusTarget} />
       <FpsSampler onSample={onFpsSample} />
     </Canvas>
