@@ -7,6 +7,7 @@ from collections.abc import Iterator
 
 from fastapi import APIRouter, HTTPException
 
+from screwit.app.accounts import UserDep
 from screwit.app.deps import RegistryDep
 from screwit.app.registry import Registry
 from screwit.app.settings import MAX_UPLOAD_BYTES
@@ -50,10 +51,10 @@ def _new_scan(scan_id: str, req: CreateScanRequest) -> Scan:
 
 
 @router.post("/scans", response_model=CreateScanResponse)
-def create_scan(req: CreateScanRequest, reg: RegistryDep) -> CreateScanResponse:
+def create_scan(req: CreateScanRequest, reg: RegistryDep, user: UserDep) -> CreateScanResponse:
     scan_id = "scn_" + uuid.uuid4().hex[:12]
     scan = _new_scan(scan_id, req)
-    _store(reg).save_scan(scan)
+    _store(reg).save_scan(scan, owner=user.username)
 
     count = req.photo_count or 1 if req.input_type == "photos" else 1
     types = _CONTENT_TYPES[req.input_type]

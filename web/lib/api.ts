@@ -34,12 +34,22 @@ export class ApiError extends Error {
   }
 }
 
+export interface Account { username: string }
+export interface BuildSummary {
+  scan_id: string;
+  title: string;
+  status: string;
+  created_at: string;
+  is_example: boolean;
+}
+
 async function request<T>(
   path: string,
   init?: RequestInit,
 ): Promise<T> {
   const url = `${API_BASE}${path}`;
   const res = await fetch(url, {
+    cache: "no-store",
     ...init,
     headers: {
       Accept: "application/json",
@@ -51,9 +61,13 @@ async function request<T>(
     let detail = res.statusText;
     try {
       const body = await res.json();
-      detail = (body && (body.detail || body.message)) || detail;
+      const message = body && (body.detail || body.message);
+      detail = typeof message === "string" ? message : "Please check your username and password.";
     } catch {
       /* non-JSON error body; keep statusText */
+    }
+    if (res.status === 401 && !path.startsWith("/auth/") && typeof window !== "undefined") {
+      window.dispatchEvent(new Event("screwit:session-expired"));
     }
     throw new ApiError(res.status, url, detail);
   }
@@ -62,6 +76,15 @@ async function request<T>(
 }
 
 export const api = {
+  me: () => request<Account>("/auth/me"),
+  login: (username: string, password: string) => request<Account>("/auth/login", {
+    method: "POST", body: JSON.stringify({ username, password }),
+  }),
+  register: (username: string, password: string) => request<Account>("/auth/register", {
+    method: "POST", body: JSON.stringify({ username, password }),
+  }),
+  logout: () => request<void>("/auth/logout", { method: "POST" }),
+  builds: () => request<BuildSummary[]>("/builds"),
   // Landing / gallery
   demoScans: () => request<DemoScan[]>("/demo-scans"),
 

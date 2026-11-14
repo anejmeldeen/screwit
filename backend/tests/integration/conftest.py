@@ -154,4 +154,5 @@ def _drain(proc: subprocess.Popen) -> str:
 @pytest.fixture
 def client(server: Server):
     with httpx.Client(base_url=server.base_url, timeout=30.0) as c:
+        c.post("/api/auth/login", json={"username": "admin", "password": "password123"}).raise_for_status()
         yield c

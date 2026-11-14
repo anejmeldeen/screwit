@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { SiteHeader } from "@/components/SiteHeader";
+import { AccountProvider } from "@/components/AccountProvider";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -12,8 +13,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="en">
       <body>
         <a href="#main-content" className="skip-link">Skip to content</a>
-        <SiteHeader />
-        <main id="main-content">{children}</main>
+        <AccountProvider>
+          <SiteHeader />
+          <main id="main-content">{children}</main>
+        </AccountProvider>
       </body>
     </html>
   );

@@ -17,6 +17,26 @@ from sqlmodel import Field, Session, SQLModel, create_engine
 from screwit.app.settings import settings
 
 
+class UserRow(SQLModel, table=True):
+    __tablename__ = "users"
+    username: str = Field(primary_key=True)
+    password_hash: str
+
+
+class SessionRow(SQLModel, table=True):
+    __tablename__ = "user_sessions"
+    token_hash: str = Field(primary_key=True)
+    username: str = Field(index=True)
+    expires_at: int
+
+
+class BuildOwnerRow(SQLModel, table=True):
+    # Separate table keeps existing scan databases compatible without an ALTER migration.
+    __tablename__ = "build_owners"
+    scan_id: str = Field(primary_key=True)
+    username: str = Field(index=True)
+
+
 class ScanRow(SQLModel, table=True):
     __tablename__ = "scans"
     scan_id: str = Field(primary_key=True)

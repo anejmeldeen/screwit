@@ -92,6 +92,14 @@ def browser_type_launch_args(browser_type_launch_args):
     return {**browser_type_launch_args, "headless": True}
 
 
+@pytest.fixture
+def page(page, stack):
+    response = page.context.request.post(f"{stack.web_url}/api/auth/login",
+                                         data={"username": "admin", "password": "password123"})
+    assert response.ok, response.text()
+    return page
+
+
 @pytest.fixture(scope="session")
 def browser_ready():
     """Skip (not error) when the Playwright chromium driver cannot launch on this host.

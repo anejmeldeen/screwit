@@ -13,6 +13,7 @@ from datetime import datetime
 from sqlmodel import select
 
 from screwit.app.db import (
+    BuildOwnerRow,
     CadJobRow,
     ChatMessageRow,
     PartRow,
@@ -45,7 +46,7 @@ class ScanStore:
                 return Scan.model_validate_json(row.scan_json)
         return self._data.scan(scan_id)
 
-    def save_scan(self, scan: Scan) -> None:
+    def save_scan(self, scan: Scan, *, owner: str | None = None) -> None:
         with db_session() as s:
             row = s.get(ScanRow, scan.scan_id)
             if row is None:
@@ -57,6 +58,8 @@ class ScanStore:
                 row.reconstruction_revision = scan.reconstruction_revision
                 row.scan_json = scan.model_dump_json()
             s.add(row)
+            if owner is not None and s.get(BuildOwnerRow, scan.scan_id) is None:
+                s.add(BuildOwnerRow(scan_id=scan.scan_id, username=owner))
             s.commit()
 
     # -------------------------------------------------------------- reconstruction
@@ -140,7 +143,7 @@ class ScanStore:
     def save_cad_job(self, req: CadRequest, result: CadResult) -> None:
         with db_session() as s:
             row = s.exec(
-                select(CadJobRow).where(CadJobRow.cad_id == req.cad_id)
+                select(CadJobRow).where(CadJobRow.scan_id == req.scan_id, CadJobRow.cad_id == req.cad_id)
             ).first()
             if row is None:
                 row = CadJobRow(scan_id=req.scan_id, cad_id=req.cad_id)

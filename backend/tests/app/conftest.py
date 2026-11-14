@@ -17,7 +17,7 @@ if not FIXTURES_DIR.exists():  # fall back to a sibling checkout layout
 
 
 def _make_client(tmp_path: Path, mode: str = "mock", auth: str = "loopback",
-                 client_host: tuple[str, int] = ("127.0.0.1", 50000)) -> TestClient:
+                 client_host: tuple[str, int] = ("127.0.0.1", 50000), login: bool = True) -> TestClient:
     os.environ["SCREWIT_MODE"] = mode
     os.environ["SCREWIT_AUTH"] = auth
     os.environ["SCREWIT_QUEUE"] = "inline"
@@ -36,7 +36,10 @@ def _make_client(tmp_path: Path, mode: str = "mock", auth: str = "loopback",
     reset_settings_cache()
     reset_engine()
     app = create_app()
-    return TestClient(app, client=client_host)
+    client = TestClient(app, client=client_host)
+    if login:
+        client.post("/api/auth/login", json={"username": "admin", "password": "password123"})
+    return client
 
 
 @pytest.fixture

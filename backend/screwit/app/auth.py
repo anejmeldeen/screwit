@@ -25,3 +25,6 @@ def require_access(request: Request) -> None:
     host = client_host(request)
     if host is None or not is_loopback(host):
         raise HTTPException(status_code=403, detail="Only loopback clients are allowed")
+
+    if request.method not in {"GET", "HEAD", "OPTIONS"} and request.headers.get("sec-fetch-site") == "cross-site":
+        raise HTTPException(status_code=403, detail="Cross-site requests are not allowed")

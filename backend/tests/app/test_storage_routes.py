@@ -67,12 +67,12 @@ def test_fake_storage_delegation_when_present(client):
 
     reg.storage = Localish(reg.storage)  # type: ignore[assignment]
 
-    up = client.post("/api/storage/upload", data={"key": "scans/x/input/a.mov"},
+    up = client.post("/api/storage/upload", data={"key": "scans/scn_trap/input/a.mov"},
                      files={"file": ("a.mov", b"data", "video/quicktime")})
     assert up.status_code == 204
     assert reg.storage.last[1] == "a.mov"
 
-    bad = client.get("/api/assets/scans/x/a.txt", params={"exp": "0", "sig": "bad"})
+    bad = client.get("/api/assets/scans/scn_trap/a.txt", params={"exp": "0", "sig": "bad"})
     assert bad.status_code == 403
-    good = client.get("/api/assets/scans/x/a.txt", params={"exp": "0", "sig": "good"})
+    good = client.get("/api/assets/scans/scn_trap/a.txt", params={"exp": "0", "sig": "good"})
     assert good.status_code == 200 and good.content == b"abc"

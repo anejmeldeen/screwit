@@ -12,6 +12,8 @@ from fastapi import APIRouter, HTTPException, Request
 from starlette.responses import Response, StreamingResponse
 
 from screwit.app import signing
+from screwit.app.accounts import UserDep, require_asset_owner
+from screwit.app.db import BuildOwnerRow, db_session
 from screwit.app.deps import RegistryDep
 from screwit.contracts import DemoScan
 
@@ -19,17 +21,24 @@ router = APIRouter()
 
 
 @router.get("/demo-scans", response_model=list[DemoScan])
-def demo_scans(reg: RegistryDep) -> list[DemoScan]:
+def demo_scans(reg: RegistryDep, user: UserDep) -> list[DemoScan]:
     import json
 
     path = reg.settings.fixtures_dir / "demo_scans.json"
     if not path.exists():
         return []
-    return [signing.demo_scan(reg.storage, DemoScan.model_validate(d)) for d in json.loads(path.read_text())]
+    with db_session() as session:
+        demos = []
+        for data in json.loads(path.read_text()):
+            demo = DemoScan.model_validate(data)
+            owner = session.get(BuildOwnerRow, demo.scan_id)
+            if owner is not None and owner.username == user.username:
+                demos.append(signing.demo_scan(reg.storage, demo))
+        return demos
 
 
 @router.post("/storage/upload")
-async def storage_upload(request: Request, reg: RegistryDep) -> Response:
+async def storage_upload(request: Request, reg: RegistryDep, user: UserDep) -> Response:
     """Multipart upload: form fields first (the pre-signed POST fields), then the file. Delegated to
     P5's LocalStorage.accept_upload; 501 when storage does not implement it (deployed S3 path)."""
     accept = getattr(reg.storage, "accept_upload", None)
@@ -38,6 +47,7 @@ async def storage_upload(request: Request, reg: RegistryDep) -> Response:
 
     form = await request.form()
     fields = {k: str(v) for k, v in form.items() if not hasattr(v, "filename")}
+    require_asset_owner(fields.get("key", ""), user)
     upload = next((v for v in form.values() if hasattr(v, "filename")), None)
     if upload is None:
         raise HTTPException(status_code=400, detail="no file part in the multipart body")
