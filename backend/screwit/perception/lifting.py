@@ -61,14 +61,26 @@ def _sample_depth(depth: np.ndarray, px: float, py: float) -> float:
 
 def vote_labels(vertices_mm: np.ndarray, part_label_masks: list[np.ndarray],
                 depth_mm: list[np.ndarray], cameras: Cameras,
-                *, occlusion_margin_mm: float = 5.0) -> np.ndarray:
+                *, occlusion_margin_mm: float | None = None) -> np.ndarray:
     """Per-vertex label by occlusion-aware majority vote across keyframes.
 
     ``part_label_masks[k]`` is an int label image for keyframe k (0 = background, 1..N = parts);
     ``depth_mm[k]`` is that frame's depth map (0 = invalid). ``cameras`` supplies K and
     ``world_to_camera`` per frame, in the same order as the mask/depth lists.
+
+    ``occlusion_margin_mm`` tolerates the gap between the fused mesh surface and each raw per-view
+    depth map. A fixed 5 mm was too tight: TSDF fusion routinely moves the surface more than that
+    from any single view's depth, so every vertex looked occluded and no votes were cast (0 parts).
+    When not given, it is derived from the scene scale (a fraction of the median valid depth), so it
+    works whether the geometry is in millimetres or unscaled units.
     """
     verts = np.asarray(vertices_mm, dtype=float).reshape(-1, 3)
+    if occlusion_margin_mm is None:
+        med = [float(np.median(d[d > 0])) for d in depth_mm if np.any(d > 0)]
+        scene = float(np.median(med)) if med else 0.0
+        # 5% of the scene's median depth, with a small floor; generous enough to not reject the
+        # mesh surface, tight enough to still cull a genuinely occluded back face.
+        occlusion_margin_mm = max(1e-3, 0.05 * scene)
     n_labels = 1 + max((int(m.max()) for m in part_label_masks), default=0)
     votes = np.zeros((len(verts), n_labels), dtype=np.int32)
 

@@ -15,6 +15,7 @@ from __future__ import annotations
 import logging
 import tempfile
 import time
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -145,15 +146,21 @@ class ReconPipelineImpl:
             # ---- frames ----
             timer.start("frames")
             frames_dir = scratch / "frames"
-            index = self._stage_frames(scan, storage, frames_dir)
+            index = self._stage_frames(scan, storage, frames_dir, timer)
             frame_names = [e.frame for e in index.frames]
             timer.done("frames", f"{len(frame_names)} keyframes")
 
             # ---- geometry ----
             timer.start("geometry")
             model_names = geom_mod.cap_views(frame_names)  # CPU fallback caps the view count
-            result = self._geometry().run(frames_dir / "model", model_names)
-            self._write_geometry_raw(scan_id, storage, result)
+            # DA3 inference is one opaque blocking call, so creep the bar from 0.05 toward 0.5 on a
+            # timer while it runs (device-aware estimate: slow on CPU, fast on a GPU). The per-view
+            # raw write below then advances it over the back half as real results land.
+            est_s = 8.0 * len(model_names) if geom_mod._default_device() == "cpu" else 0.5 * len(model_names)
+            timer.tick(0.05, f"solving geometry for {len(model_names)} views")
+            with timer.creep(0.05, 0.5, est_s, f"solving geometry for {len(model_names)} views"):
+                result = self._geometry().run(frames_dir / "model", model_names)
+            self._write_geometry_raw(scan_id, storage, result, timer)
             timer.done("geometry")
 
             # ---- scale ----
@@ -175,7 +182,8 @@ class ReconPipelineImpl:
             timer.start("object_mask")
             frame_set = self._build_frame_set(scan_id, rev, storage, frames_dir, index,
                                               result, extr_scan, depth_scan)
-            masks = perception.object_mask(frame_set, None, None)
+            with timer.creep(0.1, 0.9, 10.0, "isolating the object"):
+                masks = perception.object_mask(frame_set, None, None)
             bbox_min, bbox_max, origin_shift = self._object_bbox(depth_scan, masks, result,
                                                                  extr_scan, scale_res)
             # No-board origin: fix it NOW, before splat/mesh write anything (SPEC 3.1).
@@ -228,8 +236,11 @@ class ReconPipelineImpl:
             timer.done("splat", f"{len(cloud_scan)} gaussians from {splat_source}{align_note}")
 
             timer.start("mesh")
-            mesh_tris, mesh_glb_path = self._stage_mesh(scan_id, storage, frame_set, depth_scan,
-                                                        masks, extr_scan, result, scratch)
+            # TSDF fusion is a blocking per-frame loop; creep the bar while it runs so the long
+            # mesh stage (can be ~90s on CPU) does not sit frozen.
+            with timer.creep(0.05, 0.9, 60.0, "fusing mesh"):
+                mesh_tris, mesh_glb_path = self._stage_mesh(scan_id, storage, frame_set, depth_scan,
+                                                            masks, extr_scan, result, scratch)
             # Phone-sized variants from the full assets, if the X5 optimizer is installed.
             full_splat_path = splat_manifest.get("ply_path") if len(cloud_scan) > 0 else None
             mesh_mobile_key, splat_mobile_key = self._maybe_mobile_variants(
@@ -246,24 +257,28 @@ class ReconPipelineImpl:
             # ---- parts (P3) ----
             timer.start("parts")
             mesh_path = storage.local_path(self._key(scan_id, "mesh/object.glb"), scratch)
-            perception.parts(scan_id, frame_set, masks, mesh_path, rev, storage)
+            with timer.creep(0.05, 0.9, 20.0, "detecting and naming parts"):
+                perception.parts(scan_id, frame_set, masks, mesh_path, rev, storage)
             timer.done("parts")
         _ = recon
 
     # -- stage frames -------------------------------------------------------
 
-    def _stage_frames(self, scan: Scan, storage: Storage, frames_dir: Path):
+    def _stage_frames(self, scan: Scan, storage: Storage, frames_dir: Path, timer=None):
         frames_dir.mkdir(parents=True, exist_ok=True)
         if self._frames_provider is not None:
             index = self._frames_provider(scan, storage, frames_dir)
         else:
             index = self._extract_frames(scan, storage, frames_dir)
-        # Upload full-res, model-grid and frames.json.
-        for entry in index.frames:
+        # Upload full-res, model-grid and frames.json, ticking as each keyframe lands.
+        n = len(index.frames)
+        for i, entry in enumerate(index.frames):
             storage.put_file(self._key(scan.scan_id, entry.full_res), frames_dir / entry.frame,
                              "image/jpeg")
             storage.put_file(self._key(scan.scan_id, entry.model),
                              frames_dir / "model" / entry.frame, "image/jpeg")
+            if timer is not None and n:
+                timer.tick((i + 1) / n, f"{i + 1}/{n} keyframes")
         storage.put_file(self._key(scan.scan_id, "frames/frames.json"),
                          frames_dir / "frames.json", "application/json")
         return index
@@ -283,7 +298,9 @@ class ReconPipelineImpl:
 
     # -- geometry raw -------------------------------------------------------
 
-    def _write_geometry_raw(self, scan_id: str, storage: Storage, result: geom_mod.GeometryResult):
+    def _write_geometry_raw(self, scan_id: str, storage: Storage, result: geom_mod.GeometryResult,
+                            timer=None):
+        n = len(result.frames)
         for i, name in enumerate(result.frames):
             stem = Path(name).stem
             buf_d = _npz_bytes(depth=result.depth[i])
@@ -292,6 +309,10 @@ class ReconPipelineImpl:
             buf_c = _npz_bytes(conf=result.confidence[i])
             storage.put_bytes(self._key(scan_id, f"geometry/conf/{stem}.npz"), buf_c,
                               "application/octet-stream")
+            if timer is not None and n:
+                # Inference is done by here; this writes results, so scale the bar over the back
+                # half (0.5 -> 1.0) to reflect that the heavy solve already happened.
+                timer.tick(0.5 + 0.5 * (i + 1) / n, f"geometry {i + 1}/{n} views")
 
     # -- stage scale --------------------------------------------------------
 
@@ -441,7 +462,7 @@ class ReconPipelineImpl:
     def _write_reconstruction(self, scan_id, rev, storage, scale_res, frame_names, index,
                               result, extr_scan, cloud, bbox_min, bbox_max, splat_has,
                               mesh_mobile_uri=None, splat_mobile_uri=None) -> Reconstruction:
-        keyframes = [f"frames/{n}" for n in frame_names[:2]]
+        keyframes = [self._key(scan_id, f"frames/{n}") for n in frame_names[:2]]
         mean_conf = float(np.mean([float(c.mean()) for c in result.confidence])) if result.confidence else 0.0
         recon = Reconstruction(
             scan_id=scan_id,
@@ -587,6 +608,42 @@ class _StageTimer:
         self._stage = stage
         self._t0 = time.monotonic()
         self._progress(stage, "running", 0.0, None)
+
+    def tick(self, fraction: float, message: str | None = None) -> None:
+        """Report intra-stage progress for the stage currently running, so a long stage (frames,
+        geometry) advances the UI instead of sitting at 0% until it finishes. Clamped to (0, 1);
+        the final 1.0/done is still emitted by ``done``."""
+        if self._stage is None:
+            return
+        frac = min(max(float(fraction), 0.0), 0.999)
+        self._progress(self._stage, "running", frac, message)
+
+    @contextmanager
+    def creep(self, start: float, ceiling: float, expected_s: float, message: str | None = None):
+        """Advance the current stage's fraction from ``start`` toward ``ceiling`` on a timer while an
+        opaque, un-instrumentable blocking call runs (e.g. DA3 inference), so the UI shows motion
+        instead of freezing. An easing curve approaches but never reaches the ceiling, so the bar
+        keeps moving even if the call runs longer than expected; real ticks after the call take over
+        the remainder. The ticker is a daemon thread stopped on exit."""
+        import math
+        import threading
+
+        stop = threading.Event()
+
+        def _run() -> None:
+            t0 = time.monotonic()
+            while not stop.wait(1.0):
+                elapsed = time.monotonic() - t0
+                # 1 - exp(-t/tau): ~63% of (ceiling-start) at expected_s, asymptotes to ceiling.
+                frac = start + (ceiling - start) * (1.0 - math.exp(-elapsed / max(expected_s, 1.0)))
+                self.tick(frac, message)
+
+        th = threading.Thread(target=_run, daemon=True)
+        th.start()
+        try:
+            yield
+        finally:
+            stop.set()
 
     def done(self, stage: str, message: str | None = None) -> None:
         dt = time.monotonic() - self._t0 if self._t0 is not None else 0.0

@@ -20,3 +20,4 @@ perf/out/
 perf/out/
 perf/node_modules/
 out/
+.idea/

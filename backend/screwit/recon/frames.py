@@ -18,7 +18,9 @@ import re
 import resource
 import shutil
 import subprocess
+import sys
 from dataclasses import asdict, dataclass
+from functools import lru_cache
 from pathlib import Path
 
 import numpy as np
@@ -27,6 +29,10 @@ MODEL_LONG_SIDE = 504
 GRID_MULTIPLE = 14
 TARGET_KEYFRAMES = (48, 64)
 BLUR_DROP_FRACTION = 0.30
+# Cap the full-res working frames so an oversized phone capture (4K, even 8K) does not blow memory or
+# stall the CPU geometry stage. The model grid is 504px anyway, so a 1920px long side loses nothing
+# useful downstream. Inputs already smaller than this are left untouched.
+FULL_RES_MAX_LONG_SIDE = 1920
 
 # Resource ceilings for every contained ffmpeg invocation (SPEC 3.3).
 FFMPEG_TIMEOUT_S = 300
@@ -93,8 +99,17 @@ def containment_description() -> str:
 
 
 def _rlimits() -> None:  # pragma: no cover - runs only in the child process
-    resource.setrlimit(resource.RLIMIT_CPU, (FFMPEG_CPU_S, FFMPEG_CPU_S))
-    resource.setrlimit(resource.RLIMIT_AS, (FFMPEG_MEM_BYTES, FFMPEG_MEM_BYTES))
+    def _try(which, soft, hard):
+        # Best-effort: a platform that rejects or lacks a limit (macOS raises on RLIMIT_AS, where a
+        # process reserves far more address space than any sane cap) must not crash the child, which
+        # otherwise surfaces as "Exception occurred in preexec_fn" and fails every ffmpeg call.
+        try:
+            resource.setrlimit(which, (soft, hard))
+        except (ValueError, OSError, AttributeError):
+            pass
+
+    _try(resource.RLIMIT_CPU, FFMPEG_CPU_S, FFMPEG_CPU_S)
+    _try(resource.RLIMIT_AS, FFMPEG_MEM_BYTES, FFMPEG_MEM_BYTES)
     try:
         soft, hard = resource.getrlimit(resource.RLIMIT_NPROC)
         # Cap processes as a fork-bomb backstop, but never raise above (or fight) the inherited
@@ -127,6 +142,33 @@ def _run_ffmpeg(args: list[str], *, allow_fail: bool = False) -> subprocess.Comp
         tail = proc.stderr.decode("utf-8", "replace")[-800:]
         raise RuntimeError(f"ffmpeg failed ({proc.returncode}): {tail}")
     return proc
+
+
+@lru_cache(maxsize=1)
+def _hwaccel_decode_args() -> tuple[str, ...]:
+    """Input-side ffmpeg flags for hardware-accelerated DECODE when the build supports it.
+
+    Env override ``SCREWIT_FFMPEG_HWACCEL``: a method name (e.g. ``videotoolbox``, ``cuda``) to force,
+    or ``none``/``0`` to disable. Otherwise auto-detect: on macOS prefer VideoToolbox. Decoded frames
+    are downloaded to system memory automatically (no ``-hwaccel_output_format``), so the existing
+    software tonemap/scale/fps filters run unchanged; if a clip cannot be hw-decoded ffmpeg falls
+    back to software on its own. Returns the flags to place immediately before ``-i``.
+    """
+    override = os.environ.get("SCREWIT_FFMPEG_HWACCEL", "").strip().lower()
+    if override in ("none", "0", "off", "false"):
+        return ()
+    try:
+        proc = _run_ffmpeg(["-hwaccels"], allow_fail=True)
+        available = proc.stdout.decode("utf-8", "replace").lower() + proc.stderr.decode("utf-8", "replace").lower()
+    except Exception:  # noqa: BLE001 - detection must never break extraction
+        return ()
+    if override:
+        return ("-hwaccel", override) if override in available else ()
+    # Auto: VideoToolbox on macOS, otherwise leave decode on the CPU (CUDA needs explicit opt-in via
+    # the env override, since NVENC/CUVID device setup is environment-specific).
+    if sys.platform == "darwin" and "videotoolbox" in available:
+        return ("-hwaccel", "videotoolbox")
+    return ()
 
 
 # --------------------------------------------------------------------------- probe
@@ -282,10 +324,17 @@ def extract_video_frames(video_path: Path, out_dir: Path, *, duration_s: float |
     raw_dir = out_dir / "_raw"
     raw_dir.mkdir(exist_ok=True)
     vf = f"fps={fps:.4f}"
+    # Downscale oversized captures so the long side is at most FULL_RES_MAX_LONG_SIDE, preserving
+    # aspect and keeping both sides even. Smaller inputs pass through unchanged (the min()/max()
+    # make the scale a no-op when the clip is already within the cap).
+    cap = FULL_RES_MAX_LONG_SIDE
+    downscale = (f"scale='if(gte(iw,ih),min(iw,{cap}),-2)':'if(gte(iw,ih),-2,min(ih,{cap}))':"
+                 f"flags=lanczos")
+    vf = f"{downscale},{vf}"
     tone = _tonemap_filter(probe.hdr)
     if tone:
         vf = f"{tone},{vf}"
-    _run_ffmpeg(["-i", str(video_path), "-vf", vf, "-q:v", "2",
+    _run_ffmpeg([*_hwaccel_decode_args(), "-i", str(video_path), "-vf", vf, "-q:v", "2",
                  str(raw_dir / "raw_%05d.jpg")])
 
     raw_frames = sorted(raw_dir.glob("raw_*.jpg"))
@@ -304,10 +353,15 @@ def extract_video_frames(video_path: Path, out_dir: Path, *, duration_s: float |
     keep_n = min(keep_n, TARGET_KEYFRAMES[1])
     kept = sorted(scored[:keep_n], key=lambda t: t[1].name)  # chronological
 
-    dec_w, dec_h = Image.open(raw_frames[0]).size  # what ffmpeg actually decoded (rotation applied)
-    if (dec_w, dec_h) != (probe.width, probe.height):
-        raise RuntimeError(f"decoded frames are {dec_w}x{dec_h} but the probe reported "
-                           f"{probe.width}x{probe.height}; refusing to resample with a wrong aspect")
+    dec_w, dec_h = Image.open(raw_frames[0]).size  # what ffmpeg actually decoded (rotation + cap applied)
+    # The extraction may downscale an oversized capture, so decoded size can differ from the probe.
+    # What must still hold is the aspect ratio (a mismatch there means a wrong rotation/resample).
+    probe_ar = probe.width / probe.height if probe.height else 0.0
+    dec_ar = dec_w / dec_h if dec_h else 0.0
+    if probe_ar and abs(dec_ar - probe_ar) > 0.02 * probe_ar:
+        raise RuntimeError(f"decoded frames are {dec_w}x{dec_h} (aspect {dec_ar:.3f}) but the probe "
+                           f"reported {probe.width}x{probe.height} (aspect {probe_ar:.3f}); "
+                           f"refusing to resample with a wrong aspect")
     dst_w, dst_h = model_grid_size(dec_w, dec_h)
     mapping = axis_mapping(dec_w, dec_h, dst_w, dst_h)
 

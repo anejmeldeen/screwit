@@ -127,11 +127,18 @@ class MediaValidator:
             raise ValueError(f"video codec {codec!r} is not supported (need H.264/HEVC/VP8/VP9)")
         self._check_dims(width, height)
 
-        n_streams = len(_STREAM_RE.findall(text))
-        if n_streams == 0:
+        stream_kinds = [m.decode("ascii", "replace") for m in _STREAM_RE.findall(text)]
+        if not stream_kinds:
             raise ValueError("no media streams found")
-        if n_streams > 6:
-            raise ValueError(f"too many streams ({n_streams}); expected a single video (plus audio)")
+        n_video = stream_kinds.count("Video")
+        n_audio = stream_kinds.count("Audio")
+        # Phones (iPhone especially) attach several timed-metadata tracks (gyro/exposure/focus as
+        # `Data`, plus spatial `Audio`). Those are harmless, so judge only the real media: exactly one
+        # video stream, and a sane number of audio tracks. Data/subtitle tracks are ignored.
+        if n_video != 1:
+            raise ValueError(f"expected exactly one video stream, found {n_video}")
+        if n_audio > 4:
+            raise ValueError(f"too many audio streams ({n_audio}); expected a single video (plus audio)")
 
         # Decode the stream to null: catch a truncated/undecodable bitstream the header hides.
         self._decode_check(local, scratch, declared_s=dur)

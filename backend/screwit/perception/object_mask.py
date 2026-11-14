@@ -103,8 +103,12 @@ class GeometricObjectMasker:
         centres = _camera_centres(cams)
         look = _look_at_point(cams)
         cam_dist = float(np.median(np.linalg.norm(centres - look, axis=1)))
-        # Plane noise grows with distance; 0.5% of the viewing distance, at least 2 mm.
-        thr = max(2.0, 0.005 * cam_dist)
+        # Plane noise grows with viewing distance. Make the threshold SCALE-RELATIVE (a fraction of
+        # cam_dist) rather than a fixed millimetre value: the geometry may be unscaled (DA3 units,
+        # ~metres) when no board resolved true scale, so an absolute mm floor like 2.0 would dwarf a
+        # sub-unit object and make the masker reject everything. The tiny absolute floor only guards
+        # a degenerate (near-zero) cam_dist.
+        thr = max(1e-4, 0.01 * cam_dist)
 
         self._rejected: list[str] = []
         plane = self._support_plane(o3d, pts, centres, thr)
