@@ -32,7 +32,6 @@ export default function LandingPage() {
           </div>
         </div>
         <ScrewMascot />
-        <div className="hero-caption">Scan an object. Explore its parts. Figure it out.</div>
       </section>
 
       <section id="examples" className="examples-section" aria-labelledby="examples-title">

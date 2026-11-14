@@ -71,7 +71,7 @@ button:disabled { cursor: not-allowed; }
 .example-image { height: 200px; position: relative; display: grid; place-items: center; overflow: hidden; background: #e4c64f; }
 .example-image img { position: absolute; width: 100%; height: 100%; object-fit: cover; }
 .thumbnail-fallback { font-size: 48px; opacity: .5; }
-.example-title { display: flex; justify-content: space-between; align-items: center; gap: 16px; padding: 17px 20px; }.example-title h3 { font-size: 16px; font-weight: 500; }
+.example-title { display: flex; justify-content: space-between; align-items: center; gap: 16px; padding: 17px 20px; }.example-title h3 { font-size: 16px; font-weight: 700; }
 .examples-empty { padding: 28px 0; display: flex; flex-wrap: wrap; gap: 16px; justify-content: space-between; color: var(--muted); border-top: 1px solid var(--line); }
 .text-link { text-decoration: underline; text-underline-offset: 4px; }
 .site-footer { display: flex; justify-content: space-between; gap: 14px; border-top: 2px solid var(--ink); padding: 20px 0 30px; font-size: 12px; color: var(--muted); }
