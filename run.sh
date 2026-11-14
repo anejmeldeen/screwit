@@ -62,7 +62,15 @@ ensure_installed() {
   fi
   if command -v npm >/dev/null 2>&1; then
     [ -d "$WEB/node_modules" ] || { info "Installing web dependencies…"; ( cd "$WEB" && npm ci ); }
-    [ -d "$WEB/.next" ] || { info "Building the web app…"; ( cd "$WEB" && npm run build ); }
+    # Always (re)build so `start` serves the LATEST UI. `next start` runs a prebuilt snapshot and
+    # will otherwise keep serving a stale .next after a git pull/merge. Next's cache makes a
+    # no-change rebuild fast. Skip only if SCREWIT_SKIP_BUILD=1 (e.g. iterating on backend only).
+    if [ "${SCREWIT_SKIP_BUILD:-0}" = "1" ] && [ -d "$WEB/.next" ]; then
+      warn "SCREWIT_SKIP_BUILD=1 — serving the existing web build, not rebuilding"
+    else
+      info "Building the web app (always, to serve the latest UI)…"
+      ( cd "$WEB" && npm run build )
+    fi
   else
     warn "npm not found — install Node 22 to run the frontend"
   fi
@@ -71,12 +79,38 @@ ensure_installed() {
 
 alive() { [ -f "$1" ] && kill -0 "$(cat "$1" 2>/dev/null)" >/dev/null 2>&1; }
 
+# Pull the latest code so `start` always serves the newest UI/backend. Safe: fetches, then only
+# fast-forwards; never merges/rebases/forces, and skips entirely if the tree is dirty (so local work
+# is never clobbered) or if offline. Disable with SCREWIT_NO_PULL=1.
+update_repo() {
+  [ "${SCREWIT_NO_PULL:-0}" = "1" ] && { warn "SCREWIT_NO_PULL=1 — skipping git update"; return; }
+  command -v git >/dev/null 2>&1 || return
+  git -C "$ROOT" rev-parse --is-inside-work-tree >/dev/null 2>&1 || return
+  local branch; branch="$(git -C "$ROOT" symbolic-ref --short -q HEAD || echo "")"
+  [ -n "$branch" ] || { warn "detached HEAD — skipping git update"; return; }
+  if [ -n "$(git -C "$ROOT" status --porcelain --untracked-files=no)" ]; then
+    warn "uncommitted changes — skipping git update (serving your local code)"
+    return
+  fi
+  info "Updating from origin/$branch (fast-forward only)…"
+  if git -C "$ROOT" fetch --quiet origin "$branch" 2>/dev/null; then
+    if git -C "$ROOT" merge --ff-only "origin/$branch" >/dev/null 2>&1; then
+      ok "updated to $(git -C "$ROOT" rev-parse --short HEAD)"
+    else
+      warn "local branch diverged from origin/$branch — not fast-forwarding; serving local code"
+    fi
+  else
+    warn "could not reach origin (offline?) — serving local code"
+  fi
+}
+
 start() {
   : "${OPENROUTER_API_KEY:?export OPENROUTER_API_KEY=sk-or-... first (never store it in the repo)}"
   if alive "$BE_PID" || alive "$WEB_PID"; then
     warn "already running (use ./run.sh stop first). backend pid $(cat "$BE_PID" 2>/dev/null), web pid $(cat "$WEB_PID" 2>/dev/null)"
     exit 1
   fi
+  update_repo
   ensure_installed
 
   info "Starting backend → http://127.0.0.1:${SCREWIT_PORT:-8000}  (device=${SCREWIT_DEVICE:-cpu}, SAM3=${SCREWIT_SAM3:-0})"
