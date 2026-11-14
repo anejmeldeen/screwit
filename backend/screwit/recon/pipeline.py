@@ -129,6 +129,43 @@ class ReconPipelineImpl:
             self._geometry_model = geom_mod.DepthAnything3Adapter()
         return self._geometry_model
 
+    def _geometry_with_cache(self, scan, storage, frames_dir, model_names, timer):
+        """Run geometry, reusing a cached GeometryResult when the same video+settings were solved
+        before. The DA3 call is the pipeline's slowest stage; caching it makes a re-run of the same
+        clip near-instant for everything downstream. Cache key = video bytes + view cap + device +
+        model id + infer_gs. Disable with SCREWIT_GEOCACHE=0."""
+        from screwit.recon import geocache
+
+        model = self._geometry()
+        device = geom_mod._default_device()
+        est_s = 8.0 * len(model_names) if device == "cpu" else 0.5 * len(model_names)
+
+        key = None
+        if geocache.cache_enabled() and scan.input.type == "video":
+            try:
+                video_bytes = storage.get_bytes(scan.input.uri)
+                key = geocache.video_key(
+                    video_bytes,
+                    model_id=getattr(model, "model_id", type(model).__name__),
+                    view_cap=len(model_names), device=device,
+                    infer_gs=bool(getattr(model, "infer_gs", True)),
+                )
+            except Exception:  # noqa: BLE001 - hashing must never break the scan
+                key = None
+
+        if key is not None:
+            cached = geocache.load(key)
+            if cached is not None and cached.frames == list(model_names):
+                timer.tick(0.5, f"reusing cached geometry for {len(model_names)} views")
+                return cached
+
+        timer.tick(0.05, f"solving geometry for {len(model_names)} views")
+        with timer.creep(0.05, 0.5, est_s, f"solving geometry for {len(model_names)} views"):
+            result = model.run(frames_dir / "model", model_names)
+        if key is not None:
+            geocache.store(key, result)
+        return result
+
     @staticmethod
     def _key(scan_id: str, rel: str) -> str:
         return f"scans/{scan_id}/{rel}"
@@ -153,13 +190,7 @@ class ReconPipelineImpl:
             # ---- geometry ----
             timer.start("geometry")
             model_names = geom_mod.cap_views(frame_names)  # CPU fallback caps the view count
-            # DA3 inference is one opaque blocking call, so creep the bar from 0.05 toward 0.5 on a
-            # timer while it runs (device-aware estimate: slow on CPU, fast on a GPU). The per-view
-            # raw write below then advances it over the back half as real results land.
-            est_s = 8.0 * len(model_names) if geom_mod._default_device() == "cpu" else 0.5 * len(model_names)
-            timer.tick(0.05, f"solving geometry for {len(model_names)} views")
-            with timer.creep(0.05, 0.5, est_s, f"solving geometry for {len(model_names)} views"):
-                result = self._geometry().run(frames_dir / "model", model_names)
+            result = self._geometry_with_cache(scan, storage, frames_dir, model_names, timer)
             self._write_geometry_raw(scan_id, storage, result, timer)
             timer.done("geometry")
 
@@ -186,13 +217,17 @@ class ReconPipelineImpl:
                 masks = perception.object_mask(frame_set, None, None)
             bbox_min, bbox_max, origin_shift = self._object_bbox(depth_scan, masks, result,
                                                                  extr_scan, scale_res)
-            # No-board origin: fix it NOW, before splat/mesh write anything (SPEC 3.1).
-            if scale_res.frame_origin == "object_bottom_center":
-                cloud_scan = gauss_mod.translate(cloud_scan, origin_shift)
-                extr_scan = extr_scan.copy()
-                extr_scan[:, :3, 3] += (extr_scan[:, :3, :3] @ (-origin_shift))
-                bbox_min = bbox_min + origin_shift
-                bbox_max = bbox_max + origin_shift
+            # Center the object: move its bottom-center to the scan-frame origin. This is a rigid
+            # translation applied AFTER the (board or learned) scale, so it is scale- and
+            # measurement-neutral (every measurement is a difference of points). Done on BOTH paths
+            # now -- previously only the no-board path centered, so a with-board scan sat offset by
+            # the board-to-object distance and rendered off-center. Centering also makes rescale
+            # (which scales about the origin) better-behaved and puts the object on the grid.
+            cloud_scan = gauss_mod.translate(cloud_scan, origin_shift)
+            extr_scan = extr_scan.copy()
+            extr_scan[:, :3, 3] += (extr_scan[:, :3, :3] @ (-origin_shift))
+            bbox_min = bbox_min + origin_shift
+            bbox_max = bbox_max + origin_shift
             timer.done("object_mask", _mask_note(perception))
 
             # Release VRAM before SAM 2 (no-op in dev); geometry tensors are dropped here.
@@ -208,8 +243,8 @@ class ReconPipelineImpl:
             def _depth_cloud():
                 c = gauss_mod.apply_similarity(geom_mod.gaussians_from_depth(result, frame_set.images),
                                                scale_res.r, scale_res.t, scale_res.s)
-                if scale_res.frame_origin == "object_bottom_center":
-                    c = gauss_mod.translate(c, origin_shift)
+                # Match the whole-scene centering shift applied above (both paths now).
+                c = gauss_mod.translate(c, origin_shift)
                 return _crop(c)
 
             splat_source = "gaussian head"
@@ -340,9 +375,11 @@ class ReconPipelineImpl:
                                                   per_view, grid_maps)
             except ValueError:
                 pass
-        # Learned fallback.
+        # Learned fallback. DA3-nested reports a metric scale_factor (depth in metres) -> convert
+        # metres to mm; a non-metric model has scale_factor None -> apply its learned_scale directly.
         learned = result.learned_scale if result.learned_scale is not None else 1.0
-        return scale_mod.scale_from_learned(learned)
+        is_metric = result.scale_factor is not None
+        return scale_mod.scale_from_learned(learned, metric=is_metric)
 
     # -- frame set for perception ------------------------------------------
 

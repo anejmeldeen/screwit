@@ -42,6 +42,28 @@ PARTS_KEY = "scans/{scan_id}/parts.json"
 GRAPH_KEY = "scans/{scan_id}/scene_graph.json"
 
 
+def _titlecase_label(label: str) -> str:
+    """Capitalize a part label for display (SPEC/UX: object and part names are shown Title Case).
+
+    Capitalizes the first letter of each word but preserves tokens that already carry internal
+    capitals or digits (acronyms / codes): "ear cups" -> "Ear Cups", "USB port" -> "USB Port",
+    "D-shaft" -> "D-Shaft", "3.5mm jack" -> "3.5mm Jack". Hyphenated words are title-cased per part.
+    """
+    def _word(w: str) -> str:
+        if not w:
+            return w
+        # Already has an internal capital or is all caps (acronym) -> leave as is but ensure the
+        # first alpha is upper.
+        if any(c.isupper() for c in w[1:]) or w.isupper():
+            return w[0].upper() + w[1:] if w[0].isalpha() else w
+        return w[:1].upper() + w[1:]
+
+    parts = []
+    for token in (label or "").split(" "):
+        parts.append("-".join(_word(seg) for seg in token.split("-")))
+    return " ".join(parts).strip() or label
+
+
 def _resnap(feature_type: str, m: Measurement) -> Measurement:
     """Re-evaluate the snap on a feature radius Measurement, preserving caliper/user_confirmed.
 
@@ -88,9 +110,13 @@ class PerceptionImpl(PerceptionService):
     """
 
     def __init__(self, provider: str = "fake", *, labeller: Labeller | None = None,
-                 scene_builder: SceneBuilder | None = None):
+                 scene_builder: SceneBuilder | None = None, segmenter=None):
         self.labeller = labeller or Labeller(provider)
         self.scene_builder = scene_builder or SceneBuilder(provider)
+        self.provider = provider
+        # Optional multi-part segmenter (Grounded SAM 2). Injected in tests; in the live path it is
+        # created lazily when a SAM 2 checkpoint is configured. None -> single-part fallback.
+        self._segmenter = segmenter
 
     # ---------------------------------------------------------------- persistence helpers
 
@@ -179,14 +205,45 @@ class PerceptionImpl(PerceptionService):
         return parts, graph
 
     def _part_label_images(self, scan_id, frames, masks, names):
-        """Pick the per-frame part-label images. Hero fixtures ship them in the FrameSet-adjacent
-        store; the fake part segmenter just returns them. Falls back to the object mask as one
-        single-part label image when nothing finer is available."""
+        """Pick the per-frame part-label images (0 background, 1..N parts).
+
+        Order of preference:
+        1. Hero fixtures ship precomputed label images on the FrameSet -> use them.
+        2. Live multi-part: Grounded SAM 2 segments each named part into per-frame masks, when a
+           SAM 2 checkpoint is configured and the provider is real. This is what gives separate
+           pieces (ear cups, headband, ...) instead of one blob.
+        3. Fallback: the object mask as a single part.
+        """
         label_images = getattr(frames, "part_label_images", None)
         if label_images is not None:
             return [np.asarray(li, dtype=np.int32) for li in label_images], names
+
+        seg_imgs = self._segment_parts(frames, names, masks)
+        if seg_imgs is not None:
+            used = {int(v) for im in seg_imgs for v in np.unique(im) if v > 0}
+            if used:
+                # Keep names aligned to label ids 1..N; names beyond detected labels are harmless.
+                return seg_imgs, (names or ["part"])
+
         single = [np.where(m, 1, 0).astype(np.int32) for m in masks]
         return single, names or ["part"]
+
+    def _segment_parts(self, frames, names, object_masks=None):
+        """Run the multi-part segmenter if available; None means keep the single-part fallback.
+        ``object_masks`` (the board-excluded object mask per keyframe) is passed so the segmenter can
+        clip part boxes to the object -- keeping the table and background out of every part."""
+        if self.provider == "fake" or not names:
+            return None
+        try:
+            if self._segmenter is None:
+                from screwit.perception import part_segmenter as ps
+
+                if not ps.available():
+                    return None
+                self._segmenter = ps.GroundedSam2PartSegmenter()
+            return self._segmenter.label_images(frames, names, object_masks=object_masks)
+        except Exception:  # noqa: BLE001 - segmentation is best-effort; never fail the scan
+            return None
 
     def _build_part(self, scan_id, pid, name, label_info, verts, recon_rev, glb_key,
                     png_key) -> Part:
@@ -194,7 +251,7 @@ class PerceptionImpl(PerceptionService):
         features, dimensions = self._features_for(pid, name, verts)
         return Part(
             part_id=pid, reconstruction_revision=recon_rev, measurement_revision=1,
-            label=label_info.label, label_confidence=label_info.label_confidence,
+            label=_titlecase_label(label_info.label), label_confidence=label_info.label_confidence,
             description=label_info.description, mesh_uri=glb_key, thumbnail_uri=png_key,
             centroid_mm=tuple(verts.mean(axis=0)), obb=self._obb_contract(obb),
             dimensions=dimensions, features=features,

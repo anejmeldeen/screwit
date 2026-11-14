@@ -19,6 +19,9 @@ from pathlib import Path
 import numpy as np
 
 VOXEL_LENGTH_M = 0.001
+# Truncation band around the surface. Kept at 4 mm: the cube golden (100 +/- 2 mm) regresses to
+# ~107 mm at 10 mm trunc, so a wider band trades dimensional accuracy for hole-filling. Sparse-view
+# fusion gaps are addressed by the mask/centering fixes and pymeshfix repair instead.
 SDF_TRUNC_M = 0.004
 DEPTH_TRUNC_M = 1.5
 WEB_TRIANGLE_CAP = 200_000

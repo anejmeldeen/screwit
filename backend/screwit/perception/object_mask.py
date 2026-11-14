@@ -197,6 +197,14 @@ class GeometricObjectMasker:
     def _support_plane(self, o3d, pts: np.ndarray, centres: np.ndarray, thr: float):
         """(unit normal pointing at the cameras, d) of the first RANSAC plane that supports the
         scene, or None."""
+        # Seed Open3D's RNG so the plane RANSAC is deterministic: otherwise the same geometry can
+        # accept a different plane run-to-run, flipping the mask between object and whole-scene and
+        # making the mesh intermittently empty. (0.19's segment_plane has no seed kwarg; the global
+        # utility RNG is the supported way.)
+        try:
+            o3d.utility.random.seed(0)
+        except Exception:  # noqa: BLE001 - older/newer API without it; non-fatal
+            pass
         rest = pts
         for _ in range(self.max_planes):
             if len(rest) < 500:

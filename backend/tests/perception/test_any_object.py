@@ -99,9 +99,9 @@ def test_non_plumbing_object_gets_sensible_parts_and_no_snaps(storage, tmp_path)
 
     assert len(parts) == 2
     by_id = {p.part_id: p for p in parts}
-    # Sensible, data-driven labels (no "plumbing" anywhere).
+    # Sensible, data-driven labels (no "plumbing" anywhere). Labels are shown Title Case.
     labels_seen = {p.label for p in parts}
-    assert labels_seen == {"mug body", "bracket"}
+    assert labels_seen == {"Mug Body", "Bracket"}
 
     # Geometry picked the right role per part.
     body_part = by_id["p1"]
