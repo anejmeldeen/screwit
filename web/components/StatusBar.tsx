@@ -41,6 +41,37 @@ function dotClass(state?: string) {
   }
 }
 
+// Weight each stage by its share of wall time (geometry dominates; see cpu-verify timings) so a
+// single bar moves monotonically 0->100 across the whole scan. A running stage contributes its
+// own progress fraction; skipped stages are dropped from the denominator so the bar still reaches
+// 100 for mesh input.
+const STAGE_WEIGHT: Record<string, number> = {
+  frames: 0.15,
+  geometry: 0.45,
+  scale: 0.03,
+  object_mask: 0.07,
+  splat: 0.1,
+  mesh: 0.15,
+  parts: 0.05,
+};
+
+function overallPercent(scan: Scan): number {
+  let total = 0;
+  let acc = 0;
+  for (const s of scan.stages) {
+    if (s.state === "skipped") continue;
+    const w = STAGE_WEIGHT[s.name] ?? 0;
+    total += w;
+    if (s.state === "done" || s.state === "failed") {
+      acc += w;
+    } else if (s.state === "running") {
+      acc += w * (s.progress ?? 0);
+    }
+  }
+  if (total <= 0) return 0;
+  return Math.round((acc / total) * 100);
+}
+
 export function StatusBar({
   scan,
   scale = null,
@@ -52,18 +83,29 @@ export function StatusBar({
 
   if (!scan) {
     return (
-      <div
-        data-testid="status-bar"
-        className="flex gap-3 overflow-x-auto py-2"
-      >
-        {STAGE_ORDER.map((s) => (
-          <div
-            key={s.name}
-            data-testid={`stage-${s.name}`}
-            data-state="pending"
-            className="skeleton h-6 w-24 shrink-0"
-          />
-        ))}
+      <div data-testid="status-bar">
+        <div className="mb-2" data-testid="overall-progress" data-percent={0}>
+          <div className="mb-1 flex items-center justify-between text-xs text-slate-400">
+            <span>Loading…</span>
+            <span className="tabular-nums">0%</span>
+          </div>
+          <div className="h-1.5 w-full overflow-hidden rounded-full bg-slate-800">
+            <div
+              className="h-full rounded-full bg-accent transition-[width] duration-500 ease-out"
+              style={{ width: "0%" }}
+            />
+          </div>
+        </div>
+        <div className="flex gap-3 overflow-x-auto py-2">
+          {STAGE_ORDER.map((s) => (
+            <div
+              key={s.name}
+              data-testid={`stage-${s.name}`}
+              data-state="pending"
+              className="skeleton h-6 w-24 shrink-0"
+            />
+          ))}
+        </div>
       </div>
     );
   }
@@ -72,9 +114,28 @@ export function StatusBar({
     scan.stages.map((s) => [s.name as string, s]),
   );
   const failed = scan.stages.find((s) => s.state === "failed");
+  const running = scan.stages.find((s) => s.state === "running");
+  const pct = overallPercent(scan);
+  const showBar = scan.status !== "ready" && !failed;
 
   return (
     <div data-testid="status-bar">
+      {showBar ? (
+        <div className="mb-2" data-testid="overall-progress" data-percent={pct}>
+          <div className="mb-1 flex items-center justify-between text-xs text-slate-400">
+            <span>
+              {running ? (byName.get(running.name)?.message ?? `${running.name}…`) : "Starting…"}
+            </span>
+            <span className="tabular-nums">{pct}%</span>
+          </div>
+          <div className="h-1.5 w-full overflow-hidden rounded-full bg-slate-800">
+            <div
+              className="h-full rounded-full bg-accent transition-[width] duration-500 ease-out"
+              style={{ width: `${pct}%` }}
+            />
+          </div>
+        </div>
+      ) : null}
       <ol className="flex items-center gap-x-2 overflow-x-auto whitespace-nowrap pb-1">
         {STAGE_ORDER.map((s, i) => {
           const stage = byName.get(s.name);

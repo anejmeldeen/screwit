@@ -82,14 +82,21 @@ def detect_network_isolation() -> tuple[bool, str]:
 
 
 def _preexec(limits: Limits):
-    def set_limits() -> None:
-        resource.setrlimit(resource.RLIMIT_CPU, (limits.cpu_s, limits.cpu_s))
-        resource.setrlimit(resource.RLIMIT_AS, (limits.address_space_bytes, limits.address_space_bytes))
+    def _try_setrlimit(which: int, soft: int, hard: int) -> None:
+        # Each limit is best-effort: a platform that rejects or lacks it must not crash the child.
+        # macOS, in particular, raises on RLIMIT_AS (processes reserve far more than any sane cap),
+        # which previously surfaced as "Exception occurred in preexec_fn" and failed every ffmpeg run.
         try:
-            resource.setrlimit(resource.RLIMIT_NPROC, (limits.nproc, limits.nproc))
-        except (ValueError, OSError):
+            resource.setrlimit(which, (soft, hard))
+        except (ValueError, OSError, AttributeError):
             pass
-        resource.setrlimit(resource.RLIMIT_FSIZE, (limits.fsize_bytes, limits.fsize_bytes))
+
+    def set_limits() -> None:
+        _try_setrlimit(resource.RLIMIT_CPU, limits.cpu_s, limits.cpu_s)
+        _try_setrlimit(resource.RLIMIT_AS, limits.address_space_bytes, limits.address_space_bytes)
+        if hasattr(resource, "RLIMIT_NPROC"):
+            _try_setrlimit(resource.RLIMIT_NPROC, limits.nproc, limits.nproc)
+        _try_setrlimit(resource.RLIMIT_FSIZE, limits.fsize_bytes, limits.fsize_bytes)
         os.setsid()
 
     return set_limits

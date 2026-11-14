@@ -263,10 +263,19 @@ def scale_from_board(intrinsics: np.ndarray, extrinsics: np.ndarray,
 # --------------------------------------------------------------------------- learned / manual
 
 def scale_from_learned(learned_scale: float, board_residual_ratio: float | None = None) -> ScaleResult:
-    """Fallback: use the model's own metric scale, rotation deferred to the support plane, origin to
-    the object-mask stage (method='learned', shown as approximate)."""
-    info = ScaleInfo(method="learned", learned_scale_ratio=board_residual_ratio)
-    return ScaleResult(r=np.eye(3), t=np.zeros(3), s=float(learned_scale), info=info,
+    """Fallback when no scale board was seen. DA3-nested depth is already metric METRES
+    (cpu-verify/FINDINGS.md item 5/note 90: is_metric=1, depth in metres), but the whole pipeline
+    downstream works in MILLIMETRES (TSDF divides depth by 1000, the mask threshold and bbox are mm).
+    So the fallback must convert metres -> millimetres: the scan-frame scale is 1000, not the model's
+    ``scale_factor`` (that factor is already baked into the returned metric depth and must not be
+    applied again). ``learned_scale`` is accepted for signature compatibility and recorded, but the
+    applied scale is the fixed metres->mm bridge so the object meshes at a real size.
+
+    Rotation is deferred to the support plane; origin to the object-mask stage. Marked approximate
+    because, unlike the board, this trusts the model's own metric estimate."""
+    metres_to_mm = 1000.0
+    info = ScaleInfo(method="learned", learned_scale_ratio=board_residual_ratio or float(learned_scale))
+    return ScaleResult(r=np.eye(3), t=np.zeros(3), s=metres_to_mm, info=info,
                        frame_origin="object_bottom_center", flags=["learned_scale_approximate"])
 
 

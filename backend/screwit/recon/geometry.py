@@ -273,6 +273,20 @@ def gaussians_from_depth(result: GeometryResult, images: list[np.ndarray], *, st
 CPU_VIEW_CAP = 16
 
 
+def _cpu_view_cap() -> int:
+    """Max views fed to the model on CPU. ``SCREWIT_CPU_VIEW_CAP`` overrides the default of 16; fewer
+    views is faster (DA3 time scales with view count) at some cost to coverage. Clamped to >= 2."""
+    import os
+
+    raw = os.environ.get("SCREWIT_CPU_VIEW_CAP")
+    if not raw:
+        return CPU_VIEW_CAP
+    try:
+        return max(2, int(raw))
+    except ValueError:
+        return CPU_VIEW_CAP
+
+
 def _default_device() -> str:
     """Device for the model adapters: ``SCREWIT_DEVICE`` env, else cuda if available, else cpu."""
     import os
@@ -289,11 +303,12 @@ def _default_device() -> str:
 
 
 def cap_views(frame_names: list[str], device: str | None = None) -> list[str]:
-    """Reduce the view count on CPU (findings 8): evenly subsample to CPU_VIEW_CAP views."""
+    """Reduce the view count on CPU (findings 8): evenly subsample to the CPU view cap."""
     dev = device or _default_device()
-    if dev != "cpu" or len(frame_names) <= CPU_VIEW_CAP:
+    cap = _cpu_view_cap()
+    if dev != "cpu" or len(frame_names) <= cap:
         return list(frame_names)
-    idx = np.linspace(0, len(frame_names) - 1, CPU_VIEW_CAP).round().astype(int)
+    idx = np.linspace(0, len(frame_names) - 1, cap).round().astype(int)
     seen: list[str] = []
     for i in idx:
         if frame_names[i] not in seen:
@@ -342,6 +357,17 @@ def _gaussians_from_prediction(prediction):  # pragma: no cover - needs weights
                          opacities=opac, f_dc=f_dc.astype(np.float32))
 
 
+def _empty_cloud():
+    """A GaussianCloud with no points (head skipped); the pipeline then splats from depth."""
+    from .gaussians import GaussianCloud
+
+    return GaussianCloud(
+        means=np.zeros((0, 3), np.float32), log_scales=np.zeros((0, 3), np.float32),
+        quats_wxyz=np.zeros((0, 4), np.float32), opacities=np.zeros((0,), np.float32),
+        f_dc=np.zeros((0, 3), np.float32),
+    )
+
+
 class DepthAnything3Adapter:
     """DA3NESTED-GIANT-LARGE-1.1 with a Gaussian head (SPEC 6.1 step 2). Lazy-imports torch; real
     runs carry @pytest.mark.gpu. API verified against the CPU findings (cpu-verify/FINDINGS.md)."""
@@ -349,10 +375,19 @@ class DepthAnything3Adapter:
     model_id = "depth-anything/DA3NESTED-GIANT-LARGE-1.1"  # Hugging Face repo id (org/name)
 
     def __init__(self, gs_views_interval: int = 4, ref_view_strategy: str = "middle",
-                 device: str | None = None) -> None:
+                 device: str | None = None, infer_gs: bool | None = None) -> None:
         self.gs_views_interval = gs_views_interval
         self.ref_view_strategy = ref_view_strategy
         self.device = device or _default_device()
+        # The Gaussian head roughly doubles per-view CPU time (cpu-verify findings). It only feeds the
+        # SPLAT, never the mesh or any measurement, and the pipeline already rebuilds the splat from
+        # depth when the head is absent/untrustworthy. So it can be skipped for speed with no loss of
+        # measurement accuracy. SCREWIT_INFER_GS=0 turns it off; default is on (unchanged behaviour).
+        if infer_gs is None:
+            import os
+
+            infer_gs = os.environ.get("SCREWIT_INFER_GS", "1").strip().lower() not in ("0", "false", "off", "no")
+        self.infer_gs = infer_gs
         self._model = None
 
     def _load(self):  # pragma: no cover - needs weights
@@ -368,9 +403,14 @@ class DepthAnything3Adapter:
         # No export_dir: every export format that carries gaussians also renders a gs_video, which
         # crashes on CPU (cpu-verify/FINDINGS.md). The gaussians are read from the in-memory
         # prediction instead (linear scales, probability opacity, wxyz), as the findings recommend.
-        prediction = model.inference(image_paths, infer_gs=True,
+        prediction = model.inference(image_paths, infer_gs=self.infer_gs,
                                      ref_view_strategy=self.ref_view_strategy)
-        cloud = _gaussians_from_prediction(prediction)
+        # With the head off (or if it returned nothing), carry an empty cloud; the pipeline splats
+        # from depth instead, so the splat still matches the mesh.
+        try:
+            cloud = _gaussians_from_prediction(prediction) if self.infer_gs else _empty_cloud()
+        except AttributeError:
+            cloud = _empty_cloud()
 
         depth = [np.asarray(d, dtype=np.float32) for d in prediction.depth]
         conf = [np.asarray(c, dtype=np.float32) for c in prediction.conf]

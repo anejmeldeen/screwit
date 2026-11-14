@@ -141,8 +141,18 @@ class PerceptionImpl(PerceptionService):
 
         mesh = trimesh.load(mesh_path, force="mesh")
         verts = np.asarray(mesh.vertices, dtype=float)
+        faces = np.asarray(mesh.faces, dtype=int)
+        # An empty mesh means an earlier stage found no object surface (commonly: the scale board was
+        # not visible and/or the object was not isolated on a flat surface, so the mask kept nothing).
+        # Fail here with an actionable message instead of a cryptic numpy error from labels.max().
+        if verts.size == 0 or faces.size == 0:
+            raise ValueError(
+                "no object surface was reconstructed - the object could not be isolated. "
+                "Re-record with the object on a flat surface and the printed scale board lying flat "
+                "beside it, fully in view."
+            )
         labels = lifting.vote_labels(verts, label_images, frames.depth_mm, frames.cameras)
-        labels = lifting.smooth_labels(labels, np.asarray(mesh.faces, dtype=int))
+        labels = lifting.smooth_labels(labels, faces)
         submeshes = lifting.split_mesh_by_label(mesh, labels)
 
         parts: list[Part] = []
