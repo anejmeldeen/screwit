@@ -289,6 +289,7 @@ export function ViewerPanel({
           </div>
         ) : null}
 
+        {!isolated ? (
         <label className="flex items-center gap-2">
           <span className="text-slate-400">Explode</span>
           <input
@@ -303,6 +304,7 @@ export function ViewerPanel({
             onMouseDown={() => mode === "splat" && setMode("mesh")}
           />
         </label>
+        ) : null}
 
         <button
           className={`rounded border px-2 py-1 ${
