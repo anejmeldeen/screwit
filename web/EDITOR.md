@@ -30,11 +30,13 @@ The HQ/Phone switch has been removed. All devices use editable per-component mes
 
 ## Part downloads
 
-Click **Isolate…** on a part, then **Download STEP (.stp)** or **Download STL**. Downloads use the current component mesh, including combined parts and GLB node transforms, in scan-frame millimetres. They do not include viewer-only explosion offsets or camera transforms.
+The Parts panel offers **Export whole object**. Select a part for its own download buttons, or click **Isolate…**, then **Download STEP (.stp)** or **Download STL**. Downloads use the current component mesh, including combined parts and GLB node transforms, in scan-frame millimetres. They do not include viewer-only explosion offsets or camera transforms.
 
 STEP exports faceted solids from closed meshes; it does not recover smooth analytic CAD surfaces. Open meshes return a repair message. STL is also available for slicers and mesh-repair tools. Exports do not certify printing fit or mesh quality.
 
-The API route is `GET /api/scans/{scan_id}/parts/{part_id}/export?format=stp|stl`. The server needs the existing `cad` optional dependencies (`pip install -e './backend[cad]'`). Conversion runs in a separate process with a 60-second deadline, a 64 MB input limit, and a 20,000-triangle STEP limit. Larger scans can use STL. No contract changes or model calls are required.
+Whole objects use `GET /api/scans/{scan_id}/export?format=stp|stl` and combine all current saved part meshes. Hidden parts remain included; viewer-only visibility is not a geometry edit.
+
+The part API route is `GET /api/scans/{scan_id}/parts/{part_id}/export?format=stp|stl`. The server needs the existing `cad` optional dependencies (`pip install -e './backend[cad]'`). Conversion runs in a separate process with a 60-second deadline, a 64 MB input limit, and a 20,000-triangle STEP limit. Larger scans can use STL. No contract changes or model calls are required.
 
 ## Verification
 

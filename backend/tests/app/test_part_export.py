@@ -61,3 +61,24 @@ def test_step_rejects_open_mesh_with_actionable_message(tmp_path):
     source.write_bytes(mesh.export(file_type="glb"))
     with pytest.raises(ValueError, match="open edges"):
         convert(source, tmp_path / "open.stp")
+
+
+def test_whole_object_exports_current_combined_geometry(client, tmp_path):
+    cq = pytest.importorskip("cadquery")
+    url = "/api/scans/scn_knob"
+    merged = client.post(url + "/parts/merge", json={"part_ids": ["p1", "p2"]})
+    assert merged.status_code == 200
+    part_response = client.get(url + "/parts/" + merged.json()["part_id"] + "/export?format=stl")
+    response = client.get(url + "/export?format=stl")
+    assert response.status_code == 200, response.text
+    expected = trimesh.load(io.BytesIO(part_response.content), file_type="stl")
+    actual = trimesh.load(io.BytesIO(response.content), file_type="stl")
+    np.testing.assert_allclose(actual.bounds, expected.bounds)
+    assert len(actual.faces) == len(expected.faces)
+    step = client.get(url + "/export?format=stp")
+    assert step.status_code == 200, step.text
+    path = tmp_path / "object.stp"
+    path.write_bytes(step.content)
+    shape = cq.importers.importStep(str(path)).val()
+    assert shape.isValid()
+    assert len(shape.Solids()) == 2

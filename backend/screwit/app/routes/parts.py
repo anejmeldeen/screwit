@@ -68,6 +68,37 @@ def export_part(scan_id: str, part_id: str, reg: RegistryDep,
                              "Cache-Control": "no-store"})
 
 
+@router.get("/scans/{scan_id}/export")
+def export_object(scan_id: str, reg: RegistryDep,
+                  format: Literal["stp", "stl"] = "stl") -> Response:
+    import trimesh
+
+    from screwit.cad.part_export import MAX_MESH_BYTES, export_part_mesh
+
+    parts = _store(reg).list_parts(scan_id)
+    if not parts:
+        raise HTTPException(status_code=404, detail="No object parts are available to export yet")
+    total = 0
+    meshes = []
+    for part in parts:
+        head = reg.storage.head(part.mesh_uri)
+        if head is None:
+            raise HTTPException(status_code=404, detail="An object part mesh is missing")
+        total += head["size"]
+        if total > MAX_MESH_BYTES:
+            raise HTTPException(status_code=413, detail="This object is too large to export (64 MB limit).")
+        scene = trimesh.load(io.BytesIO(reg.storage.get_bytes(part.mesh_uri)), file_type="glb", force="scene")
+        meshes.append(scene.to_geometry())
+    try:
+        data = export_part_mesh(trimesh.util.concatenate(meshes).export(file_type="glb"), format)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from None
+    filename = quote(f"{scan_id}.{format}", safe="")
+    return Response(data, media_type="model/step" if format == "stp" else "model/stl",
+                    headers={"Content-Disposition": f"attachment; filename*=UTF-8''{filename}",
+                             "Cache-Control": "no-store"})
+
+
 @router.patch("/scans/{scan_id}/parts/{part_id}", response_model=Part)
 def patch_part(scan_id: str, part_id: str, patch: PartPatch,
                reg: RegistryDep) -> Part:

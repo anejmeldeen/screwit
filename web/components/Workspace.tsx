@@ -148,6 +148,8 @@ export function Workspace({
             <h2 className="parts-heading">Parts</h2>
             {hiddenPartIds.length > 0 ? <button className="text-xs text-accent" onClick={() => setHiddenPartIds([])}>Show all ({hiddenPartIds.length} hidden)</button> : null}
           </div>
+          {partsReady && parts?.length ? <PartDownloads scanId={scanId} /> : null}
+          {parts?.find(p => p.part_id === selectedId) ? <PartDownloads scanId={scanId} part={parts.find(p => p.part_id === selectedId)} /> : null}
           <PartsPanel
             hiddenPartIds={hiddenPartIds}
             onToggleHidden={id => setHiddenPartIds(ids => ids.includes(id) ? ids.filter(p => p !== id) : [...ids, id])}
