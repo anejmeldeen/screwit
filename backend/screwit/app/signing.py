@@ -13,7 +13,15 @@ _RECON_FIELDS = ("splat_uri", "mesh_uri", "cameras_uri", "splat_mobile_uri", "me
 def _url(storage, value: str | None) -> str | None:
     if value is None or value.startswith(("/", "http://", "https://")):
         return value  # already a URL (signed earlier, or absent)
-    return storage.signed_url(value)
+    try:
+        return storage.signed_url(value)
+    except Exception:  # noqa: BLE001
+        # Some storage backends validate the key shape (LocalStorage requires a 'scans/' prefix) and
+        # raise on a legacy/foreign key -- e.g. a hero fixture whose reconstruction.json still lists
+        # keyframes as 'frames/0001.jpg'. A non-signable asset must not 500 the whole response; serve
+        # it through the asset route as a best-effort unsigned URL (the asset route's own fixtures
+        # fallback still gates it), so the reconstruction loads and the viewer appears.
+        return f"/api/assets/{value}"
 
 
 def reconstruction(storage, recon: Reconstruction) -> Reconstruction:

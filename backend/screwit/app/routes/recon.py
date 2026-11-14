@@ -18,20 +18,12 @@ from screwit.interfaces import StaleRevision
 
 router = APIRouter()
 
-_SIGNED_FIELDS = ("splat_uri", "mesh_uri", "cameras_uri", "splat_mobile_uri", "mesh_mobile_uri")
-
 
 def _store(reg: Registry) -> ScanStore:
     return ScanStore(reg.data)
 
 
 def _sign(reg: Registry, recon: Reconstruction) -> Reconstruction:
-    update: dict = {}
-    for field in _SIGNED_FIELDS:
-        value = getattr(recon, field)
-        if value is not None:
-            update[field] = reg.storage.signed_url(value)
-    update["keyframes"] = [reg.storage.signed_url(k) for k in recon.keyframes]
     return signing.reconstruction(reg.storage, recon)
 
 
