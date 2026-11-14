@@ -31,7 +31,7 @@ REPAIR_TRIANGLE_CAP = 400_000
 # WITHOUT the volume shrink a plain Laplacian causes, so dimensions stay faithful. Applied in
 # repair_mesh (the pipeline cleanup), NOT in fuse_tsdf, so the raw-fusion golden test is unaffected.
 # Tunable via SCREWIT_SMOOTH_ITERS (0 disables).
-SMOOTH_ITERS = 12
+SMOOTH_ITERS = 30
 
 
 @dataclass
@@ -69,6 +69,82 @@ def _smooth_mesh(mesh, iterations: int | None = None):
     except Exception:  # noqa: BLE001 - smoothing is cosmetic; keep the unsmoothed mesh on error
         pass
     return mesh
+
+
+def _remove_support_slab(mesh: MeshResult) -> MeshResult:
+    """Cut away a fused support surface (the table the object lies on).
+
+    Real CPU scans of an object lying on a table fuse the table in as one huge, thin, flat
+    horizontal slab at the base: on the headphones clip 73% of the vertices sat in the bottom 15 mm,
+    inflating the footprint to 218x236 mm (table, not object) and fusing the table into the nearest
+    part. This finds the dominant horizontal plane within the bottom of the mesh via RANSAC and
+    removes the thin slab of triangles lying in it, but ONLY when that slab is a table and not the
+    object's own flat base: it must be nearly horizontal, thin (a table surface, not a tall object),
+    and much WIDER than the object above it (a genuine object base is not). Best-effort and
+    conservative -- on any doubt it keeps everything. Disable with SCREWIT_REMOVE_TABLE=0.
+    """
+    import os
+
+    if os.environ.get("SCREWIT_REMOVE_TABLE", "1").strip().lower() in ("0", "false", "off", "no"):
+        return mesh
+    if mesh.triangles.shape[0] < 500:
+        return mesh
+    try:
+        import open3d as o3d
+
+        V = mesh.vertices_mm.astype(np.float64)
+        F = mesh.triangles.astype(np.int64)
+        ext = V.max(axis=0) - V.min(axis=0)
+        # Scan frame is Z-up (AGENTS.md conventions); use Z as the support normal when it has a real
+        # span, else fall back to the flattest axis.
+        up = 2 if ext[2] > 1e-3 else int(np.argmin(ext))
+        zc = V[:, up]
+        z0, z1 = zc.min(), zc.max()
+        height = z1 - z0
+        if height < 1e-3:
+            return mesh
+        # Candidate table band: the bottom 25% of the height.
+        band = zc <= z0 + 0.25 * height
+        if band.sum() < 0.2 * len(V):  # no dominant low slab -> probably no table
+            return mesh
+        o3d.utility.random.seed(0)
+        pcd = o3d.geometry.PointCloud(o3d.utility.Vector3dVector(V[band]))
+        thr = max(1.0, 0.01 * height)  # ~1 mm or 1% of height
+        (a, b, c, dd), _ = pcd.segment_plane(distance_threshold=thr, ransac_n=3, num_iterations=400)
+        normal = np.array([a, b, c], float)
+        normal /= (np.linalg.norm(normal) or 1.0)
+        # Must be nearly horizontal (plane normal within ~25 deg of the up axis).
+        axis = np.zeros(3)
+        axis[up] = 1.0
+        if abs(float(normal @ axis)) < 0.9:
+            return mesh
+        # Signed distance of every vertex to the plane.
+        dist = V @ normal + dd
+        thin = np.abs(dist) < 2.0 * thr          # vertices lying IN the plane (a ~2 mm slab)
+        med = np.median(dist[~band])
+        above = dist > 3.0 * thr if med > 0 else dist < -3.0 * thr
+        # A table is a THIN, DOMINANT horizontal plane: a large share of all vertices packed into a
+        # few-mm band, with real object geometry standing clear of it. (Footprint width is not a
+        # reliable discriminator -- a flat object and its table have similar spans.) An object's own
+        # flat base is only a small fraction of its vertices, so it fails the dominance test and is
+        # kept.
+        if thin.mean() < 0.30 or above.sum() < 500:
+            return mesh
+        # Remove every triangle that lies within/below the plane (all three vertices not clearly
+        # above it), keeping the object that stands above.
+        above_v = dist > 1.5 * thr if med > 0 else dist < -1.5 * thr
+        drop_face = (~above_v[F]).all(axis=1)
+        if drop_face.all() or (~drop_face).sum() < 500:
+            return mesh
+        keep_v = np.zeros(len(V), bool)
+        keep_v[np.unique(F[~drop_face])] = True
+        remap = -np.ones(len(V), np.int64)
+        remap[keep_v] = np.arange(int(keep_v.sum()))
+        new_F = remap[F[~drop_face]]
+        return MeshResult(vertices_mm=V[keep_v].astype(np.float32), triangles=new_F.astype(np.int32),
+                          vertex_colors=mesh.vertex_colors[keep_v])
+    except Exception:  # noqa: BLE001 - table removal is best-effort; keep the mesh on any error
+        return mesh
 
 
 def _denoise_mesh(mesh):
@@ -224,6 +300,7 @@ def _cleanup_surface(mesh: MeshResult) -> MeshResult:
 
     if mesh.triangles.shape[0] < 100:
         return mesh
+    mesh = _remove_support_slab(mesh)
     try:
         import open3d as o3d
 

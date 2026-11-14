@@ -58,6 +58,76 @@ def _geometry_name_hint(names: list[str]) -> str:
     return "one of: " + ", ".join(cands[:8])
 
 
+def _norm_label(label: str) -> str:
+    """Normalize a part name for same-name comparison: lowercase, strip, drop a trailing digit
+    disambiguator and a trailing plural 's', so 'Ear Pads', 'ear pad', 'Ear Pad 2' all match."""
+    import re
+
+    s = (label or "").strip().lower()
+    s = re.sub(r"\s+\d+$", "", s)       # drop a trailing number (disambiguator)
+    s = re.sub(r"s$", "", s)            # crude singularization ('pads' -> 'pad')
+    return s
+
+
+def _duplicate_counts(labels: list[str]) -> dict[str, int]:
+    """Count how many groups carry each normalized label (to decide which need a numeric suffix)."""
+    counts: dict[str, int] = {}
+    for lb in labels:
+        k = _norm_label(lb)
+        counts[k] = counts.get(k, 0) + 1
+    return counts
+
+
+def _merge_same_name_adjacent(regions: list[dict]) -> list[list[int]]:
+    """Group region indices so that same-name regions that are spatially adjacent become one group.
+
+    Over-segmentation slices one physical part (an ear cushion) into several regions the VLM all
+    names the same; those are adjacent and should merge. Two physically separate parts can share a
+    name (the two ear cushions) but sit far apart, so they must NOT merge. We union same-name
+    regions whose point clouds come within an adjacency distance scaled by their own sizes.
+    Different-name regions never merge here. Returns a list of index groups, largest first.
+    """
+    import numpy as np
+    from scipy.spatial import cKDTree
+
+    n = len(regions)
+    parent = list(range(n))
+
+    def find(x):
+        while parent[x] != x:
+            parent[x] = parent[parent[x]]
+            x = parent[x]
+        return x
+
+    def union(x, y):
+        parent[find(x)] = find(y)
+
+    for i in range(n):
+        vi = regions[i]["verts"]
+        if len(vi) == 0:
+            continue
+        ti = cKDTree(vi)
+        di = float(np.linalg.norm(vi.max(0) - vi.min(0)))
+        for j in range(i + 1, n):
+            if regions[i]["key"] != regions[j]["key"]:
+                continue
+            vj = regions[j]["verts"]
+            if len(vj) == 0:
+                continue
+            dj = float(np.linalg.norm(vj.max(0) - vj.min(0)))
+            # Adjacent if the closest points of the two regions come within ~8% of their mean size:
+            # touching slices of one cushion qualify; two cushions a cushion-width apart do not.
+            radius = 0.08 * (0.5 * (di + dj)) + 2.0
+            d, _ = ti.query(vj, k=1, distance_upper_bound=radius)
+            if np.isfinite(d).any():
+                union(i, j)
+
+    groups: dict[int, list[int]] = {}
+    for i in range(n):
+        groups.setdefault(find(i), []).append(i)
+    return sorted(groups.values(), key=lambda g: -sum(len(regions[i]["verts"]) for i in g))
+
+
 def _titlecase_label(label: str) -> str:
     """Capitalize a part label for display (SPEC/UX: object and part names are shown Title Case).
 
@@ -199,20 +269,34 @@ class PerceptionImpl(PerceptionService):
         #    connectivity. This is the live multi-part path -- SAM 2/3 cannot do part-level on a
         #    single object without a GPU, geometry can. Parts are named from their render by the VLM.
         label_images = getattr(frames, "part_label_images", None)
-        geometry_named = False
         if label_images is not None:
+            # Hero-fixture path: precomputed per-frame label images lifted onto the mesh.
             label_images = [np.asarray(li, dtype=np.int32) for li in label_images]
             part_names = names
             labels = lifting.vote_labels(verts, label_images, frames.depth_mm, frames.cameras)
             labels = lifting.smooth_labels(labels, faces)
             submeshes = lifting.split_mesh_by_label(mesh, labels)
+            parts, part_points = self._build_parts_named_by_order(
+                scan_id, submeshes, part_names, reconstruction_revision, storage)
         else:
+            # Live geometry path: segment by thickness+connectivity, name each region from its
+            # render, then collapse over-splits -- merge regions the VLM gave the SAME name that are
+            # also spatially adjacent (the 4 slices of one ear cushion become one), while keeping
+            # same-named but SEPARATE regions distinct (the two ear cushions stay two). This yields
+            # the natural "Ear Pad 1 / Ear Pad 2 / Headband" instead of five look-alike "Ear Pads".
             from screwit.perception import geo_segment
 
             submeshes = geo_segment.segment_mesh(mesh, target_parts=_target_part_count(names))
-            part_names = names
-            geometry_named = True  # name each part from its render, not by name order
+            parts, part_points = self._build_geometry_parts(
+                scan_id, submeshes, names, reconstruction_revision, storage)
 
+        graph = self.scene_builder.build(scan_id, parts, part_points)
+        self._save_parts(scan_id, parts, storage)
+        self._save_graph(scan_id, graph, storage)
+        return parts, graph
+
+    def _build_parts_named_by_order(self, scan_id, submeshes, part_names, recon_rev, storage):
+        """Hero-fixture build: one Part per submesh, named by segment order (labels carry meaning)."""
         parts: list[Part] = []
         part_points: dict[str, np.ndarray] = {}
         for label in sorted(submeshes):
@@ -227,17 +311,60 @@ class PerceptionImpl(PerceptionService):
             png_key = f"scans/{scan_id}/renders/{pid}.png"
             storage.put_bytes(glb_key, sub.export(file_type="glb"), "model/gltf-binary")
             storage.put_bytes(png_key, thumb, "image/png")
-            # For geometry parts the segment order carries no semantics, so let the VLM name the
-            # part purely from its render (candidate names from Claude guide, but do not force it).
-            proposed = _geometry_name_hint(names) if geometry_named else name
-            label_info = self.labeller.label_part(scan_id, proposed, thumb)
+            label_info = self.labeller.label_part(scan_id, name, thumb)
             parts.append(self._build_part(scan_id, pid, name, label_info, sub_verts,
-                                          reconstruction_revision, glb_key, png_key))
+                                          recon_rev, glb_key, png_key))
+        return parts, part_points
 
-        graph = self.scene_builder.build(scan_id, parts, part_points)
-        self._save_parts(scan_id, parts, storage)
-        self._save_graph(scan_id, graph, storage)
-        return parts, graph
+    def _build_geometry_parts(self, scan_id, submeshes, names, recon_rev, storage):
+        """Geometry build: name each segmented region by its render, merge same-name adjacent
+        regions (collapse over-splits), disambiguate remaining duplicate names, then emit Parts."""
+        import trimesh
+
+        # 1. Name every raw region from its render.
+        regions = []  # list of dicts: mesh, verts, label_info
+        for label in sorted(submeshes):
+            sub = submeshes[label]
+            sv = np.asarray(sub.vertices, dtype=float)
+            thumb = render_mesh_png(sv, np.asarray(sub.faces, dtype=int),
+                                    getattr(sub.visual, "vertex_colors", None))
+            info = self.labeller.label_part(scan_id, _geometry_name_hint(names), thumb)
+            regions.append({"mesh": sub, "verts": sv, "info": info,
+                            "key": _norm_label(info.label)})
+
+        # 2. Union-find merge of same-name regions that touch (centroids within an adjacency radius
+        #    scaled by their sizes). Two separate ear cushions have the same name but are far apart,
+        #    so they do NOT merge; four slices of one cushion are adjacent and do.
+        groups = _merge_same_name_adjacent(regions)
+
+        # 3. Build a Part per merged group; disambiguate duplicate display names (Ear Pad 1/2).
+        parts: list[Part] = []
+        part_points: dict[str, np.ndarray] = {}
+        name_counts = _duplicate_counts([regions[g[0]]["info"].label for g in groups])
+        seen: dict[str, int] = {}
+        for gi, group in enumerate(groups):
+            pid = f"p{gi + 1}"
+            meshes = [regions[i]["mesh"] for i in group]
+            merged = trimesh.util.concatenate(meshes) if len(meshes) > 1 else meshes[0]
+            sub_verts = np.asarray(merged.vertices, dtype=float)
+            part_points[pid] = sub_verts
+            info = regions[group[0]]["info"]
+            base_label = info.label
+            if name_counts.get(_norm_label(base_label), 0) > 1:
+                seen[_norm_label(base_label)] = seen.get(_norm_label(base_label), 0) + 1
+                disp = f"{base_label} {seen[_norm_label(base_label)]}"
+            else:
+                disp = base_label
+            thumb = render_mesh_png(sub_verts, np.asarray(merged.faces, dtype=int),
+                                    getattr(merged.visual, "vertex_colors", None))
+            glb_key = f"scans/{scan_id}/parts/{pid}.glb"
+            png_key = f"scans/{scan_id}/renders/{pid}.png"
+            storage.put_bytes(glb_key, merged.export(file_type="glb"), "model/gltf-binary")
+            storage.put_bytes(png_key, thumb, "image/png")
+            part = self._build_part(scan_id, pid, disp, info, sub_verts, recon_rev, glb_key, png_key)
+            part = part.model_copy(update={"label": _titlecase_label(disp)})
+            parts.append(part)
+        return parts, part_points
 
     def _build_part(self, scan_id, pid, name, label_info, verts, recon_rev, glb_key,
                     png_key) -> Part:
