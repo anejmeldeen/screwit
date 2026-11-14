@@ -5,7 +5,7 @@ import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { Matrix4, Vector3, PerspectiveCamera, GridHelper, Box3, Quaternion } from "three";
 import { OrbitControls as OrbitControlsImpl } from "three/examples/jsm/controls/OrbitControls.js";
 import type { CadResult, Part, Reconstruction } from "@/lib/contracts.gen";
-import { explodeOffsets, type FeaturePick, type MeasureMode } from "@/lib/editorGeometry";
+import { type FeaturePick, type MeasureMode } from "@/lib/editorGeometry";
 import { scanToWebMatrix } from "@/lib/transform";
 import { PartMeshes } from "./PartMeshes";
 import { MeasureLayer, PickedPoint } from "./MeasureLayer";
@@ -131,14 +131,13 @@ function FocusController({
   return null;
 }
 
-function FitObject({ parts, matrix, explode }: { parts: Part[]; matrix: Matrix4; explode: number }) {
+function FitObject({ parts, matrix }: { parts: Part[]; matrix: Matrix4 }) {
   const camera = useThree((s) => s.camera);
   const controls = useThree((s) => s.controls as unknown as OrbitControlsImpl | null);
   const size = useThree((s) => s.size);
   const invalidate = useThree((s) => s.invalidate);
   const bounds = useMemo(() => {
     const box = new Box3();
-    const offsets = explodeOffsets(parts);
     for (const part of parts) {
       const center = part.obb.center as unknown as number[];
       const extent = part.obb.extent as unknown as number[];
@@ -146,11 +145,11 @@ function FitObject({ parts, matrix, explode }: { parts: Part[]; matrix: Matrix4;
       for (const x of [-1, 1]) for (const y of [-1, 1]) for (const z of [-1, 1]) {
         box.expandByPoint(new Vector3(x * extent[0] / 2, y * extent[1] / 2, z * extent[2] / 2)
           .applyQuaternion(rotation).add(new Vector3(...center))
-          .addScaledVector(offsets.get(part.part_id)!, explode).applyMatrix4(matrix));
+          .applyMatrix4(matrix));
       }
     }
     return box;
-  }, [parts, matrix, explode]);
+  }, [parts, matrix]);
   useEffect(() => {
     if (!controls || bounds.isEmpty()) return;
     const center = bounds.getCenter(new Vector3());
@@ -206,7 +205,7 @@ export function Viewer(props: ViewerProps) {
 
   const parentMatrix = useMemo(() => scanToWebMatrix(recon), [recon]);
   const gridHelper = useMemo(() => {
-    const g = new GridHelper(2, 40, 0x647076, 0x1f2937);
+    const g = new GridHelper(2, 40, 0xf1d45d, 0x57564a);
     return g;
   }, []);
   const { map: centroids, register } = useCentroidRegistry();
@@ -237,7 +236,7 @@ export function Viewer(props: ViewerProps) {
         (camera as PerspectiveCamera).lookAt(0, 0.05, 0);
       }}
     >
-      <color attach="background" args={["#252a2d"]} />
+      <color attach="background" args={["#181918"]} />
       <ambientLight intensity={0.8} />
       <directionalLight position={[1, 2, 1]} intensity={1.1} />
       <directionalLight position={[-1, 1, -1]} intensity={0.4} />
@@ -298,7 +297,7 @@ export function Viewer(props: ViewerProps) {
       </group>
 
       <OrbitControlsLite />
-      <FitObject parts={parts} matrix={parentMatrix} explode={explode} />
+      <FitObject parts={parts} matrix={parentMatrix} />
       <FocusController target={focusTarget} />
       <FpsSampler onSample={onFpsSample} />
     </Canvas>

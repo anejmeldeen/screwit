@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
-import { assetUrl } from "@/lib/storage";
+import { ExamplePreview } from "@/components/ExamplePreview";
 import type { DemoScan } from "@/lib/contracts.gen";
 import { Skeleton } from "@/components/ui";
 import { ScrewMascot } from "@/components/ScrewMascot";
@@ -32,7 +32,6 @@ export default function LandingPage() {
           </div>
         </div>
         <ScrewMascot />
-        <div className="hero-caption">Scan an object. Explore its parts. Figure it out.</div>
       </section>
 
       <section id="examples" className="examples-section" aria-labelledby="examples-title">
@@ -47,9 +46,7 @@ export default function LandingPage() {
           <div className="example-grid">{demos.map((demo) => (
             <Link key={demo.scan_id} href={`/scan/${demo.scan_id}`} className="example-card">
               <div className="example-image">
-                <span className="thumbnail-fallback" aria-hidden="true">↗</span>
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={assetUrl(demo.thumbnail_uri)} alt="" loading="lazy" onError={(e) => { e.currentTarget.style.visibility = "hidden"; }} />
+                <ExamplePreview scanId={demo.scan_id} />
               </div>
               <div className="example-title"><h3>{demo.title}</h3><span aria-hidden="true">↗</span></div>
             </Link>

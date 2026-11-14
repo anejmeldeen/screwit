@@ -4,7 +4,7 @@
 
 - Each Parts card has **Hide/Show** and **Isolate…**. **Show all** restores hidden components.
 - Isolate opens a separate modal viewing window with its own orbit controls and measurement state. Close or Escape returns to the assembly. Isolation does not change assembly visibility or source data.
-- Explode separates parts around the assembly center and resolves overlapping bounding spheres. It preserves each part's internal geometry. The camera reframes the exploded assembly. The slider at zero restores the original placement exactly.
+- Explode separates parts around the assembly center and resolves overlapping bounding spheres. It preserves each part's internal geometry. Separating parts preserves the current camera angle, target, and zoom. The slider at zero restores the original placement exactly.
 - Hiding parts, exploding, or measuring uses the component meshes even on a phone. Whole-object mobile meshes and splats do not carry selectable component identities. Show all components before returning to Splat.
 
 ## Measurements
@@ -20,20 +20,32 @@ Click Clear to start again. After a completed two-feature measurement, clicking 
 
 These are measurements of the reconstructed triangle mesh, not exact analytic CAD geometry or caliper measurements. Feature edges are boundaries and creases of at least 30 degrees; smooth segments are joined across shallow turns, while corners/junctions break chains. Coplanar adjacent triangles form a face; curved surfaces remain faceted. Rotate the model or isolate a component to reach obscured surfaces. Mesh resolution and scan calibration limit measurement accuracy.
 
-## Phone/HQ investigation (existing behavior retained)
+## Theme and panel sizing
 
-`ViewerPanel.tsx` stores the selected quality and uses `splatUriFor` in `lib/device.ts` to choose `splat_uri` (HQ) or `splat_mobile_uri` (Phone). The original is used if no mobile splat exists.
+The editor uses the homepage yellow (#f1d45d) on warm charcoal, with brighter grid lines and bold dark button labels. Measurement tables wrap labels and stay within their cards.
 
-The mesh path does not read the selected quality. After merging the upstream editor redesign, all devices use per-component `Part.mesh_uri` assets so editing and explosion remain available on phones. The `meshUriFor` quality helper exists but is not wired into the viewer. Therefore toggling Phone/HQ in desktop Mesh view does not change the mesh. In Splat view the resolution/asset size can change, but similar fixture assets may look alike. This switch is not a change of model units or dimensions. Its handlers and quality selection are unchanged by this editor work.
+Drag the yellow divider handles to resize Parts and Assistant, or focus a handle and use arrow keys (Home/End select the minimum/maximum). Wide screens resize panel widths; narrower layouts resize stacked panel heights. Panels can expand into the available window space, leaving a 220px minimum viewer area; stacked panels can grow to at least 1600px tall.
 
-## STEP/STP feasibility (no export changes made)
+The HQ/Phone switch has been removed. All devices use editable per-component meshes; splat quality is selected automatically from device capability.
 
-Generated CAD already has STEP and STL output: see `backend/screwit/cad/service.py` (CadQuery exports) and `components/cards/Cards.tsx` (download actions). `.step` and `.stp` denote the same family of exchange files.
+## Part downloads
 
-The viewer's scanned components are GLB triangle meshes, and the splat is a visual point-based representation. Exporting those as a faceted STEP representation is possible with additional conversion code, but does not recover smooth, editable CAD features. A useful editable STEP solid needs mesh repair plus surface fitting/reconstruction (and assembly/unit handling). For printing a scanned object, a repaired watertight STL/3MF is the more direct path; STEP itself does not make a scan watertight or printable.
+The Parts panel offers **Export whole object**. Select a part for its own download buttons, or click **Isolate…**, then **Download STEP (.stp)** or **Download STL**. Downloads use the current component mesh, including combined parts and GLB node transforms, in scan-frame millimetres. They do not include viewer-only explosion offsets or camera transforms.
+
+STEP exports faceted solids from closed meshes; it does not recover smooth analytic CAD surfaces. Open meshes return a repair message. STL is also available for slicers and mesh-repair tools. Exports do not certify printing fit or mesh quality.
+
+Whole objects use `GET /api/scans/{scan_id}/export?format=stp|stl` and combine all current saved part meshes. Hidden parts remain included; viewer-only visibility is not a geometry edit.
+
+The part API route is `GET /api/scans/{scan_id}/parts/{part_id}/export?format=stp|stl`. The server needs the existing `cad` optional dependencies (`pip install -e './backend[cad]'`). Conversion runs in a separate process with a 60-second deadline, a 64 MB input limit, and a 20,000-triangle STEP limit. Larger scans can use STL. No contract changes or model calls are required.
 
 ## Verification
 
 From `web/`: `npm test`, `npm run typecheck`, `npm run lint`, `npm run build`.
 
-`tests/editorGeometry.test.ts` checks boundary/crease extraction, curved rim lengths and axis travel, segment and finite-face distances, intersecting faces, separation of coaxial parts, independent cloned materials, and feature extraction from every bundled component GLB. The existing frontend tests also run. Full browser interaction verification is pending; screen-based checks were stopped after the user questioned the OS permission prompt.
+Backend: `backend/.venv/bin/python -m pytest backend/tests/app -q`.
+
+`tests/editorGeometry.test.ts` checks boundary/crease extraction, curved rim lengths and axis travel, segment and finite-face distances, intersecting faces, separation of coaxial parts, independent cloned materials, and feature extraction from every bundled component GLB.
+
+`backend/tests/app/test_part_export.py` reimports STEP output to verify solid validity, dimensions, volume, disconnected components and node transforms; it also covers STL downloads, missing parts, unsupported formats and open-mesh errors.
+
+Browser checks cover the narrow layout, desktop panel resizing with the keyboard, measurement-card containment, and isolation download controls. File conversion and download responses are verified by the backend tests.
