@@ -26,6 +26,12 @@ SDF_TRUNC_M = 0.004
 DEPTH_TRUNC_M = 1.5
 WEB_TRIANGLE_CAP = 200_000
 REPAIR_TRIANGLE_CAP = 400_000
+# Taubin smoothing of the fused surface. TSDF at 1 mm voxels leaves a stair-stepped (aliased)
+# surface on real CPU scans; Taubin (lambda>0 then mu<0 passes) removes that high-frequency noise
+# WITHOUT the volume shrink a plain Laplacian causes, so dimensions stay faithful. Applied in
+# repair_mesh (the pipeline cleanup), NOT in fuse_tsdf, so the raw-fusion golden test is unaffected.
+# Tunable via SCREWIT_SMOOTH_ITERS (0 disables).
+SMOOTH_ITERS = 12
 
 
 @dataclass
@@ -43,6 +49,70 @@ def _make_volume(voxel_length: float = VOXEL_LENGTH_M, sdf_trunc: float = SDF_TR
         sdf_trunc=sdf_trunc,
         color_type=o3d.pipelines.integration.TSDFVolumeColorType.RGB8,
     )
+
+
+def _smooth_mesh(mesh, iterations: int | None = None):
+    """Taubin-smooth an Open3D mesh in place of plain Laplacian: it removes TSDF staircase noise
+    without shrinking the volume (dimensions preserved). No-op when disabled or the mesh is tiny.
+    Vertex colours are preserved by Open3D's filter. Best-effort: never fail the fuse."""
+    import os
+
+    if iterations is None:
+        iterations = int(os.environ.get("SCREWIT_SMOOTH_ITERS", SMOOTH_ITERS))
+    if iterations <= 0 or len(mesh.triangles) < 50:
+        return mesh
+    try:
+        sm = mesh.filter_smooth_taubin(number_of_iterations=iterations)
+        if len(sm.triangles) >= 50:  # guard against a degenerate smoothing result
+            sm.compute_vertex_normals()
+            return sm
+    except Exception:  # noqa: BLE001 - smoothing is cosmetic; keep the unsmoothed mesh on error
+        pass
+    return mesh
+
+
+def _denoise_mesh(mesh):
+    """Drop stray floaters and TSDF speckle before smoothing. Two cheap passes:
+    1. Remove tiny disconnected triangle clusters (specks under ~0.5% of the largest cluster) that
+       survive even the keep-all component rule.
+    2. Statistical outlier removal on the vertices: a vertex far from its neighbours (a floater
+       spat out by a bad depth pixel) is removed and its triangles with it.
+    No-op/best-effort: on any error or a tiny mesh, return the mesh unchanged. Disable with
+    SCREWIT_DENOISE=0."""
+    import os
+
+    import numpy as np
+
+    if os.environ.get("SCREWIT_DENOISE", "1").strip().lower() in ("0", "false", "off", "no"):
+        return mesh
+    if len(mesh.triangles) < 100:
+        return mesh
+    try:
+        labels, counts, _ = mesh.cluster_connected_triangles()
+        counts = np.asarray(counts)
+        if counts.size > 1:
+            keep_min = max(25, int(0.005 * counts.max()))
+            small = {i for i, c in enumerate(counts) if c < keep_min}
+            if small:
+                mesh.remove_triangles_by_mask(np.isin(np.asarray(labels), list(small)))
+                mesh.remove_unreferenced_vertices()
+        # Statistical outlier removal maps cleanly through the vertex set: build a cloud, find the
+        # kept indices, and drop every triangle that references a removed vertex.
+        if len(mesh.vertices) >= 50:
+            import open3d as o3d
+
+            pcd = o3d.geometry.PointCloud(mesh.vertices)
+            _, keep_idx = pcd.remove_statistical_outlier(nb_neighbors=20, std_ratio=3.0)
+            if 0 < len(keep_idx) < len(mesh.vertices):
+                keep_mask = np.zeros(len(mesh.vertices), dtype=bool)
+                keep_mask[np.asarray(keep_idx)] = True
+                tris = np.asarray(mesh.triangles)
+                tri_ok = keep_mask[tris].all(axis=1)
+                mesh.remove_triangles_by_mask(~tri_ok)
+                mesh.remove_unreferenced_vertices()
+    except Exception:  # noqa: BLE001 - denoise is cosmetic; keep the mesh on any error
+        pass
+    return mesh
 
 
 def fuse_tsdf(depth_mm_list: list[np.ndarray], color_list: list[np.ndarray],
@@ -125,11 +195,17 @@ def _decimate(mesh: MeshResult, target_triangles: int) -> MeshResult:
 def repair_mesh(mesh: MeshResult, triangle_cap: int = REPAIR_TRIANGLE_CAP) -> MeshResult:
     """Close small holes with pymeshfix. pymeshfix time grows steeply with size on noisy real scans
     (about 11 s at 225k triangles, 11 minutes at 1M on 32 cores), so larger meshes are decimated to
-    ``triangle_cap`` first; at 1 mm voxels that still keeps sub-millimetre surface detail."""
+    ``triangle_cap`` first; at 1 mm voxels that still keeps sub-millimetre surface detail.
+
+    Before repair, the fused surface is denoised (stray floaters, TSDF speckle) and Taubin-smoothed
+    (removes the 1 mm voxel staircase without shrinking the volume). This is the pipeline's cosmetic
+    cleanup; it lives here, not in ``fuse_tsdf``, so the raw-fusion golden test measures unsmoothed
+    geometry while every real scan gets the clean surface."""
     import pymeshfix
 
     if mesh.triangles.shape[0] == 0:
         return mesh
+    mesh = _cleanup_surface(mesh)
     if mesh.triangles.shape[0] > triangle_cap:
         mesh = _decimate(mesh, triangle_cap)
     fixer = pymeshfix.MeshFix(mesh.vertices_mm.astype(np.float64), mesh.triangles.astype(np.int32))
@@ -139,6 +215,35 @@ def repair_mesh(mesh: MeshResult, triangle_cap: int = REPAIR_TRIANGLE_CAP) -> Me
     # pymeshfix drops colours; re-sample nearest original vertex colour.
     colors = _nearest_colors(mesh.vertices_mm, mesh.vertex_colors, v)
     return MeshResult(vertices_mm=v, triangles=f, vertex_colors=colors)
+
+
+def _cleanup_surface(mesh: MeshResult) -> MeshResult:
+    """Denoise + Taubin-smooth a MeshResult via an Open3D round-trip, preserving vertex colours.
+    Best-effort: returns the input unchanged on any error or a tiny mesh."""
+    import numpy as _np
+
+    if mesh.triangles.shape[0] < 100:
+        return mesh
+    try:
+        import open3d as o3d
+
+        om = o3d.geometry.TriangleMesh(
+            o3d.utility.Vector3dVector(mesh.vertices_mm.astype(_np.float64)),
+            o3d.utility.Vector3iVector(mesh.triangles.astype(_np.int32)))
+        om.vertex_colors = o3d.utility.Vector3dVector(
+            _np.clip(mesh.vertex_colors, 0, 1).astype(_np.float64))
+        om = _denoise_mesh(om)
+        om = _smooth_mesh(om)
+        v = _np.asarray(om.vertices, _np.float32)
+        t = _np.asarray(om.triangles, _np.int32)
+        if v.shape[0] < 3 or t.shape[0] < 1:
+            return mesh
+        cols = _np.asarray(om.vertex_colors)
+        if cols.shape[0] != v.shape[0]:
+            cols = _nearest_colors(mesh.vertices_mm, mesh.vertex_colors, v)
+        return MeshResult(vertices_mm=v, triangles=t, vertex_colors=cols)
+    except Exception:  # noqa: BLE001 - cleanup is cosmetic; keep the raw mesh on error
+        return mesh
 
 
 def _nearest_colors(src_v: np.ndarray, src_c: np.ndarray, dst_v: np.ndarray) -> np.ndarray:

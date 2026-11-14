@@ -20,6 +20,8 @@
 #   SCREWIT_PORT (8000)  WEB_PORT (3000)  SCREWIT_DEVICE (cpu)  SCREWIT_CPU_VIEW_CAP (8)
 #   SCREWIT_INFER_GS (0)  SCREWIT_MODEL (anthropic/claude-sonnet-4.5)  SCREWIT_DATA_DIR (<repo>/data-live)
 #   SCREWIT_LLM (openrouter)  SCREWIT_SAM3 (0)  SCREWIT_SAM3_BACKEND (auto)  SCREWIT_RELOAD (0)
+#   Mesh cleanup (improves surface quality; usually leave at defaults):
+#   SCREWIT_SMOOTH_ITERS (12, Taubin smoothing passes; 0 disables)  SCREWIT_DENOISE (1; 0 disables)
 
 set -euo pipefail
 

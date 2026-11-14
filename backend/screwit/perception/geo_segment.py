@@ -127,22 +127,46 @@ def _label_faces(mesh, target_parts: int) -> np.ndarray | None:
         _, nn = tree.query(fc[~known])
         lab[~known] = lab[known][nn]
 
-    def region_adjacency(lbl):
+    def region_adjacency_weighted(lbl):
+        """Shared-boundary strength between regions: how many adjacent face-pairs cross each region
+        pair. A long shared seam (the headband's two arms meeting over the top bridge) outweighs a
+        single-face touch (an arm brushing a cushion), so merges follow real connectivity."""
         a, b = lbl[adj[:, 0]], lbl[adj[:, 1]]
-        return {(min(x, y), max(x, y)) for x, y in zip(a, b) if x != y}
+        diff = a != b
+        pairs = {}
+        for x, y in zip(a[diff], b[diff], strict=True):
+            k = (min(x, y), max(x, y))
+            pairs[k] = pairs.get(k, 0) + 1
+        return pairs
 
     def mean_thick(lbl, u):
         return float(sdf[lbl == u].mean())
 
-    # Merge the smallest region into its most thickness-similar neighbour until target_parts remain.
+    def centroid(lbl, u):
+        return fc[lbl == u].mean(axis=0)
+
+    # Reduce to target_parts by repeatedly merging the smallest region. Prefer the mesh-adjacent
+    # neighbour it shares the LONGEST seam with (ties broken by thickness similarity): this keeps a
+    # thin headband arm joined to the other arm over the top bridge rather than to a cushion it only
+    # brushes. When the smallest region is a DISCONNECTED component (no shared seam at all -- common
+    # on sparse CPU fusion, which is exactly why a headband came out in two halves), fall back to the
+    # spatially NEAREST region by centroid, so detached pieces still rejoin instead of leaving dozens
+    # of fragments. Either way the loop always makes progress and reaches target_parts.
     while len(set(lab.tolist())) > max(1, target_parts):
         uniq, cnt = np.unique(lab, return_counts=True)
         small = int(uniq[np.argmin(cnt)])
-        ra = region_adjacency(lab)
-        neigh = [(b if a == small else a) for (a, b) in ra if small in (a, b)]
-        if not neigh:
-            break
-        st = mean_thick(lab, small)
-        target = min(neigh, key=lambda u: abs(mean_thick(lab, u) - st))
+        pairs = region_adjacency_weighted(lab)
+        neigh = [(b if a == small else a, w) for (a, b), w in pairs.items() if small in (a, b)]
+        if neigh:
+            st = mean_thick(lab, small)
+            max_w = max(w for _, w in neigh)
+            # Candidates within 60% of the strongest seam; among them pick the most thickness-similar.
+            strong = [u for u, w in neigh if w >= 0.6 * max_w]
+            target = min(strong, key=lambda u: abs(mean_thick(lab, u) - st))
+        else:
+            # Disconnected: merge into the nearest OTHER region by centroid distance.
+            sc = centroid(lab, small)
+            others = [u for u in uniq.tolist() if u != small]
+            target = min(others, key=lambda u: float(np.linalg.norm(centroid(lab, u) - sc)))
         lab[lab == small] = target
     return lab

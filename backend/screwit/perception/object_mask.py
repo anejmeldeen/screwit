@@ -49,6 +49,16 @@ def _backproject(depth: np.ndarray, k: np.ndarray, w2c: np.ndarray, stride: int 
     return world, ys, xs
 
 
+def _shrink_factor(uv: np.ndarray, spacing: float) -> float:
+    """Scale factor (<=1) that pulls a 2D footprint inward toward its centroid by about one sample
+    spacing, so the base add-back stays inside the true object outline. Clamped to [0.5, 0.98]."""
+    centroid = uv.mean(axis=0)
+    reach = float(np.median(np.linalg.norm(uv - centroid, axis=1)))
+    if reach <= 1e-9:
+        return 0.98
+    return float(np.clip(1.0 - spacing / reach, 0.5, 0.98))
+
+
 def _camera_centres(cams) -> np.ndarray:
     out = []
     for c in cams:
@@ -163,7 +173,25 @@ class GeometricObjectMasker:
         v_axis = np.cross(n, u_axis)
         obj_h = obj @ n + d
         base = obj[obj_h <= np.percentile(obj_h, 10)]
-        base_tree = cKDTree(np.stack([base @ u_axis, base @ v_axis], axis=1)) if len(base) else None
+        # The base add-back recovers the object's bottom contact patch (the band was excluded to
+        # drop the table). On an UPRIGHT object that is a few mm; on a FLAT, wide object (an ear
+        # cushion lying down) a naive nearest-point test grabs a ring of table all around the
+        # perimeter and fuses it in. So re-add a band pixel only when it lies INSIDE the object's
+        # base footprint (the 2D hull of the base points), shrunk inward by one sample spacing, not
+        # merely near some base point. A perimeter ring of table falls outside and is dropped.
+        base_uv = np.stack([base @ u_axis, base @ v_axis], axis=1) if len(base) else None
+        base_tri = base_centroid = None
+        if base_uv is not None and len(base_uv) >= 3:
+            from scipy.spatial import Delaunay
+
+            try:
+                base_centroid = base_uv.mean(axis=0)
+                # Shrink the footprint toward its centroid by one spacing so the add-back cannot
+                # reach past the true object outline into the table.
+                shrunk = base_centroid + (base_uv - base_centroid) * _shrink_factor(base_uv, spacing)
+                base_tri = Delaunay(shrunk)
+            except Exception:  # noqa: BLE001 - degenerate (collinear) base -> skip add-back
+                base_tri = None
 
         out = []
         total = 0
@@ -180,11 +208,11 @@ class GeometricObjectMasker:
                 sel = np.flatnonzero(above)[hit]
                 mask[ys[sel], xs[sel]] = True
                 band = np.flatnonzero((h_all > -thr) & ~above)
-                if base_tree is not None and len(band):
+                if base_tri is not None and len(band):
                     q = p[band]
-                    dist, _ = base_tree.query(np.stack([q @ u_axis, q @ v_axis], axis=1), k=1,
-                                              distance_upper_bound=spacing)
-                    keep = band[np.isfinite(dist)]
+                    quv = np.stack([q @ u_axis, q @ v_axis], axis=1)
+                    inside = base_tri.find_simplex(quv) >= 0  # strictly within the base footprint
+                    keep = band[inside]
                     mask[ys[keep], xs[keep]] = True
             out.append(mask)
             total += int(mask.sum())

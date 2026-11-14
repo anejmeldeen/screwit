@@ -23,4 +23,6 @@ out/
 .idea/
 .run/
 data-live/
-object-1080p.mp4*.mov
+object-1080p.mp4
+*.mov
+!example.mov
