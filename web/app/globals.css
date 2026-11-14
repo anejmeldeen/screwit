@@ -82,3 +82,42 @@ button:disabled { cursor: not-allowed; }
 @media(max-width:800px) { .site-header { margin: 0 24px; }.home-page { padding: 0 24px; }.home-hero { min-height: 650px; padding-top: 45px; }.mascot-wrap { right: 2%; bottom: 55px; }.hero-actions { margin-top: 30px; }.hero-copy h1 { font-size: clamp(80px,15vw,120px); }.hero-subtitle { font-size: 34px; } }
 @media(max-width:480px) { :root { --header-height: 74px; }.site-header { margin: 0 18px; padding: 17px 0; gap: 8px; }.wordmark { font-size: 22px; }.site-header nav { font-size: 12px; gap: 0; }.site-header nav a { padding: 9px 8px; }.home-page { padding: 0 18px; }.home-hero { min-height: 670px; padding-top: 38px; }.hero-copy h1 { font-size: 83px; }.hero-subtitle { margin-top: 18px; }.hero-actions { flex-direction: column; align-items: flex-start; gap: 10px; }.button-primary,.button-secondary { padding: 12px 17px; font-size: 14px; }.mascot-wrap { right: calc(50% - 150px); bottom: 47px; }.hero-caption { max-width: 240px; font-size: 12px; bottom: 17px; }.section-heading { align-items: flex-start; flex-direction: column; gap: 6px; }.section-heading h2 { font-size: 23px; }.example-grid { grid-template-columns: 1fr; }.site-footer { font-size: 11px; }.upload-page { padding-top: 36px; } }
 @media(prefers-reduced-motion:reduce) { html { scroll-behavior:auto; } *,*::before,*::after { animation:none!important; transition:none!important; } }
+
+/* Workbench surfaces: neutral paper below the yellow application header. */
+.site-header-workbench { min-height: 108px; padding: 28px 0; border-bottom: 0; }
+.site-header-workbench .wordmark { font-size: 34px; letter-spacing: -1.6px; }
+.site-header-workbench nav { font-size: 15px; }
+.site-header-workbench nav a { padding: 12px 17px; }
+.workbench { --header-height: 108px; background: #f5f3eb; color: #34352f; }
+.workbench>div:first-child { background: transparent; }
+.workbench-notice { padding: 10px 24px; background: #fff2bd; border-bottom: 1px solid #dfd6ad; font-size: 13px; }
+.workbench-grid { display: grid; grid-template-columns: minmax(0,1fr); min-height: 0; flex: 1; }
+.workbench-viewer { min-width: 0; min-height: 55vh; background: #f3e5ac; border-bottom: 1px solid #dcd8c9; }
+.workbench-parts { min-width: 0; min-height: 0; max-height: 380px; overflow-y: auto; padding: 20px; background: #f5f3eb; }
+.parts-heading { font-size: 18px; font-weight: 600; margin-bottom: 18px; letter-spacing: -.4px; }
+.workbench-chat { min-width: 0; min-height: 540px; background: #faf9f5; border-top: 1px solid #deddd3; }
+.chat-panel { display: flex; flex-direction: column; height: 100%; min-height: 0; color: #34352f; background: #faf9f5; }
+.chat-heading { display: flex; align-items: center; gap: 12px; padding: 23px 22px; border-bottom: 1px solid #e7e5dc; }
+.chat-mark { display: grid; place-items: center; width: 36px; height: 36px; background: #f1d45d; border-radius: 11px; font-size: 23px; }
+.chat-heading h2 { font-size: 17px; font-weight: 600; letter-spacing: -.3px; }
+.chat-heading p { color: #74756c; font-size: 12px; margin-top: 3px; }
+.chat-messages { flex: 1; min-height: 0; overflow-y: auto; padding: 24px 20px; }
+.chat-empty { padding: 26px 0; }
+.chat-empty h3 { font-size: 24px; line-height: 1.25; letter-spacing: -.8px; font-weight: 500; max-width: 240px; }
+.chat-empty p { color: #73756d; font-size: 14px; line-height: 1.7; margin-top: 12px; }
+.chat-suggestions { display: grid; gap: 9px; margin-top: 26px; }
+.chat-suggestions button { display: flex; align-items: center; justify-content: space-between; text-align: left; padding: 12px 14px; border: 1px solid #e1dfd4; background: #fffefa; border-radius: 9px; font-size: 13px; }
+.chat-suggestions button:hover { border-color: #b8ad77; background: #faf4dd; }
+.chat-message { margin-bottom: 24px; }.chat-author { display: block; margin-bottom: 7px; color: #73756d; font-size: 11px; }
+.chat-bubble { display: inline-block; max-width: 100%; font-size: 14px; line-height: 1.7; overflow-wrap: anywhere; }
+.from-user { text-align: right; }.from-user .chat-bubble { background: #f3e8b5; padding: 11px 15px; border-radius: 14px 14px 3px 14px; text-align: left; }
+.from-assistant .chat-bubble { background: transparent; color: #34352f; }
+.chat-composer { display: grid; grid-template-columns: 32px 1fr 36px; align-items: end; gap: 8px; padding: 12px; margin: 0 16px 18px; border: 1px solid #d9d7cb; border-radius: 14px; background: #fffefa; box-shadow: 0 3px 10px #34312305; }
+.chat-composer:focus-within { border-color: #a89b59; }
+.chat-input { grid-column: 1 / -1; grid-row: 1; min-height: 54px; max-height: 160px; width: 100%; padding: 3px 4px; resize: vertical; background: transparent; border: 0; font-size: 14px; line-height: 1.5; outline: none; }.chat-input::placeholder { color: #85867d; }
+.chat-attach { grid-column: 1; grid-row: 2; display: grid; place-items: center; height: 32px; cursor: pointer; font-size: 24px; color: #6e7066; border-radius: 7px; }.chat-attach:focus-within { outline: 2px solid #343123; }.chat-attach:hover { background: #efeee6; }
+.chat-send { grid-column: 3; grid-row: 2; height: 34px; width: 34px; border-radius: 9px; background: #373b32; color: #fffdf5; font-size: 22px; }.chat-send:disabled { background: #e9e8df; color: #a5a69b; }.chat-send:not(:disabled):hover { background: #555b49; }
+.chat-attachments { display: flex; flex-wrap: wrap; gap: 5px; padding: 8px 20px; font-size: 12px; }
+@media(min-width:760px) { .workbench { height: calc(100dvh - 108px); }.workbench-grid { grid-template-columns: minmax(0,1fr) 320px; grid-template-rows: minmax(280px,1fr) minmax(180px,.65fr); }.workbench-viewer { min-height: 0; grid-column: 1; grid-row: 1; }.workbench-parts { grid-column: 1; grid-row: 2; max-height: none; }.workbench-chat { grid-column: 2; grid-row: 1 / 3; min-height: 0; border-top: 0; border-left: 1px solid #deddd3; } }
+@media(min-width:1280px) { .workbench-grid { grid-template-columns: minmax(0,1fr) 280px 360px; grid-template-rows: minmax(0,1fr); }.workbench-viewer { grid-row: 1; border-bottom: 0; }.workbench-parts { grid-column: 2; grid-row: 1; border-left: 1px solid #deddd3; }.workbench-chat { grid-column: 3; grid-row: 1; } }
+@media(max-width:480px) { .site-header-workbench { min-height: 90px; padding: 22px 0; }.site-header-workbench .wordmark { font-size: 28px; }.site-header-workbench nav { font-size: 12px; }.site-header-workbench nav a { padding: 10px 7px; }.workbench { --header-height: 90px; } }

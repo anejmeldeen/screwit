@@ -1,8 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useScan, useReconstruction, useParts, isStageDone } from "@/lib/hooks";
-import { StatusBar } from "@/components/StatusBar";
+import { scaleWarnings } from "@/lib/scaleWarnings";
 import { ViewerPanel } from "@/components/viewer/ViewerPanel";
 import { PartsPanel } from "@/components/PartsPanel";
 import { ChatPanel } from "@/components/ChatPanel";
@@ -28,13 +28,6 @@ export function Workspace({
   const [cadOverlay, setCadOverlay] = useState<ViewerCadOverlay | null>(null);
 
   const partsReady = isStageDone(scan, "parts");
-
-  const headerSub = useMemo(() => {
-    if (!scan) return "";
-    if (scan.status === "failed") return "Processing failed";
-    if (scan.status === "ready") return "Ready";
-    return "Processing…";
-  }, [scan]);
 
   // Mark the shell as painted once the panels, status bar and empty viewer
   // canvas are on screen (before any 3D asset loads). Two rAFs = after the
@@ -77,28 +70,13 @@ export function Workspace({
 
   return (
     <div className="workbench flex flex-col">
-      {/* Status bar — fixed height so it never reflows the grid below (CLS). */}
-      <div className="min-h-[84px] shrink-0 overflow-hidden border-b border-line bg-panel px-4 py-2">
-        <div className="mb-1 flex items-center justify-between">
-          <h1 className="text-sm font-semibold">
-            Scan {scanId}{" "}
-            <span className="font-normal text-muted">· {headerSub}</span>
-          </h1>
-        </div>
-        {scanError ? (
-          <div className="space-y-1">
-            <ErrorNote message={`Could not load scan: ${scanError}`} />
-          </div>
-        ) : (
-          <StatusBar scan={scan} scale={recon?.scale ?? null} />
-        )}
-      </div>
-
-      {/* Workspace. On mobile the columns stack; each section reserves a fixed
-          height up front so later content never pushes earlier content (CLS).
-          On lg+ it is a single full-height 3-column row. */}
-      <div className="grid min-h-0 flex-1 grid-cols-1 grid-rows-[60vh_40vh_60vh] lg:grid-rows-1 lg:grid-cols-[1fr_320px_360px]">
-        <section className="relative min-h-0 border-b border-line lg:border-b-0 lg:border-r">
+      <h1 className="sr-only">Workbench</h1>
+      {scanError ? <div className="workbench-notice"><ErrorNote message={`Could not load this object: ${scanError}`} /></div> : null}
+      {scan?.status === "failed" ? <div className="workbench-notice" role="alert">This scan could not finish. Try another recording.</div> : null}
+      {!scanError && (!scan || (scan.status !== "ready" && scan.status !== "failed")) ? <div className="workbench-notice" role="status">Preparing your object…</div> : null}
+      {scaleWarnings(recon?.scale ?? null).map((warning) => <div key={warning.id} className="workbench-notice" role="note">{warning.message}</div>)}
+      <div className="workbench-grid">
+        <section className="workbench-viewer" aria-label="3D viewer">
           <ViewerPanel
             scanId={scanId}
             recon={recon}
@@ -118,8 +96,8 @@ export function Workspace({
           />
         </section>
 
-        <section className="min-h-0 overflow-y-auto border-b border-line p-3 lg:border-b-0 lg:border-r">
-          <h2 className="mb-2 text-sm font-semibold text-ink">Parts</h2>
+        <section className="workbench-parts" aria-label="Object parts">
+          <h2 className="parts-heading">Parts</h2>
           <PartsPanel
             scanId={scanId}
             parts={parts}
@@ -133,7 +111,7 @@ export function Workspace({
           />
         </section>
 
-        <section className="min-h-0">
+        <section className="workbench-chat" aria-label="Assistant">
           <ChatPanel
             scanId={scanId}
             onHighlight={onHighlight}

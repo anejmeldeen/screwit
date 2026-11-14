@@ -139,14 +139,17 @@ export function ChatPanel({
   }
 
   return (
-    <div className="flex h-full flex-col">
-      <div ref={scrollRef} className="min-h-0 flex-1 space-y-3 overflow-y-auto p-3">
+    <div className="chat-panel">
+      <header className="chat-heading"><span className="chat-mark" aria-hidden="true">✳</span><div><h2>Assistant</h2><p>Work on your object.</p></div></header>
+      <div ref={scrollRef} className="chat-messages">
         {messages.length === 0 ? (
-          <p className="text-sm text-muted">
-            Ask about the object — &ldquo;what is this?&rdquo;, &ldquo;how does
-            it work?&rdquo;, &ldquo;why might it be failing?&rdquo;, or
-            &ldquo;make me a replacement part&rdquo;.
-          </p>
+          <div className="chat-empty">
+            <h3>What would you like to change?</h3>
+            <p>Select a part in the viewer, or ask a question here.</p>
+            <div className="chat-suggestions">
+              {["Explain the parts", "Help me fix this", "Make a replacement"].map((prompt) => <button type="button" key={prompt} onClick={() => setInput(prompt)}>{prompt}<span aria-hidden="true">↗</span></button>)}
+            </div>
+          </div>
         ) : null}
         {messages.map((msg) => (
           <MessageRow
@@ -166,7 +169,7 @@ export function ChatPanel({
 
       {/* Image attachment chips */}
       {images.length ? (
-        <div className="flex flex-wrap gap-1 border-t border-line px-3 py-1 text-xs text-muted">
+        <div className="chat-attachments">
           {images.map((u, i) => (
             <span key={i} className="rounded bg-wash px-1.5 py-0.5">
               {u.split("/").pop()}
@@ -175,14 +178,14 @@ export function ChatPanel({
         </div>
       ) : null}
 
-      <div className="flex items-end gap-2 border-t border-line p-2">
-        <label className="cursor-pointer rounded border border-line px-2 py-2 text-sm hover:border-line">
-          📎
+      <div className="chat-composer">
+        <label className="chat-attach" aria-label="Attach an image">
+          <span aria-hidden="true">+</span>
           <input
             type="file"
             accept="image/*"
             multiple
-            className="hidden"
+            className="sr-only"
             onChange={(e) => {
               // Attach by object URL placeholder; a full build uploads via the
               // storage client and sends the returned keys.
@@ -204,17 +207,18 @@ export function ChatPanel({
               send();
             }
           }}
-          rows={1}
-          placeholder="Ask a question…"
-          className="min-h-[2.5rem] flex-1 resize-none rounded border border-line bg-paper px-3 py-2 text-sm"
+          rows={2}
+          aria-label="Message the assistant"
+          placeholder="Ask a question or describe a change…"
+          className="chat-input"
         />
         <button
           data-testid="chat-send"
           onClick={send}
           disabled={streaming || !input.trim()}
-          className="rounded bg-accent px-3 py-2 text-sm font-medium text-paper disabled:opacity-40"
+          className="chat-send" aria-label="Send message"
         >
-          Send
+          <span aria-hidden="true">↑</span>
         </button>
       </div>
     </div>
@@ -233,15 +237,11 @@ const MessageRow = memo(function MessageRow({
   onShowCad: (cad: Record<string, unknown>) => void;
 }) {
   return (
-    <div className={msg.role === "user" ? "text-right" : "text-left"}>
+    <div className={`chat-message ${msg.role === "user" ? "from-user" : "from-assistant"}`}><span className="chat-author">{msg.role === "user" ? "You" : "Assistant"}</span>
       {msg.text ? (
         <div
           data-testid={msg.role === "assistant" ? "assistant-message" : undefined}
-          className={`inline-block max-w-[90%] rounded-lg px-3 py-2 text-sm ${
-            msg.role === "user"
-              ? "bg-accent text-paper"
-              : "bg-wash text-ink"
-          }`}
+          className="chat-bubble"
         >
           {msg.role === "assistant" ? (
             <Suspense
