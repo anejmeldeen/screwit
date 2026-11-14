@@ -76,13 +76,13 @@ export function Workspace({
   }, []);
 
   return (
-    <div className="flex h-[calc(100vh-57px)] flex-col">
+    <div className="workbench flex flex-col">
       {/* Status bar — fixed height so it never reflows the grid below (CLS). */}
-      <div className="min-h-[84px] shrink-0 overflow-hidden border-b border-slate-800 bg-panel px-4 py-2">
+      <div className="min-h-[84px] shrink-0 overflow-hidden border-b border-line bg-panel px-4 py-2">
         <div className="mb-1 flex items-center justify-between">
           <h1 className="text-sm font-semibold">
             Scan {scanId}{" "}
-            <span className="font-normal text-slate-400">· {headerSub}</span>
+            <span className="font-normal text-muted">· {headerSub}</span>
           </h1>
         </div>
         {scanError ? (
@@ -98,7 +98,7 @@ export function Workspace({
           height up front so later content never pushes earlier content (CLS).
           On lg+ it is a single full-height 3-column row. */}
       <div className="grid min-h-0 flex-1 grid-cols-1 grid-rows-[60vh_40vh_60vh] lg:grid-rows-1 lg:grid-cols-[1fr_320px_360px]">
-        <section className="relative min-h-0 border-b border-slate-800 lg:border-b-0 lg:border-r">
+        <section className="relative min-h-0 border-b border-line lg:border-b-0 lg:border-r">
           <ViewerPanel
             scanId={scanId}
             recon={recon}
@@ -118,8 +118,8 @@ export function Workspace({
           />
         </section>
 
-        <section className="min-h-0 overflow-y-auto border-b border-slate-800 p-3 lg:border-b-0 lg:border-r">
-          <h2 className="mb-2 text-sm font-semibold text-slate-300">Parts</h2>
+        <section className="min-h-0 overflow-y-auto border-b border-line p-3 lg:border-b-0 lg:border-r">
+          <h2 className="mb-2 text-sm font-semibold text-ink">Parts</h2>
           <PartsPanel
             scanId={scanId}
             parts={parts}

@@ -193,7 +193,7 @@ export function Viewer(props: ViewerProps) {
         (camera as PerspectiveCamera).lookAt(0, 0.05, 0);
       }}
     >
-      <color attach="background" args={["#0b1120"]} />
+      <color attach="background" args={["#f3e5ac"]} />
       <ambientLight intensity={0.8} />
       <directionalLight position={[1, 2, 1]} intensity={1.1} />
       <directionalLight position={[-1, 1, -1]} intensity={0.4} />

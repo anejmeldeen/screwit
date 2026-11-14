@@ -113,16 +113,16 @@ export default function NewScanPage() {
     phase === "done";
 
   return (
-    <div className="mx-auto max-w-3xl px-4 py-10">
-      <h1 className="text-2xl font-bold">New scan</h1>
-      <p className="mt-1 text-slate-300">
-        Record a slow orbit of the object, or drop a video or photos.
+    <div className="upload-page mx-auto max-w-3xl px-4">
+      <h1 className="text-2xl font-bold">What are we building?</h1>
+      <p className="mt-1 text-ink">
+        Upload a video or photos of your object.
       </p>
 
       {/* Capture / upload control */}
       <div
-        className={`mt-6 rounded-lg border-2 border-dashed p-8 text-center transition ${
-          dragOver ? "border-accent bg-sky-900/20" : "border-slate-700"
+        className={`upload-drop mt-8 rounded-lg border-2 border-dashed text-center transition ${
+          dragOver ? "border-accent bg-sky-100" : "border-line"
         }`}
         onDragOver={(e) => {
           e.preventDefault();
@@ -132,35 +132,35 @@ export default function NewScanPage() {
         onDrop={(e) => {
           e.preventDefault();
           setDragOver(false);
-          if (e.dataTransfer.files?.length) handleFiles(e.dataTransfer.files);
+          if (!busy && e.dataTransfer.files?.length) handleFiles(e.dataTransfer.files);
         }}
       >
-        <p className="text-slate-300">Drag and drop a video or photos here</p>
-        <p className="my-2 text-sm text-slate-500">or</p>
+        <p className="text-ink">Drag and drop a video or photos here</p>
+        <p className="my-2 text-sm text-muted">or</p>
 
         <div className="flex flex-col items-center gap-3 sm:flex-row sm:justify-center">
           {/* Phone-preferred path: opens the native camera on most phones.
               `capture` is only a hint, so the ordinary picker is always offered too. */}
-          <label className="cursor-pointer rounded-md bg-accent px-4 py-2 font-medium text-ink hover:bg-sky-300">
+          <label className="focus-within:outline focus-within:outline-2 focus-within:outline-offset-4 focus-within:outline-ink cursor-pointer rounded-md bg-accent px-4 py-2 font-medium text-paper hover:bg-ink/90">
             Record with camera
             <input
               type="file"
               accept="video/*"
               capture="environment"
-              className="hidden"
+              className="sr-only"
               disabled={busy}
               onChange={(e) => e.target.files && handleFiles(e.target.files)}
             />
           </label>
 
-          <label className="cursor-pointer rounded-md border border-slate-600 px-4 py-2 font-medium hover:border-slate-400">
+          <label className="focus-within:outline focus-within:outline-2 focus-within:outline-offset-4 focus-within:outline-ink cursor-pointer rounded-md border border-line px-4 py-2 font-medium hover:border-line">
             Choose a file
             <input
               ref={fileInputRef}
               type="file"
               accept="video/*,image/*"
               multiple
-              className="hidden"
+              className="sr-only"
               disabled={busy}
               onChange={(e) => e.target.files && handleFiles(e.target.files)}
             />
@@ -174,14 +174,14 @@ export default function NewScanPage() {
                 phase === "uploading"
                   ? `Uploading ${progress.toFixed(0)}%`
                   : phase === "starting"
-                    ? "Starting the pipeline…"
+                    ? "Preparing your scan…"
                     : phase === "done"
-                      ? "Opening workspace…"
+                      ? "Opening workbench…"
                       : "Checking file…"
               }
             />
             {phase === "uploading" ? (
-              <div className="mx-auto mt-2 h-1.5 w-64 overflow-hidden rounded bg-slate-700">
+              <div role="progressbar" aria-label="Upload progress" aria-valuenow={Math.round(progress)} aria-valuemin={0} aria-valuemax={100} className="mx-auto mt-2 h-1.5 w-full max-w-64 overflow-hidden rounded bg-wash">
                 <div
                   className="h-full bg-accent transition-all"
                   style={{ width: `${progress}%` }}
@@ -200,9 +200,9 @@ export default function NewScanPage() {
 
       {/* Scale board + capture tips */}
       <section className="mt-8 grid gap-6 md:grid-cols-2">
-        <div className="rounded-lg border border-slate-800 bg-panel p-5">
+        <div className="rounded-lg border border-line bg-panel p-5">
           <h2 className="font-semibold">Scale board</h2>
-          <ol className="mt-2 list-decimal space-y-1 pl-5 text-sm text-slate-300">
+          <ol className="mt-2 list-decimal space-y-1 pl-5 text-sm text-ink">
             <li>
               Print the board PDF at <strong>100% scale</strong> (no
               &ldquo;fit to page&rdquo;).
@@ -220,19 +220,19 @@ export default function NewScanPage() {
           <a
             href="/scale-board.pdf"
             download
-            className="mt-3 inline-flex rounded-md border border-slate-600 px-3 py-1.5 text-sm hover:border-slate-400"
+            className="mt-3 inline-flex rounded-md border border-line px-3 py-1.5 text-sm hover:border-line"
           >
             Download scale board (A4 PDF)
           </a>
-          <p className="mt-2 text-xs text-slate-500">
+          <p className="mt-2 text-xs text-muted">
             No board? Put a credit card (85.60 × 53.98 mm) in frame and set the
             scale later in the viewer.
           </p>
         </div>
 
-        <div className="rounded-lg border border-slate-800 bg-panel p-5">
+        <div className="rounded-lg border border-line bg-panel p-5">
           <h2 className="font-semibold">Capture tips</h2>
-          <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-slate-300">
+          <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-ink">
             <li>Record a slow orbit, {REC_MIN_S}-{REC_MAX_S} s (10-90 s accepted).</li>
             <li>Keep the whole object and the board in frame.</li>
             <li>Even, diffuse light; avoid harsh shadows and glare.</li>
@@ -309,7 +309,7 @@ function WebcamRecorder({
   }
 
   return (
-    <section className="mt-6 rounded-lg border border-slate-800 bg-panel p-5">
+    <section className="mt-6 rounded-lg border border-line bg-panel p-5">
       <h2 className="font-semibold">Record from a webcam (optional)</h2>
       <video
         ref={videoRef}
@@ -329,7 +329,7 @@ function WebcamRecorder({
           <button
             onClick={start}
             disabled={disabled}
-            className="rounded-md border border-slate-600 px-4 py-2 font-medium hover:border-slate-400 disabled:opacity-50"
+            className="rounded-md border border-line px-4 py-2 font-medium hover:border-line disabled:opacity-50"
           >
             Start webcam recording
           </button>

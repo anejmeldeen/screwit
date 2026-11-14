@@ -142,7 +142,7 @@ export function ChatPanel({
     <div className="flex h-full flex-col">
       <div ref={scrollRef} className="min-h-0 flex-1 space-y-3 overflow-y-auto p-3">
         {messages.length === 0 ? (
-          <p className="text-sm text-slate-500">
+          <p className="text-sm text-muted">
             Ask about the object — &ldquo;what is this?&rdquo;, &ldquo;how does
             it work?&rdquo;, &ldquo;why might it be failing?&rdquo;, or
             &ldquo;make me a replacement part&rdquo;.
@@ -161,22 +161,22 @@ export function ChatPanel({
             <Spinner label="thinking…" />
           </div>
         ) : null}
-        {error ? <p className="text-sm text-rose-300">{error}</p> : null}
+        {error ? <p className="text-sm text-rose-800">{error}</p> : null}
       </div>
 
       {/* Image attachment chips */}
       {images.length ? (
-        <div className="flex flex-wrap gap-1 border-t border-slate-800 px-3 py-1 text-xs text-slate-400">
+        <div className="flex flex-wrap gap-1 border-t border-line px-3 py-1 text-xs text-muted">
           {images.map((u, i) => (
-            <span key={i} className="rounded bg-slate-800 px-1.5 py-0.5">
+            <span key={i} className="rounded bg-wash px-1.5 py-0.5">
               {u.split("/").pop()}
             </span>
           ))}
         </div>
       ) : null}
 
-      <div className="flex items-end gap-2 border-t border-slate-800 p-2">
-        <label className="cursor-pointer rounded border border-slate-700 px-2 py-2 text-sm hover:border-slate-500">
+      <div className="flex items-end gap-2 border-t border-line p-2">
+        <label className="cursor-pointer rounded border border-line px-2 py-2 text-sm hover:border-line">
           📎
           <input
             type="file"
@@ -206,13 +206,13 @@ export function ChatPanel({
           }}
           rows={1}
           placeholder="Ask a question…"
-          className="min-h-[2.5rem] flex-1 resize-none rounded border border-slate-700 bg-ink px-3 py-2 text-sm"
+          className="min-h-[2.5rem] flex-1 resize-none rounded border border-line bg-paper px-3 py-2 text-sm"
         />
         <button
           data-testid="chat-send"
           onClick={send}
           disabled={streaming || !input.trim()}
-          className="rounded bg-accent px-3 py-2 text-sm font-medium text-ink disabled:opacity-40"
+          className="rounded bg-accent px-3 py-2 text-sm font-medium text-paper disabled:opacity-40"
         >
           Send
         </button>
@@ -239,8 +239,8 @@ const MessageRow = memo(function MessageRow({
           data-testid={msg.role === "assistant" ? "assistant-message" : undefined}
           className={`inline-block max-w-[90%] rounded-lg px-3 py-2 text-sm ${
             msg.role === "user"
-              ? "bg-accent text-ink"
-              : "bg-slate-800 text-slate-100"
+              ? "bg-accent text-paper"
+              : "bg-wash text-ink"
           }`}
         >
           {msg.role === "assistant" ? (
@@ -258,7 +258,7 @@ const MessageRow = memo(function MessageRow({
         // but let the perf suite see text appear once streaming starts.
         <div
           data-testid="assistant-message"
-          className="inline-block max-w-[90%] rounded-lg px-3 py-2 text-sm text-slate-500"
+          className="inline-block max-w-[90%] rounded-lg px-3 py-2 text-sm text-muted"
         />
       ) : null}
       {msg.cards.length ? (

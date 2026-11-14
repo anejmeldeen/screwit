@@ -24,15 +24,15 @@ function DimensionRow({ d }: { d: ResolvedDimension }) {
   ) => (
     <td
       className={`px-2 py-1 text-right ${
-        d.preferred === source ? "font-semibold text-accent" : "text-slate-400"
+        d.preferred === source ? "font-semibold text-accent" : "text-muted"
       }`}
     >
       {fmt(val)}
     </td>
   );
   return (
-    <tr className="border-t border-slate-800">
-      <td className="px-2 py-1 text-left text-slate-200">{d.name}</td>
+    <tr className="border-t border-line">
+      <td className="px-2 py-1 text-left text-ink">{d.name}</td>
       {cell("scan", d.scanMm, "scan")}
       {cell("snapped", d.snappedMm, "snapped")}
       {cell("caliper", d.caliperMm, "caliper")}
@@ -114,7 +114,7 @@ function PartCard({
     <div
       data-testid={`part-row-${part.part_id}`}
       className={`rounded-lg border bg-panel p-3 ${
-        selected ? "border-accent" : "border-slate-800"
+        selected ? "border-accent" : "border-line"
       }`}
     >
       <button
@@ -125,7 +125,7 @@ function PartCard({
           className="mt-1 h-3 w-3 shrink-0 rounded-sm"
           style={{ backgroundColor: partColor(index) }}
         />
-        <span className="h-12 w-12 shrink-0 overflow-hidden rounded bg-slate-800">
+        <span className="h-12 w-12 shrink-0 overflow-hidden rounded bg-wash">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             src={assetUrl(part.thumbnail_uri)}
@@ -146,7 +146,7 @@ function PartCard({
             </Badge>
           </span>
           {part.description ? (
-            <span className="mt-0.5 block truncate text-xs text-slate-400">
+            <span className="mt-0.5 block truncate text-xs text-muted">
               {part.description}
             </span>
           ) : null}
@@ -160,19 +160,19 @@ function PartCard({
             <input
               value={label}
               onChange={(e) => setLabel(e.target.value)}
-              className="w-32 rounded border border-slate-700 bg-ink px-1.5 py-0.5"
+              className="w-32 rounded border border-line bg-paper px-1.5 py-0.5"
             />
             <button onClick={saveLabel} className="text-accent">
               Save
             </button>
-            <button onClick={() => setRenaming(false)} className="text-slate-400">
+            <button onClick={() => setRenaming(false)} className="text-muted">
               Cancel
             </button>
           </span>
         ) : (
           <button
             onClick={() => setRenaming(true)}
-            className="rounded border border-slate-700 px-1.5 py-0.5 hover:border-slate-500"
+            className="rounded border border-line px-1.5 py-0.5 hover:border-line"
           >
             Rename
           </button>
@@ -180,16 +180,16 @@ function PartCard({
         {mergeState.pick === null ? (
           <button
             onClick={() => mergeState.setPick(part.part_id)}
-            className="rounded border border-slate-700 px-1.5 py-0.5 hover:border-slate-500"
+            className="rounded border border-line px-1.5 py-0.5 hover:border-line"
           >
             Merge…
           </button>
         ) : mergeState.pick === part.part_id ? (
-          <span className="text-slate-400">pick another part to merge into</span>
+          <span className="text-muted">pick another part to merge into</span>
         ) : (
           <button
             onClick={() => doMerge(mergeState.pick!)}
-            className="rounded border border-amber-600 px-1.5 py-0.5 text-amber-300"
+            className="rounded border border-amber-600 px-1.5 py-0.5 text-amber-800"
           >
             Merge with {mergeState.pick}
           </button>
@@ -199,7 +199,7 @@ function PartCard({
       {/* Dimensions table */}
       {dims.length ? (
         <table className="mt-3 w-full text-xs">
-          <thead className="text-slate-500">
+          <thead className="text-muted">
             <tr>
               <th className="px-2 py-1 text-left font-normal">dimension (mm)</th>
               <th className="px-2 py-1 text-right font-normal">scan</th>
@@ -218,7 +218,7 @@ function PartCard({
       {/* Caliper entry per feature measurement */}
       {editable.length ? (
         <details className="mt-2 text-xs">
-          <summary className="cursor-pointer text-slate-400">
+          <summary className="cursor-pointer text-muted">
             Enter caliper value
           </summary>
           <div className="mt-2 space-y-1">
@@ -227,7 +227,7 @@ function PartCard({
                 key={`${e.featureId}.${e.field}`}
                 className="flex items-center gap-2"
               >
-                <span className="w-40 text-slate-400">
+                <span className="w-40 text-muted">
                   {e.featureId}.{e.field}
                 </span>
                 <input
@@ -239,7 +239,7 @@ function PartCard({
                       : "mm"
                   }
                   disabled={caliperBusy}
-                  className="w-24 rounded border border-slate-700 bg-ink px-1.5 py-0.5"
+                  className="w-24 rounded border border-line bg-paper px-1.5 py-0.5"
                   onKeyDown={(ev) => {
                     if (ev.key === "Enter") {
                       const v = parseFloat(
@@ -256,7 +256,7 @@ function PartCard({
         </details>
       ) : null}
 
-      {err ? <p className="mt-2 text-xs text-rose-300">{err}</p> : null}
+      {err ? <p className="mt-2 text-xs text-rose-800">{err}</p> : null}
     </div>
   );
 }
