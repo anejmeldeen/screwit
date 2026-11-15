@@ -39,9 +39,9 @@ export function AccountSettings({ username }: { username: string }) {
       setMessage(err instanceof Error ? err.message : "Could not save account changes.");
     } finally { setBusy(false); }
   }
-  return <div className="settings-card">
-    {(["username", "password"] as const).map(kind => <details key={kind} className="account-edit">
-      <summary>{kind === "username" ? `Change username · ${username}` : "Reset password"}</summary>
+  return <div className="settings-card account-forms">
+    {(["username", "password"] as const).map(kind => <section key={kind} className="account-edit" aria-labelledby={`account-${kind}`}>
+      <h3 id={`account-${kind}`}>{kind === "username" ? "Change username" : "Reset password"}</h3>
       <form onSubmit={event => submit(event, kind === "username")}>
         {kind === "username" && <label>New username<input name="username" autoComplete="username" defaultValue={username}
           pattern={"[A-Za-z0-9_\\-]+"} title="Use letters, numbers, underscores or hyphens" maxLength={32} required /></label>}
@@ -52,7 +52,7 @@ export function AccountSettings({ username }: { username: string }) {
         </>}
         <button className="button-primary" disabled={busy}>{kind === "username" ? "Save username" : "Save password"}</button>
       </form>
-    </details>)}
+    </section>)}
     <p role="status">{message}</p>
   </div>;
 }
