@@ -44,15 +44,23 @@ export function Workspace({
   }, [scanId]);
 
   const gridRef = useRef<HTMLDivElement>(null);
+  const dockRef = useRef<HTMLElement>(null);
+  const [dockHeight, setDockHeight] = useState(0);
+  const [split, setSplit] = usePersistentNumber("ui.hierarchyPercent", 35);
+  const hierarchyRatio = Math.max(10, Math.min(90, split)) / 100;
+  const availableHeight = Math.max(1, dockHeight - 12);
   const [gridWidth, setGridWidth] = useState(0);
   const [leftWidth, setLeftWidth] = usePersistentNumber("ui.objectDockWidth", 310);
   const [rightWidth, setRightWidth] = usePersistentNumber("ui.assistantWidth", 310);
   const [expanded, setExpanded] = useState(true);
   useLayoutEffect(() => {
     const grid = gridRef.current;
-    if (!grid) return;
-    setGridWidth(grid.clientWidth);
-    const observer = new ResizeObserver(() => setGridWidth(grid.clientWidth));
+    const dock = dockRef.current;
+    if (!grid || !dock) return;
+    const measure = () => { setGridWidth(grid.clientWidth); setDockHeight(dock.clientHeight); };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(dock);
     observer.observe(grid);
     return () => observer.disconnect();
   }, []);
@@ -155,7 +163,7 @@ export function Workspace({
       {scan?.status === "failed" ? <div className="workbench-notice" role="alert">This scan could not finish. Try another recording.</div> : null}
       {!creationForm && !scanError && (watching || !scan || (scan.status !== "ready" && scan.status !== "failed")) ? <div className="workbench-notice" role="status"><ScanProgress scan={scan} /></div> : null}
       <div ref={gridRef} className="scene-layout" style={{ "--left": `${left}px`, "--right": `${right}px` } as CSSProperties}>
-        <aside className="scene-object-dock">
+        <aside ref={dockRef} className="scene-object-dock" style={{ gridTemplateRows: `minmax(0,${hierarchyRatio}fr) 12px minmax(0,${1 - hierarchyRatio}fr)` }}>
           <section className="scene-hierarchy" aria-label="Hierarchy">
             <h2 className="dock-heading">Hierarchy</h2>
             <div className="scene-root">
@@ -170,6 +178,9 @@ export function Workspace({
             {!parts?.length && <p className="dock-note">{creationForm ? "No parts yet" : partsReady ? "No parts available" : "Waiting for parts…"}</p>}
             {hiddenPartIds.length > 0 && <button className="tree-show" onClick={() => setHiddenPartIds([])}>Show all parts</button>}
           </section>
+          <ResizeHandle label="Resize hierarchy height" className="object-split" orientation="horizontal"
+            min={availableHeight * .1} max={availableHeight * .9} value={availableHeight * hierarchyRatio}
+            onChange={height => setSplit(100 * height / availableHeight)} />
           <section className="scene-inspector" aria-label="Inspector">
             <h2 className="dock-heading">Inspector</h2>
             {!selected && <><h2>{name}</h2><p className="dock-note">{creationForm ? "Add photos or a video to build your assembly." : `${parts?.length ?? 0} components`}</p>

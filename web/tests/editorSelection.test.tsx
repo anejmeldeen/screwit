@@ -38,7 +38,9 @@ it("inspects hierarchy and scene selections and returns to assembly export", asy
     await click("Basin");
     expect(inspector.querySelector('[data-testid="part-row-p1"]')).toBeTruthy();
     const hierarchy = host.querySelector('[aria-label="Hierarchy"]')!;
-    expect(hierarchy.nextElementSibling).toBe(inspector);
+    const divider = hierarchy.nextElementSibling!;
+    expect(divider.getAttribute("aria-label")).toBe("Resize hierarchy height");
+    expect(divider.nextElementSibling).toBe(inspector);
     const assistant = host.querySelector<HTMLElement>('[aria-label="Assistant"]')!;
     expect(assistant.hidden).toBe(false);
     await click("Pick faucet in scene");
