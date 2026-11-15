@@ -37,8 +37,10 @@ it("inspects hierarchy and scene selections and returns to assembly export", asy
     const inspector = host.querySelector<HTMLElement>('[aria-label="Inspector"]')!;
     await click("Basin");
     expect(inspector.querySelector('[data-testid="part-row-p1"]')).toBeTruthy();
-    await click("Screwy");
-    expect(inspector.hidden).toBe(true);
+    const hierarchy = host.querySelector('[aria-label="Hierarchy"]')!;
+    expect(hierarchy.nextElementSibling).toBe(inspector);
+    const assistant = host.querySelector<HTMLElement>('[aria-label="Assistant"]')!;
+    expect(assistant.hidden).toBe(false);
     await click("Pick faucet in scene");
     expect(inspector.hidden).toBe(false);
     expect(inspector.querySelector('[data-testid="part-row-p2"]')).toBeTruthy();

@@ -45,9 +45,8 @@ export function Workspace({
 
   const gridRef = useRef<HTMLDivElement>(null);
   const [gridWidth, setGridWidth] = useState(0);
-  const [leftWidth, setLeftWidth] = usePersistentNumber("ui.hierarchyWidth", 220);
-  const [rightWidth, setRightWidth] = usePersistentNumber("ui.inspectorWidth", 310);
-  const [assistant, setAssistant] = useState(false);
+  const [leftWidth, setLeftWidth] = usePersistentNumber("ui.objectDockWidth", 310);
+  const [rightWidth, setRightWidth] = usePersistentNumber("ui.assistantWidth", 310);
   const [expanded, setExpanded] = useState(true);
   useLayoutEffect(() => {
     const grid = gridRef.current;
@@ -147,7 +146,6 @@ export function Workspace({
   function select(id: string | null) {
     setSelectedId(id);
     setFocusPartId(id);
-    setAssistant(false);
   }
 
   return (
@@ -157,21 +155,34 @@ export function Workspace({
       {scan?.status === "failed" ? <div className="workbench-notice" role="alert">This scan could not finish. Try another recording.</div> : null}
       {!creationForm && !scanError && (watching || !scan || (scan.status !== "ready" && scan.status !== "failed")) ? <div className="workbench-notice" role="status"><ScanProgress scan={scan} /></div> : null}
       <div ref={gridRef} className="scene-layout" style={{ "--left": `${left}px`, "--right": `${right}px` } as CSSProperties}>
-        <aside className="scene-hierarchy" aria-label="Hierarchy">
-          <h2 className="dock-heading">Hierarchy</h2>
-          <div className="scene-root">
-            <button onClick={() => setExpanded(!expanded)} aria-label={expanded ? "Collapse assembly" : "Expand assembly"} aria-expanded={expanded}>{expanded ? "▾" : "▸"}</button>
-            <button onClick={() => select(null)} aria-pressed={!selected}>{name}</button>
-          </div>
-          {expanded && <ul className="scene-tree">{(parts || []).map((part, index) =>
-            <li key={part.part_id}><button aria-pressed={selectedId === part.part_id}
-              onClick={() => select(part.part_id)} onMouseEnter={() => setHoveredId(part.part_id)} onMouseLeave={() => setHoveredId(null)}>
-              <i style={{backgroundColor:partColor(index, part.part_id)}} />{part.label}{hiddenPartIds.includes(part.part_id) && <small>Hidden</small>}
-            </button></li>)}</ul>}
-          {!parts?.length && <p className="dock-note">{creationForm ? "No parts yet" : partsReady ? "No parts available" : "Waiting for parts…"}</p>}
-          {hiddenPartIds.length > 0 && <button className="tree-show" onClick={() => setHiddenPartIds([])}>Show all parts</button>}
+        <aside className="scene-object-dock">
+          <section className="scene-hierarchy" aria-label="Hierarchy">
+            <h2 className="dock-heading">Hierarchy</h2>
+            <div className="scene-root">
+              <button onClick={() => setExpanded(!expanded)} aria-label={expanded ? "Collapse assembly" : "Expand assembly"} aria-expanded={expanded}>{expanded ? "▾" : "▸"}</button>
+              <button onClick={() => select(null)} aria-pressed={!selected}>{name}</button>
+            </div>
+            {expanded && <ul className="scene-tree">{(parts || []).map((part, index) =>
+              <li key={part.part_id}><button aria-pressed={selectedId === part.part_id}
+                onClick={() => select(part.part_id)} onMouseEnter={() => setHoveredId(part.part_id)} onMouseLeave={() => setHoveredId(null)}>
+                <i style={{backgroundColor:partColor(index, part.part_id)}} />{part.label}{hiddenPartIds.includes(part.part_id) && <small>Hidden</small>}
+              </button></li>)}</ul>}
+            {!parts?.length && <p className="dock-note">{creationForm ? "No parts yet" : partsReady ? "No parts available" : "Waiting for parts…"}</p>}
+            {hiddenPartIds.length > 0 && <button className="tree-show" onClick={() => setHiddenPartIds([])}>Show all parts</button>}
+          </section>
+          <section className="scene-inspector" aria-label="Inspector">
+            <h2 className="dock-heading">Inspector</h2>
+            {!selected && <><h2>{name}</h2><p className="dock-note">{creationForm ? "Add photos or a video to build your assembly." : `${parts?.length ?? 0} components`}</p>
+              {scaleWarnings(recon?.scale ?? null).map(w => <p className="dock-note" key={w.id}>{w.message}</p>)}</>}
+            {!creationForm && <PartsPanel hiddenPartIds={hiddenPartIds}
+              onToggleHidden={id => setHiddenPartIds(ids => ids.includes(id) ? ids.filter(p => p !== id) : [...ids, id])}
+              onIsolate={setIsolatedId} scanId={scanId} parts={parts} partsReady={partsReady}
+              selectedId={selectedId} onSelect={select} onChanged={refreshParts} />}
+            {partsReady && !!parts?.length && <details className="scene-export"><summary>Export {selected ? "component" : "assembly"}</summary>
+              <PartDownloads scanId={scanId} part={selected} /></details>}
+          </section>
         </aside>
-        <ResizeHandle label="Resize hierarchy" className="scene-split" orientation="vertical" value={left} min={150} max={maxLeft} onChange={setLeftWidth} />
+        <ResizeHandle label="Resize hierarchy and inspector" className="scene-split" orientation="vertical" value={left} min={150} max={maxLeft} onChange={setLeftWidth} />
         <section className="workbench-viewer" aria-label={creationForm ? "Workspace setup" : "3D viewer"}>
           {creationForm ? <div className="workspace-setup">{creationForm}</div> : <ViewerPanel
             scanId={scanId}
@@ -190,21 +201,9 @@ export function Workspace({
           />}
         </section>
 
-        <ResizeHandle label="Resize inspector" className="scene-split" orientation="vertical" value={right} min={220} max={maxRight} reverse onChange={setRightWidth} />
+        <ResizeHandle label="Resize assistant" className="scene-split" orientation="vertical" value={right} min={220} max={maxRight} reverse onChange={setRightWidth} />
         <aside className="scene-dock">
-          <div className="dock-tabs"><button aria-pressed={!assistant} onClick={() => setAssistant(false)}>Inspector</button>
-            <button aria-pressed={assistant} onClick={() => setAssistant(true)}>Screwy</button></div>
-          <section className="scene-inspector" aria-label="Inspector" hidden={assistant}>
-            {!selected && <><h2>{name}</h2><p className="dock-note">{creationForm ? "Add photos or a video to build your assembly." : `${parts?.length ?? 0} components`}</p>
-              {scaleWarnings(recon?.scale ?? null).map(w => <p className="dock-note" key={w.id}>{w.message}</p>)}</>}
-            {!creationForm && <PartsPanel hiddenPartIds={hiddenPartIds}
-              onToggleHidden={id => setHiddenPartIds(ids => ids.includes(id) ? ids.filter(p => p !== id) : [...ids, id])}
-              onIsolate={setIsolatedId} scanId={scanId} parts={parts} partsReady={partsReady}
-              selectedId={selectedId} onSelect={select} onChanged={refreshParts} />}
-            {partsReady && !!parts?.length && <details className="scene-export"><summary>Export {selected ? "component" : "assembly"}</summary>
-              <PartDownloads scanId={scanId} part={selected} /></details>}
-          </section>
-          <section className="scene-assistant" aria-label="Assistant" hidden={!assistant}>
+          <section className="scene-assistant" aria-label="Assistant">
           {creationForm ? <div className="chat-panel">
             <header className="chat-heading"><span className="chat-mark screwy-avatar"><ScrewyIcon /></span><div><h2>Screwy</h2><p>Let’s build.</p></div></header>
             <div className="chat-messages"><div className="chat-empty"><h3>Start with your object.</h3><p>Name your workspace and add a video or photos. Once your scan starts, we can explore it together.</p></div></div>
