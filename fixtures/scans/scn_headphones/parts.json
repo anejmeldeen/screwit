@@ -6,24 +6,24 @@
     "measurement_revision": 1,
     "label": "Headband",
     "label_confidence": 1.0,
-    "description": "Curved over-ear headband with padded underside; illustrative Crusher Evo-inspired shape.",
+    "description": "Broad curved matte headband with padded liner and sliding adjustment seams.",
     "mesh_uri": "scans/scn_headphones/parts/p1.glb",
     "thumbnail_uri": "scans/scn_headphones/renders/p1.png",
     "centroid_mm": [
       0.0,
-      0.0,
-      186.49323359712722
+      106.23562466753775,
+      25.0
     ],
     "obb": {
       "center": [
         0.0,
-        0.0,
-        186.49323359712722
+        106.23562466753775,
+        25.0
       ],
       "extent": [
-        198.0,
-        29.0,
-        98.98646719425443
+        185.0,
+        92.4712493350755,
+        33.0
       ],
       "rotation_quat": [
         0.0,
@@ -36,7 +36,7 @@
       {
         "name": "width",
         "value": {
-          "scan_mm": 198.0,
+          "scan_mm": 185.0,
           "snapped_mm": null,
           "snap_rule": null,
           "caliper_mm": null,
@@ -47,7 +47,7 @@
       {
         "name": "depth",
         "value": {
-          "scan_mm": 29.0,
+          "scan_mm": 92.4712493350755,
           "snapped_mm": null,
           "snap_rule": null,
           "caliper_mm": null,
@@ -58,7 +58,7 @@
       {
         "name": "height",
         "value": {
-          "scan_mm": 98.98646719425443,
+          "scan_mm": 33.0,
           "snapped_mm": null,
           "snap_rule": null,
           "caliper_mm": null,
@@ -81,24 +81,24 @@
     "measurement_revision": 1,
     "label": "Left earcup",
     "label_confidence": 1.0,
-    "description": "Separate oval driver housing with swivel hinge and headband slider.",
+    "description": "Flat oval driver housing, swivel yoke, control buttons and housing seam.",
     "mesh_uri": "scans/scn_headphones/parts/p2.glb",
     "thumbnail_uri": "scans/scn_headphones/renders/p2.png",
     "centroid_mm": [
-      -94.0,
-      0.0,
-      95.0
+      -89.75,
+      23.5,
+      21.0
     ],
     "obb": {
       "center": [
-        -94.0,
-        0.0,
-        95.0
+        -89.75,
+        23.5,
+        21.0
       ],
       "extent": [
-        34.0,
-        68.0,
-        110.0
+        73.5,
+        103.0,
+        32.0
       ],
       "rotation_quat": [
         0.0,
@@ -111,7 +111,7 @@
       {
         "name": "width",
         "value": {
-          "scan_mm": 34.0,
+          "scan_mm": 73.5,
           "snapped_mm": null,
           "snap_rule": null,
           "caliper_mm": null,
@@ -122,7 +122,7 @@
       {
         "name": "depth",
         "value": {
-          "scan_mm": 68.0,
+          "scan_mm": 103.0,
           "snapped_mm": null,
           "snap_rule": null,
           "caliper_mm": null,
@@ -133,7 +133,7 @@
       {
         "name": "height",
         "value": {
-          "scan_mm": 110.0,
+          "scan_mm": 32.0,
           "snapped_mm": null,
           "snap_rule": null,
           "caliper_mm": null,
@@ -156,24 +156,24 @@
     "measurement_revision": 1,
     "label": "Right earcup",
     "label_confidence": 1.0,
-    "description": "Separate oval driver housing with swivel hinge and headband slider.",
+    "description": "Flat oval driver housing, swivel yoke, control buttons and housing seam.",
     "mesh_uri": "scans/scn_headphones/parts/p3.glb",
     "thumbnail_uri": "scans/scn_headphones/renders/p3.png",
     "centroid_mm": [
-      94.0,
-      0.0,
-      95.0
+      89.75,
+      23.5,
+      21.0
     ],
     "obb": {
       "center": [
-        94.0,
-        0.0,
-        95.0
+        89.75,
+        23.5,
+        21.0
       ],
       "extent": [
-        34.0,
-        68.0,
-        110.0
+        73.5,
+        103.0,
+        32.0
       ],
       "rotation_quat": [
         0.0,
@@ -186,7 +186,7 @@
       {
         "name": "width",
         "value": {
-          "scan_mm": 34.0,
+          "scan_mm": 73.5,
           "snapped_mm": null,
           "snap_rule": null,
           "caliper_mm": null,
@@ -197,7 +197,7 @@
       {
         "name": "depth",
         "value": {
-          "scan_mm": 68.0,
+          "scan_mm": 103.0,
           "snapped_mm": null,
           "snap_rule": null,
           "caliper_mm": null,
@@ -208,7 +208,7 @@
       {
         "name": "height",
         "value": {
-          "scan_mm": 110.0,
+          "scan_mm": 32.0,
           "snapped_mm": null,
           "snap_rule": null,
           "caliper_mm": null,
@@ -231,24 +231,24 @@
     "measurement_revision": 1,
     "label": "Left ear cushion",
     "label_confidence": 1.0,
-    "description": "Removable oval padded earmuff with an open center.",
+    "description": "Thick removable padded oval earmuff facing upward, with recessed speaker cloth.",
     "mesh_uri": "scans/scn_headphones/parts/p4.glb",
     "thumbnail_uri": "scans/scn_headphones/renders/p4.png",
     "centroid_mm": [
-      -75.0,
-      0.0,
-      88.0
+      -89.0,
+      18.0,
+      38.0
     ],
     "obb": {
       "center": [
-        -75.0,
-        0.0,
-        88.0
+        -89.0,
+        18.0,
+        38.0
       ],
       "extent": [
-        14.0,
-        64.0,
-        86.0
+        72.0,
+        90.0,
+        22.0
       ],
       "rotation_quat": [
         0.0,
@@ -261,7 +261,7 @@
       {
         "name": "width",
         "value": {
-          "scan_mm": 14.0,
+          "scan_mm": 72.0,
           "snapped_mm": null,
           "snap_rule": null,
           "caliper_mm": null,
@@ -272,7 +272,7 @@
       {
         "name": "depth",
         "value": {
-          "scan_mm": 64.0,
+          "scan_mm": 90.0,
           "snapped_mm": null,
           "snap_rule": null,
           "caliper_mm": null,
@@ -283,7 +283,7 @@
       {
         "name": "height",
         "value": {
-          "scan_mm": 86.0,
+          "scan_mm": 22.0,
           "snapped_mm": null,
           "snap_rule": null,
           "caliper_mm": null,
@@ -306,24 +306,24 @@
     "measurement_revision": 1,
     "label": "Right ear cushion",
     "label_confidence": 1.0,
-    "description": "Removable oval padded earmuff with an open center.",
+    "description": "Thick removable padded oval earmuff facing upward, with recessed speaker cloth.",
     "mesh_uri": "scans/scn_headphones/parts/p5.glb",
     "thumbnail_uri": "scans/scn_headphones/renders/p5.png",
     "centroid_mm": [
-      75.0,
-      0.0,
-      88.0
+      89.0,
+      18.0,
+      38.0
     ],
     "obb": {
       "center": [
-        75.0,
-        0.0,
-        88.0
+        89.0,
+        18.0,
+        38.0
       ],
       "extent": [
-        14.0,
-        64.0,
-        86.0
+        72.0,
+        90.0,
+        22.0
       ],
       "rotation_quat": [
         0.0,
@@ -336,7 +336,7 @@
       {
         "name": "width",
         "value": {
-          "scan_mm": 14.0,
+          "scan_mm": 72.0,
           "snapped_mm": null,
           "snap_rule": null,
           "caliper_mm": null,
@@ -347,7 +347,7 @@
       {
         "name": "depth",
         "value": {
-          "scan_mm": 64.0,
+          "scan_mm": 90.0,
           "snapped_mm": null,
           "snap_rule": null,
           "caliper_mm": null,
@@ -358,7 +358,7 @@
       {
         "name": "height",
         "value": {
-          "scan_mm": 86.0,
+          "scan_mm": 22.0,
           "snapped_mm": null,
           "snap_rule": null,
           "caliper_mm": null,
