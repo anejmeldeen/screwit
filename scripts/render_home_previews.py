@@ -16,7 +16,8 @@ renderer.BG_COLOR = (24, 25, 24)
 palette = json.loads((ROOT / "web/lib/partPalette.json").read_text())
 out = ROOT / "web/public/examples"
 out.mkdir(parents=True, exist_ok=True)
-for scan_id in ("scn_trap", "scn_knob"):
+for demo in json.loads((ROOT / "fixtures/demo_scans.json").read_text()):
+    scan_id = demo["scan_id"]
     parts = json.loads((ROOT / f"fixtures/scans/{scan_id}/parts.json").read_text())
     meshes = []
     for part in parts:

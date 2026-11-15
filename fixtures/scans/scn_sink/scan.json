@@ -1,0 +1,55 @@
+{
+  "scan_id": "scn_sink",
+  "created_at": "2026-11-14T22:00:00Z",
+  "input": {
+    "type": "mesh",
+    "uri": "scans/scn_sink/mesh/object.glb",
+    "mesh_units": "millimetres"
+  },
+  "status": "ready",
+  "reconstruction_revision": 1,
+  "stages": [
+    {
+      "name": "frames",
+      "state": "skipped",
+      "progress": null,
+      "message": "Synthetic example geometry"
+    },
+    {
+      "name": "geometry",
+      "state": "skipped",
+      "progress": null,
+      "message": "Synthetic example geometry"
+    },
+    {
+      "name": "scale",
+      "state": "done",
+      "progress": 1.0,
+      "message": "Synthetic example geometry"
+    },
+    {
+      "name": "object_mask",
+      "state": "skipped",
+      "progress": null,
+      "message": "Synthetic example geometry"
+    },
+    {
+      "name": "splat",
+      "state": "skipped",
+      "progress": null,
+      "message": "Synthetic example geometry"
+    },
+    {
+      "name": "mesh",
+      "state": "done",
+      "progress": 1.0,
+      "message": "Synthetic example geometry"
+    },
+    {
+      "name": "parts",
+      "state": "done",
+      "progress": 1.0,
+      "message": "5 editable components"
+    }
+  ]
+}

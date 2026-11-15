@@ -17,7 +17,7 @@ def test_demo_scans(client):
     r = client.get("/api/demo-scans")
     assert r.status_code == 200
     scans = [DemoScan.model_validate(d) for d in r.json()]
-    assert {s.scan_id for s in scans} == {"scn_trap", "scn_knob"}
+    assert {s.scan_id for s in scans} == {"scn_sink", "scn_trap", "scn_knob"}
 
 
 def test_get_scan(client):

@@ -1,0 +1,372 @@
+[
+  {
+    "part_id": "p1",
+    "reconstruction_revision": 1,
+    "measurement_revision": 1,
+    "label": "Sink basin",
+    "label_confidence": 1.0,
+    "description": "Deep rounded rectangular basin, rolled rim and open drain hole.",
+    "mesh_uri": "scans/scn_sink/parts/p1.glb",
+    "thumbnail_uri": "scans/scn_sink/renders/p1.png",
+    "centroid_mm": [
+      0.0,
+      0.0,
+      328.5
+    ],
+    "obb": {
+      "center": [
+        0.0,
+        0.0,
+        328.5
+      ],
+      "extent": [
+        580.0,
+        460.0,
+        183.0
+      ],
+      "rotation_quat": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ]
+    },
+    "dimensions": [
+      {
+        "name": "width",
+        "value": {
+          "scan_mm": 580.0,
+          "snapped_mm": null,
+          "snap_rule": null,
+          "caliper_mm": null,
+          "user_confirmed": false,
+          "preferred": "scan"
+        }
+      },
+      {
+        "name": "depth",
+        "value": {
+          "scan_mm": 460.0,
+          "snapped_mm": null,
+          "snap_rule": null,
+          "caliper_mm": null,
+          "user_confirmed": false,
+          "preferred": "scan"
+        }
+      },
+      {
+        "name": "height",
+        "value": {
+          "scan_mm": 183.0,
+          "snapped_mm": null,
+          "snap_rule": null,
+          "caliper_mm": null,
+          "user_confirmed": false,
+          "preferred": "scan"
+        }
+      }
+    ],
+    "features": [],
+    "material_guess": {
+      "value": "Illustrative material",
+      "confidence": 1.0
+    },
+    "source": "user_edited"
+  },
+  {
+    "part_id": "p2",
+    "reconstruction_revision": 1,
+    "measurement_revision": 1,
+    "label": "Mixer faucet",
+    "label_confidence": 1.0,
+    "description": "High arched faucet with a mounting base, lever and downward spout.",
+    "mesh_uri": "scans/scn_sink/parts/p2.glb",
+    "thumbnail_uri": "scans/scn_sink/renders/p2.png",
+    "centroid_mm": [
+      12.5,
+      109.0,
+      530.8811072287175
+    ],
+    "obb": {
+      "center": [
+        12.5,
+        109.0,
+        530.8811072287175
+      ],
+      "extent": [
+        85.0,
+        222.0,
+        221.762214457435
+      ],
+      "rotation_quat": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ]
+    },
+    "dimensions": [
+      {
+        "name": "width",
+        "value": {
+          "scan_mm": 85.0,
+          "snapped_mm": null,
+          "snap_rule": null,
+          "caliper_mm": null,
+          "user_confirmed": false,
+          "preferred": "scan"
+        }
+      },
+      {
+        "name": "depth",
+        "value": {
+          "scan_mm": 222.0,
+          "snapped_mm": null,
+          "snap_rule": null,
+          "caliper_mm": null,
+          "user_confirmed": false,
+          "preferred": "scan"
+        }
+      },
+      {
+        "name": "height",
+        "value": {
+          "scan_mm": 221.762214457435,
+          "snapped_mm": null,
+          "snap_rule": null,
+          "caliper_mm": null,
+          "user_confirmed": false,
+          "preferred": "scan"
+        }
+      }
+    ],
+    "features": [],
+    "material_guess": {
+      "value": "Illustrative material",
+      "confidence": 1.0
+    },
+    "source": "user_edited"
+  },
+  {
+    "part_id": "p3",
+    "reconstruction_revision": 1,
+    "measurement_revision": 1,
+    "label": "Drain and tailpiece",
+    "label_confidence": 1.0,
+    "description": "Drain flange and vertical tailpiece connect the basin to the trap.",
+    "mesh_uri": "scans/scn_sink/parts/p3.glb",
+    "thumbnail_uri": "scans/scn_sink/renders/p3.png",
+    "centroid_mm": [
+      0.0,
+      0.0,
+      182.0
+    ],
+    "obb": {
+      "center": [
+        0.0,
+        0.0,
+        182.0
+      ],
+      "extent": [
+        86.0,
+        86.0,
+        124.0
+      ],
+      "rotation_quat": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ]
+    },
+    "dimensions": [
+      {
+        "name": "width",
+        "value": {
+          "scan_mm": 86.0,
+          "snapped_mm": null,
+          "snap_rule": null,
+          "caliper_mm": null,
+          "user_confirmed": false,
+          "preferred": "scan"
+        }
+      },
+      {
+        "name": "depth",
+        "value": {
+          "scan_mm": 86.0,
+          "snapped_mm": null,
+          "snap_rule": null,
+          "caliper_mm": null,
+          "user_confirmed": false,
+          "preferred": "scan"
+        }
+      },
+      {
+        "name": "height",
+        "value": {
+          "scan_mm": 124.0,
+          "snapped_mm": null,
+          "snap_rule": null,
+          "caliper_mm": null,
+          "user_confirmed": false,
+          "preferred": "scan"
+        }
+      }
+    ],
+    "features": [],
+    "material_guess": {
+      "value": "Illustrative material",
+      "confidence": 1.0
+    },
+    "source": "user_edited"
+  },
+  {
+    "part_id": "p4",
+    "reconstruction_revision": 1,
+    "measurement_revision": 1,
+    "label": "P-trap",
+    "label_confidence": 1.0,
+    "description": "Hollow U-bend retains a water seal beneath the sink.",
+    "mesh_uri": "scans/scn_sink/parts/p4.glb",
+    "thumbnail_uri": "scans/scn_sink/renders/p4.png",
+    "centroid_mm": [
+      60.0,
+      0.0,
+      72.0
+    ],
+    "obb": {
+      "center": [
+        60.0,
+        0.0,
+        72.0
+      ],
+      "extent": [
+        174.0,
+        54.0,
+        144.0
+      ],
+      "rotation_quat": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ]
+    },
+    "dimensions": [
+      {
+        "name": "width",
+        "value": {
+          "scan_mm": 174.0,
+          "snapped_mm": null,
+          "snap_rule": null,
+          "caliper_mm": null,
+          "user_confirmed": false,
+          "preferred": "scan"
+        }
+      },
+      {
+        "name": "depth",
+        "value": {
+          "scan_mm": 54.0,
+          "snapped_mm": null,
+          "snap_rule": null,
+          "caliper_mm": null,
+          "user_confirmed": false,
+          "preferred": "scan"
+        }
+      },
+      {
+        "name": "height",
+        "value": {
+          "scan_mm": 144.0,
+          "snapped_mm": null,
+          "snap_rule": null,
+          "caliper_mm": null,
+          "user_confirmed": false,
+          "preferred": "scan"
+        }
+      }
+    ],
+    "features": [],
+    "material_guess": {
+      "value": "Illustrative material",
+      "confidence": 1.0
+    },
+    "source": "user_edited"
+  },
+  {
+    "part_id": "p5",
+    "reconstruction_revision": 1,
+    "measurement_revision": 1,
+    "label": "Outlet pipe",
+    "label_confidence": 1.0,
+    "description": "Curved waste arm connects the trap outlet toward the wall.",
+    "mesh_uri": "scans/scn_sink/parts/p5.glb",
+    "thumbnail_uri": "scans/scn_sink/renders/p5.png",
+    "centroid_mm": [
+      120.0,
+      101.5,
+      187.5
+    ],
+    "obb": {
+      "center": [
+        120.0,
+        101.5,
+        187.5
+      ],
+      "extent": [
+        54.0,
+        257.0,
+        95.0
+      ],
+      "rotation_quat": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ]
+    },
+    "dimensions": [
+      {
+        "name": "width",
+        "value": {
+          "scan_mm": 54.0,
+          "snapped_mm": null,
+          "snap_rule": null,
+          "caliper_mm": null,
+          "user_confirmed": false,
+          "preferred": "scan"
+        }
+      },
+      {
+        "name": "depth",
+        "value": {
+          "scan_mm": 257.0,
+          "snapped_mm": null,
+          "snap_rule": null,
+          "caliper_mm": null,
+          "user_confirmed": false,
+          "preferred": "scan"
+        }
+      },
+      {
+        "name": "height",
+        "value": {
+          "scan_mm": 95.0,
+          "snapped_mm": null,
+          "snap_rule": null,
+          "caliper_mm": null,
+          "user_confirmed": false,
+          "preferred": "scan"
+        }
+      }
+    ],
+    "features": [],
+    "material_guess": {
+      "value": "Illustrative material",
+      "confidence": 1.0
+    },
+    "source": "user_edited"
+  }
+]

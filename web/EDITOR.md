@@ -49,3 +49,27 @@ Backend: `backend/.venv/bin/python -m pytest backend/tests/app -q`.
 `backend/tests/app/test_part_export.py` reimports STEP output to verify solid validity, dimensions, volume, disconnected components and node transforms; it also covers STL downloads, missing parts, unsupported formats and open-mesh errors.
 
 Browser checks cover the narrow layout, desktop panel resizing with the keyboard, measurement-card containment, and isolation download controls. File conversion and download responses are verified by the backend tests.
+
+## Creating a workspace in the editor
+
+New workspace opens the existing resizable editor with a setup form in the viewer area, an empty
+Parts panel, and an assistant introduction. Enter a title, choose one video or up to 60 photos,
+then select Generate workspace. Selecting files alone does not upload them. Upload errors keep
+the form and selected files available; retry reuses the same pending workspace. After start succeeds,
+the same editor layout shows stage progress and loads the model/parts when the pipeline publishes them.
+Titles are stored server-side in a separate table and appear in the saved-workspace dashboard.
+Photo batches track and validate every uploaded image, then supply all photos to frame extraction.
+Real reconstruction requires the existing live-mode models; mock mode continues to serve examples.
+
+## Export dependencies and touching components
+
+STL mesh export no longer imports the optional CAD kernel. STEP requires CadQuery, provided by
+`backend`'s existing `cad` extra. Already-watertight components retain separate topology during
+export so touching pipe ends or combined solids do not become non-manifold through vertex welding.
+
+## Five-piece sink example
+
+`scn_sink` is a synthetic, editable five-component kitchen sink: basin, faucet, drain/tailpiece,
+P-trap, and outlet. Meshes are hollow where appropriate, watertight, and use the shared part palette.
+The preview is rendered from the same geometry. Existing examples and saved edits remain available.
+Rebuild it with `PYTHONPATH=backend backend/.venv/bin/python scripts/make_sink_example.py`.
