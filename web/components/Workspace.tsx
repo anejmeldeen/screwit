@@ -46,9 +46,14 @@ export function Workspace({
   const gridRef = useRef<HTMLDivElement>(null);
   const dockRef = useRef<HTMLElement>(null);
   const [dockHeight, setDockHeight] = useState(0);
-  const [split, setSplit] = usePersistentNumber("ui.hierarchyPercent", 24);
-  const hierarchyRatio = Math.max(10, Math.min(90, split)) / 100;
+  const contentsRef = useRef<HTMLDivElement>(null);
+  const [contentHeight, setContentHeight] = useState(0);
+  const [heightAdjustment, setHeightAdjustment] = usePersistentNumber("ui.hierarchyHeightAdjustment", 0);
   const availableHeight = Math.max(1, dockHeight - 12);
+  const minimumHeight = Math.min(42, availableHeight);
+  const maximumHeight = Math.max(minimumHeight, availableHeight - 100);
+  const naturalHeight = Math.min(contentHeight, maximumHeight);
+  const hierarchyHeight = Math.max(minimumHeight, Math.min(maximumHeight, naturalHeight + heightAdjustment));
   const [gridWidth, setGridWidth] = useState(0);
   const [leftWidth, setLeftWidth] = usePersistentNumber("ui.objectDockWidth", 0);
   const [rightWidth, setRightWidth] = usePersistentNumber("ui.assistantWidth", 0);
@@ -56,10 +61,12 @@ export function Workspace({
   useLayoutEffect(() => {
     const grid = gridRef.current;
     const dock = dockRef.current;
-    if (!grid || !dock) return;
-    const measure = () => { setGridWidth(grid.clientWidth); setDockHeight(dock.clientHeight); };
+    const contents = contentsRef.current;
+    if (!grid || !dock || !contents) return;
+    const measure = () => { setGridWidth(grid.clientWidth); setDockHeight(dock.clientHeight); setContentHeight(contents.offsetHeight); };
     measure();
     const observer = new ResizeObserver(measure);
+    observer.observe(contents);
     observer.observe(dock);
     observer.observe(grid);
     return () => observer.disconnect();
@@ -163,8 +170,9 @@ export function Workspace({
       {scan?.status === "failed" ? <div className="workbench-notice" role="alert">This scan could not finish. Try another recording.</div> : null}
       {!creationForm && !scanError && (watching || !scan || (scan.status !== "ready" && scan.status !== "failed")) ? <div className="workbench-notice" role="status"><ScanProgress scan={scan} /></div> : null}
       <div ref={gridRef} className="scene-layout" style={{ "--left": `${left}px`, "--right": `${right}px` } as CSSProperties}>
-        <aside ref={dockRef} className="scene-object-dock" style={{ gridTemplateRows: `minmax(0,${hierarchyRatio}fr) 12px minmax(0,${1 - hierarchyRatio}fr)` }}>
+        <aside ref={dockRef} className="scene-object-dock" style={{ gridTemplateRows: `${hierarchyHeight}px 12px minmax(0,1fr)` }}>
           <section className="scene-hierarchy" aria-label="Hierarchy">
+            <div ref={contentsRef} className="hierarchy-contents">
             <h2 className="dock-heading">Hierarchy</h2>
             <div className="scene-root">
               <button onClick={() => setExpanded(!expanded)} aria-label={expanded ? "Collapse assembly" : "Expand assembly"} aria-expanded={expanded}>{expanded ? "▾" : "▸"}</button>
@@ -177,10 +185,11 @@ export function Workspace({
               </button></li>)}</ul>}
             {!parts?.length && <p className="dock-note">{creationForm ? "No parts yet" : partsReady ? "No parts available" : "Waiting for parts…"}</p>}
             {hiddenPartIds.length > 0 && <button className="tree-show" onClick={() => setHiddenPartIds([])}>Show all parts</button>}
+            </div>
           </section>
           <ResizeHandle label="Resize hierarchy height" className="object-split" orientation="horizontal"
-            min={availableHeight * .1} max={availableHeight * .9} value={availableHeight * hierarchyRatio}
-            onChange={height => setSplit(100 * height / availableHeight)} />
+            min={minimumHeight} max={maximumHeight} value={hierarchyHeight}
+            onChange={height => setHeightAdjustment(height - naturalHeight)} />
           <section className="scene-inspector" aria-label="Inspector">
             <h2 className="dock-heading">Inspector</h2>
             {!selected && <><h2>{name}</h2><p className="dock-note">{creationForm ? "Add photos or a video to build your assembly." : `${parts?.length ?? 0} components`}</p>
