@@ -192,3 +192,24 @@ def test_sink_manual_targets_named_part(registry):
     assert {"p3", "p4", "p5"} == set(plan.steps[1].part_ids)
     assert len(plan.bom) == 1
     assert plan.tools and plan.safety
+
+
+def test_text_after_a_tool_call_starts_a_new_paragraph(registry):
+    # Streamed as is, "...the parts." and "Here's what you have" ran together after a tool call.
+    driver = FakeDriver([
+        ScriptTurn(text="I'll get you a detailed look at the parts.", tool_calls=[("list_parts", {})]),
+        ScriptTurn(text="Here's what you have.", tool_calls=[("list_parts", {})]),
+        ScriptTurn(text="That is all."),
+    ])
+    events = _collect(LlmChatAgent(registry, driver), "scn_knob", "what are the parts?")
+    text = "".join(e.text for e in events if isinstance(e, TokenEvent))
+    assert text == "I'll get you a detailed look at the parts.\n\nHere's what you have.\n\nThat is all."
+
+
+def test_no_break_before_the_first_text_of_a_reply(registry):
+    driver = FakeDriver([
+        ScriptTurn(text="", tool_calls=[("list_parts", {})]),
+        ScriptTurn(text="Two parts."),
+    ])
+    events = _collect(LlmChatAgent(registry, driver), "scn_knob", "what are the parts?")
+    assert "".join(e.text for e in events if isinstance(e, TokenEvent)) == "Two parts."

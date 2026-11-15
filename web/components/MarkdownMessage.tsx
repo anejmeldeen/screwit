@@ -19,8 +19,18 @@ export function MarkdownMessage({
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
         components={{
+          // Chips can sit in any inline text, including bold ("**[[part:p1]] Headband**"),
+          // headings and table cells, not only directly in a paragraph.
           p: ({ children }) => <p>{renderChildren(children, onPartChip)}</p>,
           li: ({ children }) => <li>{renderChildren(children, onPartChip)}</li>,
+          strong: ({ children }) => <strong>{renderChildren(children, onPartChip)}</strong>,
+          em: ({ children }) => <em>{renderChildren(children, onPartChip)}</em>,
+          h1: ({ children }) => <h1>{renderChildren(children, onPartChip)}</h1>,
+          h2: ({ children }) => <h2>{renderChildren(children, onPartChip)}</h2>,
+          h3: ({ children }) => <h3>{renderChildren(children, onPartChip)}</h3>,
+          h4: ({ children }) => <h4>{renderChildren(children, onPartChip)}</h4>,
+          td: ({ children }) => <td>{renderChildren(children, onPartChip)}</td>,
+          th: ({ children }) => <th>{renderChildren(children, onPartChip)}</th>,
         }}
       >
         {text}

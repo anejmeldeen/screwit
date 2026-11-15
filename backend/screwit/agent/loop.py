@@ -79,14 +79,21 @@ class LlmChatAgent:
         return [*turns, {"role": "user", "content": content}]
 
     def _run(self, ctx: ToolContext, tools: list[dict], messages: list[dict], system) -> Iterator:
+        said = False      # text already streamed in an earlier turn of this reply
         for _ in range(_MAX_TURNS):
             turn = steps_to_turn(self._driver.run_turn(system(), messages, tools))
 
             assistant_content: list[dict] = []
             tool_results: list[dict] = []
+            first_text = True
             for step in turn.steps:
                 if isinstance(step, TextStep):
                     if step.text:
+                        # Text after a tool call starts a new paragraph; streamed as is, it ran on
+                        # from the text before the call ("the parts.Here's what you have").
+                        if said and first_text and not step.text[:1].isspace():
+                            yield TokenEvent(text="\n\n")
+                        first_text = False
                         yield TokenEvent(text=step.text)
                         assistant_content.append({"type": "text", "text": step.text})
                 elif isinstance(step, ToolUseStep):
@@ -108,6 +115,7 @@ class LlmChatAgent:
                     tool_results.append(
                         {"type": "tool_result", "tool_use_id": step.id, "content": payload, "is_error": failed})
 
+            said = said or not first_text
             if turn.stop_reason != "tool_use":
                 return
             messages.append({"role": "assistant", "content": assistant_content})
