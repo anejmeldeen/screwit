@@ -384,8 +384,8 @@ button:disabled { cursor: not-allowed; }
 .workspace-row-link::after { content:""; position:absolute; inset:0; }
 .workspace-actions { position:relative; display:flex; gap:6px; }
 .workspace-actions button,.workspace-context button,.workspace-empty button { border-radius:5px; padding:7px 12px; font-size:12px; font-weight:650; }
-.workspace-section :is(.dashboard-new,button) { border:1px solid var(--card-ink); background:var(--card-ink); color:var(--button-yellow); text-decoration:none; }
-.workspace-section :is(.dashboard-new,button):hover { background:#333027; text-decoration:underline; text-underline-offset:3px; }
+.workspace-section :is(.dashboard-new,button) { border:1px solid var(--card-ink); background:#414141; color:var(--button-yellow); text-decoration:none; }
+.workspace-section :is(.dashboard-new,button):hover { background:#333; text-decoration:underline; text-underline-offset:3px; }
 .workspace-section :is(.dashboard-new,button):focus-visible { outline:2px solid var(--card-ink); outline-offset:2px; box-shadow:0 0 0 2px var(--button-yellow); }
 .workspace-context { position:fixed; z-index:100; display:grid; gap:4px; width:140px; padding:6px; border:2px solid var(--card-ink); border-radius:7px; background:#fff4c2; box-shadow:2px 3px 0 var(--card-ink); }
 .workspace-context button { text-align:left; }
@@ -397,3 +397,6 @@ button:disabled { cursor: not-allowed; }
 .workspace-card time { font-size:12px; }
 .workspace-card .workspace-actions { width:fit-content; flex-wrap:wrap; }
 .workspace-list.is-compact .workspace-card { padding:12px; gap:8px; }
+
+.workspace-name { flex:1; min-width:0; }
+.workspace-name input { width:100%; background:transparent; color:inherit; font-size:14px; font-weight:750; border-bottom:1px solid currentColor; }

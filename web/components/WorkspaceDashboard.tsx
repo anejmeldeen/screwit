@@ -49,15 +49,34 @@ export function WorkspaceDashboard({ examplesOnly = false }: { examplesOnly?: bo
     };
   }, [menu]);
 
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  async function saveName(build: BuildSummary, form: HTMLFormElement) {
+    const title = String(new FormData(form).get("title") ?? "").trim();
+    if (!title) {
+      setActionError("Enter a workspace name.");
+      form.querySelector("input")?.focus();
+      return;
+    }
+    setSaving(true);
+    setActionError("");
+    try {
+      if (title !== build.title) await api.renameBuild(build.scan_id, title);
+      setBuilds(items => items?.map(item => item.scan_id === build.scan_id ? { ...item, title } : item) ?? null);
+      setEditingId(null);
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : "Could not rename the workspace.");
+    } finally { setSaving(false); }
+  }
+
   async function act(build: BuildSummary, action: "Rename" | "Delete") {
     setMenu(null);
     setActionError("");
     try {
       if (action === "Rename") {
-        const title = window.prompt("Workspace name", build.title)?.trim();
-        if (title === undefined || title === build.title) return;
-        if (!title || title.length > 120) throw new Error("Enter a name between 1 and 120 characters.");
-        await api.renameBuild(build.scan_id, title);
+        setEditingId(build.scan_id);
+        return;
       } else {
         if (!window.confirm(`Delete “${build.title}” from your workspaces?`)) return;
         await api.deleteBuild(build.scan_id);
@@ -69,7 +88,7 @@ export function WorkspaceDashboard({ examplesOnly = false }: { examplesOnly?: bo
   }
 
   const buttons = (build: BuildSummary) => (["Rename", "Delete"] as const).map(action =>
-    <button type="button" key={action} aria-label={`${action} ${build.title}`} onClick={() => act(build, action)}>{action}</button>);
+    <button type="button" key={action} disabled={saving} aria-label={`${action} ${build.title}`} onClick={() => act(build, action)}>{action}</button>);
 
   const workspaces = (builds || []).filter((build) => !examplesOnly || build.is_example);
   const visible = workspaces.filter((build) => build.title.toLowerCase().includes(search.trim().toLowerCase())).sort((a, b) => {
@@ -98,12 +117,25 @@ export function WorkspaceDashboard({ examplesOnly = false }: { examplesOnly?: bo
           : builds === null ? <div className="workspace-skeletons" role="status" aria-label="Loading workspaces">{[0, 1, 2].map((i) => <Skeleton key={i} className="h-20" />)}</div>
           : visible.length === 0 ? <div className="workspace-empty"><DashboardIcon name={search ? "search" : "box"} /><h3>{search ? "No workspaces found." : examplesOnly ? "No examples in this account yet." : "Your next idea starts here."}</h3><p>{search ? "Try a different name or clear your search." : "Scan an object to make your first workspace."}</p>{search && <button className="text-link" onClick={() => setSearch("")}>Clear search</button>}</div>
           : <ul className="workspace-cards" aria-label="Workspaces">{visible.map((build) => <li key={build.scan_id} className="workspace-card" onContextMenu={event => {
+            if (editingId === build.scan_id) return;
             event.preventDefault();
             setMenu({ build, x: Math.max(0, Math.min(event.clientX, window.innerWidth - 148)), y: Math.max(0, Math.min(event.clientY, window.innerHeight - 96)) });
           }}>
               <div><span className="workspace-card-label">Workspace</span>
-              <Link href={`/scan/${build.scan_id}`} className="workspace-identity workspace-row-link"><span className={`workspace-icon ${build.is_example ? "is-example" : ""}`}><DashboardIcon name={build.is_example || build.input_type === "mesh" ? "box" : "camera"} /></span><span><strong>{build.title}</strong><small>{build.is_example ? "Example workspace" : `${build.input_type.charAt(0).toUpperCase() + build.input_type.slice(1)} scan`}</small></span></Link></div>
-              <div><span className="workspace-card-label">Actions</span><span className="workspace-actions">{buttons(build)}</span></div>
+              <div className="workspace-identity"><span className={`workspace-icon ${build.is_example ? "is-example" : ""}`}><DashboardIcon name={build.is_example || build.input_type === "mesh" ? "box" : "camera"} /></span><div className="workspace-name">
+                {editingId === build.scan_id ? <form id={`rename-${build.scan_id}`} onSubmit={event => {
+                  event.preventDefault();
+                  void saveName(build, event.currentTarget);
+                }}>
+                  <input name="title" aria-label="Workspace name" defaultValue={build.title} maxLength={120} required
+                    autoFocus onFocus={event => event.currentTarget.select()} readOnly={saving}
+                    onKeyDown={event => { if (event.key === "Escape" && !saving) { setEditingId(null); setActionError(""); } }} />
+                </form> : <Link href={`/scan/${build.scan_id}`} className="workspace-row-link"><strong>{build.title}</strong></Link>}
+                <small>{build.is_example ? "Example workspace" : `${build.input_type.charAt(0).toUpperCase() + build.input_type.slice(1)} scan`}</small></div></div></div>
+              <div><span className="workspace-card-label">Actions</span><span className="workspace-actions">{editingId === build.scan_id ? <>
+                <button type="submit" form={`rename-${build.scan_id}`} disabled={saving}>Save</button>
+                <button type="button" disabled={saving} onClick={() => { setEditingId(null); setActionError(""); }}>Cancel</button>
+              </> : buttons(build)}</span></div>
               <div><span className="workspace-card-label">Last opened</span><time dateTime={build.opened_at ?? undefined} title={build.opened_at ? new Date(build.opened_at).toLocaleString() : undefined}>{build.opened_at ? openedLabel(build.opened_at) : "No recorded open"}</time></div>
           </li>)}</ul>}
       </div>
