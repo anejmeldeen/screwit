@@ -59,7 +59,7 @@ def list_builds(reg: RegistryDep, user: UserDep) -> list[BuildSummary]:
         scan = store.get_scan(owner.scan_id)
         if scan is None:
             continue
-        default_title = f"{scan.input.type.capitalize()} build · {scan.scan_id.removeprefix('scn_')[:6]}"
+        default_title = f"{scan.input.type.capitalize()} build"
         builds.append(BuildSummary(
             scan_id=scan.scan_id,
             title=saved_titles.get(scan.scan_id, titles.get(scan.scan_id, default_title)),
