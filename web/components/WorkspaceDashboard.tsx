@@ -3,7 +3,7 @@
 import dynamic from "next/dynamic";
 import { workspaceSlugs } from "@/lib/workspacePaths";
 import Link from "next/link";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { api, type BuildSummary } from "@/lib/api";
 import { useDashboardPreferences } from "@/lib/dashboardPreferences";
 import { DashboardIcon } from "./DashboardIcon";
@@ -14,13 +14,14 @@ const sortLabels = { opened: "Last opened", name: "Name", created: "Date created
 
 const WorkspaceSpin = dynamic(() => import("./WorkspaceSpin"), { ssr: false });
 
-function WorkspacePreview({ build, spinning }: { build: BuildSummary; spinning: boolean }) {
+function WorkspacePreview({ build, spinning, children }: { build: BuildSummary; spinning: boolean; children?: ReactNode }) {
   const [failed, setFailed] = useState(false);
   // No model yet (still building, failed, or never uploaded): a placeholder screw in the same frame,
-  // so every card keeps the same shape.
+  // so every card keeps the same shape. ``children`` (the bulk-select checkbox) sit on the frame.
   if (failed || (!build.is_example && build.status !== "ready")) {
-    return <div className="workspace-preview-frame is-placeholder" role="img" aria-label={`${build.title} has no 3D model yet`}>
-      <ScrewyIcon />
+    return <div className="workspace-preview-frame is-placeholder">
+      <span role="img" aria-label={`${build.title} has no 3D model yet`}><ScrewyIcon /></span>
+      {children}
     </div>;
   }
   const id = encodeURIComponent(build.scan_id);
@@ -30,6 +31,7 @@ function WorkspacePreview({ build, spinning }: { build: BuildSummary; spinning: 
     <img className="workspace-preview" src={src} alt={`3D preview of ${build.title}`}
     loading="lazy" width={480} height={288} onError={() => setFailed(true)} />
     {spinning && <WorkspaceSpin id={build.scan_id} />}
+    {children}
   </div>;
 }
 
@@ -265,7 +267,7 @@ export function WorkspaceDashboard({ examplesOnly = false }: { examplesOnly?: bo
       {menu && <div className="workspace-context" aria-label="Workspace actions" role="group" style={{ left: menu.x, top: menu.y }}>{buttons(menu.build, true)}</div>}
       {preferenceError && <p className="settings-caption" role="status">{preferenceError}</p>}
       <div className={`workspace-list ${preferences.compact ? "is-compact" : ""}`}>
-        {error ? <div className="workspace-empty" role="alert"><DashboardIcon name="box" /><h3>We couldn&apos;t load your workspaces.</h3><p>Give it another try in a moment.</p><button type="button" className="text-link" onClick={() => { setError(false); setAttempt((n) => n + 1); }}>Try again ↗</button></div>
+        {error ? <div className="workspace-empty" role="alert"><span className="workspace-empty-screw"><ScrewyIcon mood="sad" /></span><h3>We couldn&apos;t load your workspaces.</h3><p>Give it another try in a moment.</p><button type="button" className="text-link" onClick={() => { setError(false); setAttempt((n) => n + 1); }}>Try again ↗</button></div>
           : builds === null ? <div className="workspace-skeletons" role="status" aria-label="Loading workspaces">{[0, 1, 2].map((i) => <Skeleton key={i} className="h-20" />)}</div>
           : visible.length === 0 ? <div className="workspace-empty"><DashboardIcon name={search ? "search" : "box"} /><h3>{search ? "No workspaces found." : examplesOnly ? "No examples in this account yet." : "Your next idea starts here."}</h3><p>{search ? "Try a different name or clear your search." : "Scan an object to make your first workspace."}</p>{search && <button className="text-link" onClick={() => setSearch("")}>Clear search</button>}</div>
           : <ul className="workspace-cards" aria-label="Workspaces">{visible.map((build) => <li key={build.scan_id}
@@ -277,11 +279,12 @@ export function WorkspaceDashboard({ examplesOnly = false }: { examplesOnly?: bo
             event.preventDefault();
             setMenu({ build, x: Math.max(0, Math.min(event.clientX, window.innerWidth - 148)), y: Math.max(0, Math.min(event.clientY, window.innerHeight - 96)) });
           }}>
-              <WorkspacePreview build={build} spinning={hovered === build.scan_id && editingId !== build.scan_id} />
-              <div className="workspace-identity">
+              <WorkspacePreview build={build} spinning={hovered === build.scan_id && editingId !== build.scan_id}>
                 {selecting && <input type="checkbox" className="workspace-check" aria-label={`Select ${build.title}`}
                   checked={selected.has(build.scan_id)} onClick={event => event.stopPropagation()}
                   onChange={() => toggle(build.scan_id)} />}
+              </WorkspacePreview>
+              <div className="workspace-identity">
                 <div className="workspace-name">
                 {editingId === build.scan_id ? <form id={`rename-${build.scan_id}`} onSubmit={event => {
                   event.preventDefault();
