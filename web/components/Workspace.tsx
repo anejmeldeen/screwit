@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { useScan, useReconstruction, useParts, isStageDone, usePersistentNumber } from "@/lib/hooks";
 import { scaleWarnings } from "@/lib/scaleWarnings";
 import { ViewerPanel } from "@/components/viewer/ViewerPanel";
@@ -9,7 +9,9 @@ import { ResizeHandle } from "@/components/ResizeHandle";
 import { PartDownloads } from "@/components/PartDownloads";
 import { ChatPanel } from "@/components/ChatPanel";
 import { ScanProgress } from "@/components/StatusBar";
-import { ErrorNote } from "@/components/ui";
+import { api } from "@/lib/api";
+import { ScrewyIcon } from "@/components/ScrewyIcon";
+import { EmptyState, ErrorNote } from "@/components/ui";
 import { markOnce, PERF_MARKS } from "@/lib/perf";
 import type { CadResult } from "@/lib/contracts.gen";
 import type { ViewerCadOverlay } from "@/components/viewer/Viewer";
@@ -17,13 +19,26 @@ import type { ViewerCadOverlay } from "@/components/viewer/Viewer";
 export function Workspace({
   scanId,
   initialPartId = null,
+  creationForm, title,
 }: {
+  creationForm?: ReactNode;
+  title?: string;
   scanId: string;
   initialPartId?: string | null;
 }) {
   const { scan, error: scanError } = useScan(scanId);
   const { recon } = useReconstruction(scanId, scan);
   const { parts, refresh: refreshParts } = useParts(scanId, scan);
+
+  const [savedTitle, setSavedTitle] = useState("");
+  useEffect(() => {
+    if (!scanId) return;
+    let alive = true;
+    api.builds().then(builds => {
+      if (alive) setSavedTitle(builds.find(build => build.scan_id === scanId)?.title ?? "");
+    }).catch(() => {});
+    return () => { alive = false; };
+  }, [scanId]);
 
   const gridRef = useRef<HTMLDivElement>(null);
   const [gridWidth, setGridWidth] = useState(0);
@@ -122,17 +137,17 @@ export function Workspace({
 
   return (
     <div className="workbench flex flex-col">
-      <h1 className="sr-only">Workbench</h1>
+      <header className="workspace-titlebar"><h1>{title || savedTitle || "Workspace"}</h1><span>{creationForm ? "New workspace" : "Workspace editor"}</span></header>
       {scanError ? <div className="workbench-notice"><ErrorNote message={`Could not load this object: ${scanError}`} /></div> : null}
       {scan?.status === "failed" ? <div className="workbench-notice" role="alert">This scan could not finish. Try another recording.</div> : null}
-      {!scanError && (!scan || (scan.status !== "ready" && scan.status !== "failed")) ? <div className="workbench-notice" role="status"><ScanProgress scan={scan} /></div> : null}
+      {!creationForm && !scanError && (!scan || (scan.status !== "ready" && scan.status !== "failed")) ? <div className="workbench-notice" role="status"><ScanProgress scan={scan} /></div> : null}
       {scaleWarnings(recon?.scale ?? null).map((warning) => <div key={warning.id} className="workbench-notice" role="note">{warning.message}</div>)}
       <div ref={gridRef} className="workbench-grid" style={{
         "--parts-width": `${actualPartsWidth}px`, "--chat-width": `${actualChatWidth}px`,
         "--parts-height": `${actualPartsHeight}px`, "--chat-height": `${chatHeight}px`,
       } as CSSProperties}>
-        <section className="workbench-viewer" aria-label="3D viewer">
-          <ViewerPanel
+        <section className="workbench-viewer" aria-label={creationForm ? "Workspace setup" : "3D viewer"}>
+          {creationForm ? <div className="workspace-setup">{creationForm}</div> : <ViewerPanel
             scanId={scanId}
             recon={recon}
             parts={parts ?? []}
@@ -149,7 +164,7 @@ export function Workspace({
             onScaled={() => {
               refreshParts();
             }}
-          />
+          />}
         </section>
 
         <ResizeHandle label="Resize parts panel" className="parts-resizer" orientation={wide ? "vertical" : "horizontal"}
@@ -163,7 +178,7 @@ export function Workspace({
           </div>
           {partsReady && parts?.length ? <PartDownloads scanId={scanId} /> : null}
           {parts?.find(p => p.part_id === selectedId) ? <PartDownloads scanId={scanId} part={parts.find(p => p.part_id === selectedId)} /> : null}
-          <PartsPanel
+          {creationForm ? <EmptyState title="No parts yet" hint="Upload your object to start. Its parts will appear here as processing finishes." /> : <PartsPanel
             hiddenPartIds={hiddenPartIds}
             onToggleHidden={id => setHiddenPartIds(ids => ids.includes(id) ? ids.filter(p => p !== id) : [...ids, id])}
             onIsolate={setIsolatedId}
@@ -176,7 +191,7 @@ export function Workspace({
               setFocusPartId(id);
             }}
             onChanged={refreshParts}
-          />
+          />}
         </section>
 
         <ResizeHandle label="Resize assistant panel" className="chat-resizer" orientation={stacked ? "horizontal" : "vertical"}
@@ -184,12 +199,15 @@ export function Workspace({
           max={stacked ? Math.max(1600, gridHeight * 2) : maxChatWidth} reverse={!stacked}
           onChange={stacked ? setChatHeight : setChatWidth} />
         <section className="workbench-chat" aria-label="Assistant">
-          <ChatPanel
+          {creationForm ? <div className="chat-panel">
+            <header className="chat-heading"><span className="chat-mark screwy-avatar"><ScrewyIcon /></span><div><h2>Screwy</h2><p>Let’s build.</p></div></header>
+            <div className="chat-messages"><div className="chat-empty"><h3>Start with your object.</h3><p>Name your workspace and add a video or photos. Once your scan starts, we can explore it together.</p></div></div>
+          </div> : <ChatPanel
             scanId={scanId}
             onHighlight={onHighlight}
             onPartChip={onPartChip}
             onShowCad={onShowCad}
-          />
+          />}
         </section>
       </div>
       <dialog ref={isolationDialog} aria-labelledby="isolation-title"

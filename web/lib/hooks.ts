@@ -50,6 +50,7 @@ export function useScan(scanId: string) {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    if (!scanId) return;
     let alive = true;
     api
       .getScan(scanId)
@@ -87,6 +88,7 @@ export function useReconstruction(scanId: string, scan: Scan | null) {
   const rev = scan?.reconstruction_revision ?? null;
 
   const refresh = useCallback(() => {
+    if (!scanId) return;
     api
       .getReconstruction(scanId)
       .then(setRecon)
@@ -111,6 +113,7 @@ export function useParts(scanId: string, scan: Scan | null) {
   const rev = scan?.reconstruction_revision ?? null;
 
   const refresh = useCallback(() => {
+    if (!scanId) return;
     api
       .getParts(scanId)
       .then(setParts)

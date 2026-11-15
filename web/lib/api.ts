@@ -91,7 +91,7 @@ export const api = {
   demoScans: () => request<DemoScan[]>("/demo-scans"),
 
   // Scan lifecycle
-  createScan: (body: CreateScanRequest) =>
+  createScan: (body: CreateScanRequest & { title?: string }) =>
     request<CreateScanResponse>("/scans", {
       method: "POST",
       body: JSON.stringify(body),

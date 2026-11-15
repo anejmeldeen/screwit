@@ -37,6 +37,19 @@ class BuildOwnerRow(SQLModel, table=True):
     username: str = Field(index=True)
 
 
+class PhotoUploadRow(SQLModel, table=True):
+    __tablename__ = "photo_uploads"
+    scan_id: str = Field(primary_key=True)
+    keys_json: str
+
+
+class BuildTitleRow(SQLModel, table=True):
+    # Separate table allows existing SQLite databases to upgrade without ALTER.
+    __tablename__ = "build_titles"
+    scan_id: str = Field(primary_key=True)
+    title: str
+
+
 class BuildActivityRow(SQLModel, table=True):
     __tablename__ = "build_activity"
     scan_id: str = Field(primary_key=True)

@@ -10,8 +10,11 @@ person can act on, never a bare 500.
 
 from __future__ import annotations
 
+import json
 import logging
+import shutil
 import traceback
+from pathlib import Path
 
 from pydantic import TypeAdapter
 
@@ -82,7 +85,20 @@ def process_scan(scan_id: str, registry=None) -> None:
     # 1. Contained validation of the untrusted upload (SPEC 3.3).
     progress.status("validating")
     try:
-        info = reg.media_validator.validate(scan, reg.storage)
+        photo_keys = []
+        if scan.input.type == "photos":
+            from screwit.app.db import PhotoUploadRow, db_session
+
+            with db_session() as session:
+                manifest = session.get(PhotoUploadRow, scan_id)
+                if manifest:
+                    photo_keys = json.loads(manifest.keys_json)
+        info = None
+        for key in photo_keys or [scan.input.uri]:
+            photo_scan = scan.model_copy(update={"input": scan.input.model_copy(update={"uri": key})})
+            checked = reg.media_validator.validate(photo_scan, reg.storage)
+            info = info or checked
+        assert info is not None
     except ValueError as e:  # the validator's user-facing rejection
         first = "frames" if scan.input.type != "mesh" else "mesh"
         progress.status("failed", fail_stage=first, message=f"Upload rejected: {e}")
@@ -99,7 +115,9 @@ def process_scan(scan_id: str, registry=None) -> None:
 
     # 2. The pipeline reports every stage transition through `progress`.
     try:
-        reg.recon.run(store.get_scan(scan_id), reg.storage, reg.perception, progress.set)
+        storage = (_PhotoBatchStorage(reg.storage, scan.input.uri, photo_keys)
+                   if photo_keys else reg.storage)
+        reg.recon.run(store.get_scan(scan_id), storage, reg.perception, progress.set)
         _publish(reg, store, store.get_scan(scan_id))
     except Exception as e:  # noqa: BLE001
         log.error("pipeline failed for %s:\n%s", scan_id, traceback.format_exc())
@@ -107,3 +125,23 @@ def process_scan(scan_id: str, registry=None) -> None:
         progress.status("failed", fail_stage=stage, message=f"{stage} failed: {str(e)[:200]}")
         return
     progress.status("ready")
+
+
+class _PhotoBatchStorage:
+    """Expose all validated photos as one local directory to the existing pipeline."""
+
+    def __init__(self, storage, input_key: str, keys: list[str]) -> None:
+        self._storage, self._input_key, self._keys = storage, input_key, keys
+
+    def __getattr__(self, name):
+        return getattr(self._storage, name)
+
+    def local_path(self, key: str, scratch: Path) -> Path:
+        if key != self._input_key:
+            return self._storage.local_path(key, scratch)
+        directory = Path(scratch) / "photo-inputs"
+        directory.mkdir(parents=True, exist_ok=True)
+        for i, photo_key in enumerate(self._keys):
+            source = self._storage.local_path(photo_key, scratch)
+            shutil.copyfile(source, directory / f"{i:02d}{Path(photo_key).suffix}")
+        return directory
