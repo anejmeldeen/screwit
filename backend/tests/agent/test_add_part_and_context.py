@@ -684,11 +684,12 @@ def test_offline_pair_on_real_headband(registry, tmp_path):
     store = ScanStore(registry.data)
     added = [p for p in store.list_parts("scn_headphones") if p.part_id in ids]
     assert len(added) == 2
+    assert abs(added[0].centroid_mm[1] - added[1].centroid_mm[1]) < .05
     assert added[0].centroid_mm[0] * added[1].centroid_mm[0] < 0
     assert all(p.centroid_mm[1] > 140 for p in added)
     again = list(OfflineChatAgent(registry).reply("scn_headphones", "Could you give my headphones kitty ears?", []))
     assert next(e.part_ids for e in again if e.event == "highlight") == ids
-    assert not any(e.event == "tool_call" for e in again)
+    assert [e.name for e in again if e.event == "tool_call"] == ["fit_headphone_ears"]
     for part in added:
         raw = registry.storage.get_bytes(part.mesh_uri)
         mesh = trimesh.load(io.BytesIO(raw), file_type="glb", force="scene").to_geometry()

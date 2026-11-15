@@ -99,7 +99,7 @@ export async function streamChat(
   scanId: string,
   message: string,
   imageUris: string[],
-  onEvent: (ev: ChatEvent) => void,
+  onEvent: (ev: ChatEvent) => void | Promise<void>,
   signal?: AbortSignal,
 ): Promise<void> {
   const res = await fetch(`/api/scans/${scanId}/chat`, {
@@ -112,6 +112,7 @@ export async function streamChat(
     throw new Error(`Chat stream failed (${res.status})`);
   }
   let completed = false;
+  const events: ChatEvent[] = [];
   const parser = makeSseParser((name, data) => {
     let payload: unknown;
     try {
@@ -121,10 +122,11 @@ export async function streamChat(
     }
     const ev = decodeChatEvent(name, payload);
     if (ev?.event === "done" || ev?.event === "error") completed = true;
-    if (ev) onEvent(ev);
+    if (ev) events.push(ev);
   });
   for await (const chunk of readLines(res.body, signal)) {
     parser.feed(chunk);
+    for (const ev of events.splice(0)) await onEvent(ev);
   }
   if (!completed) throw new Error("Screwy’s connection ended before the reply finished. Please try again.");
 }

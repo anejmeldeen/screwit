@@ -888,20 +888,12 @@ def _surface_normal(mesh, point: np.ndarray, triangle: int, radius: float, outwa
     return ref / np.linalg.norm(ref)
 
 
-def _surface_point(reg: Registry, anchor: Part, face: str, uv) -> tuple[np.ndarray, int, int]:
-    """Where a ray along a scan axis, aimed at the face of anchor's bounding box at offset uv (-1..1 on
-    the two other axes, XYZ order), meets the anchor's actual triangles: the outermost hit. Falls back
-    to the nearest projected triangle edge when the ray passes through a hole. Returns (point, axis,
-    sign)."""
+def attachment_mesh(reg: Registry, anchor: Part):
+    """The mesh of an existing part (scan frame, mm), from storage or, for an example, the fixtures."""
     import trimesh
 
     from screwit.app.registry import fixture_asset
 
-    if not isinstance(face, str) or face not in _FACES:
-        raise AddPartError(f"surface must be one of {list(_FACES)}")
-    uv = np.asarray(_vector(uv, "offset_uv", 2))
-    if np.any(np.abs(uv) > 1):
-        raise AddPartError("offset_uv values must lie between -1 and 1")
     try:
         if reg.storage.head(anchor.mesh_uri) is None:
             fallback = fixture_asset(reg, anchor.mesh_uri)
@@ -910,13 +902,26 @@ def _surface_point(reg: Registry, anchor: Part, face: str, uv) -> tuple[np.ndarr
             data = fallback[0]
         else:
             data = reg.storage.get_bytes(anchor.mesh_uri)
-        mesh = trimesh.load(io.BytesIO(data), file_type="glb", force="scene").to_geometry()
-        triangles = mesh.triangles
-        lo, hi = mesh.bounds
+        return trimesh.load(io.BytesIO(data), file_type="glb", force="scene").to_geometry()
     except AddPartError:
         raise
     except Exception as exc:  # noqa: BLE001 - an unreadable mesh is a request-level failure
         raise AddPartError(f"the mesh of part {anchor.part_id!r} could not be read") from exc
+
+
+def _surface_point(reg: Registry, anchor: Part, face: str, uv) -> tuple[np.ndarray, int, int]:
+    """Where a ray along a scan axis, aimed at the face of anchor's bounding box at offset uv (-1..1 on
+    the two other axes, XYZ order), meets the anchor's actual triangles: the outermost hit. Falls back
+    to the nearest projected triangle edge when the ray passes through a hole. Returns (point, axis,
+    sign)."""
+    if not isinstance(face, str) or face not in _FACES:
+        raise AddPartError(f"surface must be one of {list(_FACES)}")
+    uv = np.asarray(_vector(uv, "offset_uv", 2))
+    if np.any(np.abs(uv) > 1):
+        raise AddPartError("offset_uv values must lie between -1 and 1")
+    mesh = attachment_mesh(reg, anchor)
+    triangles = mesh.triangles
+    lo, hi = mesh.bounds
     axis, sign = _FACES[face]
     plane = [i for i in range(3) if i != axis]
     target = (lo + hi) / 2
@@ -1129,7 +1134,10 @@ def probe_surface(reg: Registry, store: ScanStore, scan_id: str, args: dict) -> 
     return result
 
 
-def add_part(reg: Registry, store: ScanStore, scan_id: str, args: dict) -> PartAddedSignal | dict:
+def add_part(reg: Registry, store: ScanStore, scan_id: str, args: dict, *,
+             replace_part: Part | None = None) -> PartAddedSignal | dict:
+    """Add a part, or with replace_part rebuild that existing part in place: same part id, a fresh
+    mesh key (so viewers do not keep a cached copy) and the next measurement_revision."""
     parts = store.list_parts(scan_id)
     by_id = {p.part_id: p for p in parts}
     part_ids = [p.part_id for p in parts]
@@ -1170,15 +1178,17 @@ def add_part(reg: Registry, store: ScanStore, scan_id: str, args: dict) -> PartA
         return {"error": "bad_request", "message": (
             f"the part would land at {fmt_vec(center)}, more than {MAX_COORD_MM:g} mm from the scan origin")}
 
-    part_id = _new_part_id(set(part_ids))
-    mesh_key = f"scans/{scan_id}/parts/{part_id}.glb"
-    thumb_key = f"scans/{scan_id}/renders/{part_id}.png"
+    part_id = replace_part.part_id if replace_part else _new_part_id(set(part_ids))
+    version = "_" + uuid.uuid4().hex[:10] if replace_part else ""
+    mesh_key = f"scans/{scan_id}/parts/{part_id}{version}.glb"
+    thumb_key = f"scans/{scan_id}/renders/{part_id}{version}.png"
     scan = store.get_scan(scan_id)
     revision = scan.reconstruction_revision if scan else max(
         (p.reconstruction_revision for p in parts), default=0)
     shape = _shape_words(req, extent)
     part = Part.model_validate({
-        "part_id": part_id, "reconstruction_revision": revision, "measurement_revision": 1,
+        "part_id": part_id, "reconstruction_revision": revision,
+        "measurement_revision": replace_part.measurement_revision + 1 if replace_part else 1,
         "label": req.label, "label_confidence": 1.0,
         "description": req.description or f"Added in chat: {shape}.",
         "mesh_uri": mesh_key, "thumbnail_uri": thumb_key,
