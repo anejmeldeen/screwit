@@ -135,26 +135,20 @@ function PartMesh({
         picks={featurePicks} onFeature={onFeaturePick} onPoint={onMeasurePick} />
       {selected && !measureMode ? (
         // Simple selection outline: a slightly larger wireframe box.
-        <SelectionOutline target={scene} />
+        <SelectionOutline part={part} />
       ) : null}
     </group>
   );
 }
 
-function SelectionOutline({ target }: { target: Group }) {
-  const box = useMemo(() => {
-    // A detached clone gives part-local bounds; world bounds would apply the
-    // assembly/explode transform a second time inside this wrapper.
-    const b = new Box3().setFromObject(target.clone(true));
-    const size = new Vector3();
-    const center = new Vector3();
-    b.getSize(size);
-    b.getCenter(center);
-    return { size, center };
-  }, [target]);
+function SelectionOutline({ part }: { part: Part }) {
+  const center = part.obb.center as [number, number, number];
+  const extent = part.obb.extent as [number, number, number];
+  const rotation = part.obb.rotation_quat as [number, number, number, number];
   return (
-    <mesh raycast={() => {}} position={[box.center.x, box.center.y, box.center.z]}>
-      <boxGeometry args={[box.size.x * 1.04, box.size.y * 1.04, box.size.z * 1.04]} />
+    <mesh raycast={() => {}} position={center}
+      quaternion={rotation}>
+      <boxGeometry args={[extent[0] * 1.04, extent[1] * 1.04, extent[2] * 1.04]} />
       <meshBasicMaterial color="#ffffff" wireframe transparent opacity={0.5} />
     </mesh>
   );

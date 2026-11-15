@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Suspense, lazy, useCallback, useEffect, useMemo, useRef } from "react";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { Matrix4, Vector3, PerspectiveCamera, GridHelper, Box3, Quaternion } from "three";
 import { OrbitControls as OrbitControlsImpl } from "three/examples/jsm/controls/OrbitControls.js";
@@ -209,16 +209,13 @@ export function Viewer(props: ViewerProps) {
     return g;
   }, []);
   const { map: centroids, register } = useCentroidRegistry();
-  const [focusTarget, setFocusTarget] = useState<Vector3 | null>(null);
-
-  // When the focus part changes, resolve its registered world centroid.
-  const lastFocus = useRef<string | null>(null);
-  if (focusPartId && focusPartId !== lastFocus.current) {
-    lastFocus.current = focusPartId;
-    const c = centroids.current.get(focusPartId);
-    if (c) setFocusTarget(c.clone());
-  }
-  if (!focusPartId) lastFocus.current = null;
+  const focusTarget = useMemo(() => {
+    if (!focusPartId) return null;
+    const world = centroids.current.get(focusPartId);
+    if (world) return world.clone();
+    const part = parts.find(p => p.part_id === focusPartId);
+    return part ? new Vector3().fromArray(part.centroid_mm as number[]).applyMatrix4(parentMatrix) : null;
+  }, [centroids, focusPartId, parts, parentMatrix]);
 
   const placement = cadOverlay?.placement ?? null;
   const editing = measureActive || explode > 0 || hiddenPartIds.length > 0;

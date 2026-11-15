@@ -153,7 +153,7 @@ export function Workspace({
   const selected = parts?.find(part => part.part_id === selectedId);
   function select(id: string | null) {
     setSelectedId(id);
-    setFocusPartId(id);
+    setFocusPartId(null);
   }
 
   return (
