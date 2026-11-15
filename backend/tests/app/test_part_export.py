@@ -82,3 +82,45 @@ def test_whole_object_exports_current_combined_geometry(client, tmp_path):
     shape = cq.importers.importStep(str(path)).val()
     assert shape.isValid()
     assert len(shape.Solids()) == 2
+
+
+def test_stl_export_does_not_require_cad_kernel(tmp_path):
+    import subprocess
+    import sys
+
+    source = tmp_path / "part.glb"
+    target = tmp_path / "part.stl"
+    source.write_bytes(trimesh.creation.box([10, 20, 30]).export(file_type="glb"))
+    code = '''
+import importlib.abc
+import sys
+from pathlib import Path
+class BlockCAD(importlib.abc.MetaPathFinder):
+    def find_spec(self, fullname, path=None, target=None):
+        if fullname.split('.')[0] in {'cadquery', 'OCP'}:
+            raise ModuleNotFoundError('CAD kernel deliberately unavailable')
+sys.meta_path.insert(0, BlockCAD())
+from screwit.cad.part_export import convert
+convert(Path(sys.argv[1]), Path(sys.argv[2]))
+'''
+    result = subprocess.run([sys.executable, "-c", code, str(source), str(target)],
+                            capture_output=True, text=True, timeout=30)
+    assert result.returncode == 0, result.stderr
+    mesh = trimesh.load(target)
+    np.testing.assert_allclose(mesh.extents, [10, 20, 30])
+
+
+def test_step_preserves_touching_solids(tmp_path):
+    cq = pytest.importorskip("cadquery")
+    scene = trimesh.Scene()
+    scene.add_geometry(trimesh.creation.box([10, 10, 10]))
+    second = trimesh.creation.box([10, 10, 10])
+    second.apply_translation([10, 0, 0])
+    scene.add_geometry(second)
+    source, target = tmp_path / "touching.glb", tmp_path / "touching.stp"
+    source.write_bytes(scene.export(file_type="glb"))
+    convert(source, target)
+    shape = cq.importers.importStep(str(target)).val()
+    assert len(shape.Solids()) == 2
+    assert shape.isValid()
+    assert shape.Volume() == pytest.approx(2000)

@@ -42,7 +42,11 @@ def convert(source: Path, target: Path) -> None:
     mesh = scene.to_geometry()
     if not isinstance(mesh, trimesh.Trimesh) or not len(mesh.faces) or not np.isfinite(mesh.vertices).all():
         raise ValueError("This component does not contain a valid triangle mesh.")
-    mesh.merge_vertices()
+    # Keep already-closed components separate. Welding a combined assembly's
+    # touching faces creates non-manifold edges and breaks otherwise valid STEP
+    # exports (e.g. two pipes meeting at their capped ends).
+    if not mesh.is_watertight:
+        mesh.merge_vertices()
     mesh.update_faces(mesh.nondegenerate_faces())
     mesh.remove_unreferenced_vertices()
     if not len(mesh.faces):
