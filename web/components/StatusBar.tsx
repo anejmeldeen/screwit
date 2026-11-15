@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useRef, useState } from "react";
 import type { Reconstruction, Scan } from "@/lib/contracts.gen";
 import { scaleWarnings } from "@/lib/scaleWarnings";
 
@@ -41,35 +42,80 @@ function dotClass(state?: string) {
   }
 }
 
-// Weight each stage by its share of wall time (geometry dominates; see cpu-verify timings) so a
-// single bar moves monotonically 0->100 across the whole scan. A running stage contributes its
-// own progress fraction; skipped stages are dropped from the denominator so the bar still reaches
-// 100 for mesh input.
+// Weight each stage by its share of wall time so a single bar moves 0->100 across the whole scan.
+// Measured on the CPU path (headphones clip, 8 views): frames ~12 s, geometry ~240 s uncached and
+// under 1 s from the video cache, scale + depth cleanup ~4 s, mask/splat/mesh ~2 s together, parts
+// ~40 s (one Claude call to choose the segmentation, one for the scene graph). The weights split the
+// difference between a first run and a cached re-run; the client-side creep below covers the rest.
+// Skipped stages are dropped from the denominator so the bar still reaches 100 for mesh input.
 const STAGE_WEIGHT: Record<string, number> = {
-  frames: 0.15,
-  geometry: 0.45,
-  scale: 0.03,
-  object_mask: 0.07,
-  splat: 0.1,
-  mesh: 0.15,
-  parts: 0.05,
+  frames: 0.1,
+  geometry: 0.4,
+  scale: 0.05,
+  object_mask: 0.03,
+  splat: 0.02,
+  mesh: 0.05,
+  parts: 0.35,
 };
 
-function overallPercent(scan: Scan): number {
+// (percent now, percent at the end of the running stage). A running stage contributes its own
+// progress fraction.
+function progressSpan(scan: Scan): { pct: number; ceiling: number } {
   let total = 0;
   let acc = 0;
+  let ceiling = 0;
   for (const s of scan.stages) {
     if (s.state === "skipped") continue;
     const w = STAGE_WEIGHT[s.name] ?? 0;
     total += w;
     if (s.state === "done" || s.state === "failed") {
       acc += w;
+      ceiling += w;
     } else if (s.state === "running") {
       acc += w * (s.progress ?? 0);
+      ceiling += w;
     }
   }
-  if (total <= 0) return 0;
-  return Math.round((acc / total) * 100);
+  if (total <= 0) return { pct: 0, ceiling: 0 };
+  return { pct: (acc / total) * 100, ceiling: (ceiling / total) * 100 };
+}
+
+// The value the bar shows: eases toward the server's percent instead of jumping (a cached stage
+// can finish in a fraction of a second), and while a stage runs between server updates it creeps
+// slowly toward, but never reaches, the end of that stage, so the bar never sits frozen. Never moves
+// backwards except when the scan restarts.
+function useGradualPercent(target: number, ceiling: number, active: boolean): number {
+  const [shown, setShown] = useState(target);
+  const live = useRef({ shown: target, target, ceiling, active });
+  live.current.target = target;
+  live.current.ceiling = ceiling;
+  live.current.active = active;
+  if (target < live.current.shown - 5) live.current.shown = target; // a restarted scan
+  useEffect(() => {
+    let raf = 0;
+    let last = performance.now();
+    const tick = (now: number) => {
+      const dt = Math.min(0.25, (now - last) / 1000);
+      last = now;
+      const r = live.current;
+      let s = r.shown;
+      if (s < r.target) {
+        // Close most of the gap within about a second, never slower than 4% per second.
+        s = Math.min(r.target, s + Math.max(4 * dt, (r.target - s) * (1 - Math.exp(-2.5 * dt))));
+      } else if (r.active && s < r.ceiling - 0.5) {
+        // Asymptotic creep inside the running stage (time constant 20 s).
+        s += (r.ceiling - 0.5 - s) * (1 - Math.exp(-dt / 20));
+      }
+      if (Math.abs(s - r.shown) > 1e-3) {
+        r.shown = s;
+        setShown(s);
+      }
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, []);
+  return Math.max(0, Math.min(100, shown));
 }
 
 const STAGE_LABEL: Record<string, string> = Object.fromEntries(
@@ -80,8 +126,10 @@ const STAGE_LABEL: Record<string, string> = Object.fromEntries(
 // message, and percent. Driven by the SSE-updated Scan (its per-stage progress ticks). Shown while
 // a scan is processing; renders a starting state before the first stage reports.
 export function ScanProgress({ scan }: { scan: Scan | null }) {
-  const pct = scan ? overallPercent(scan) : 0;
+  const span = scan ? progressSpan(scan) : { pct: 0, ceiling: 0 };
+  const pct = Math.round(span.pct);
   const running = scan?.stages.find((s) => s.state === "running");
+  const shown = useGradualPercent(span.pct, span.ceiling, !!running);
   const headline = !scan
     ? "Preparing your object…"
     : running
@@ -97,13 +145,10 @@ export function ScanProgress({ scan }: { scan: Scan | null }) {
           {headline}
           {detail ? <span className="text-slate-400"> · {detail}</span> : null}
         </span>
-        <span className="tabular-nums">{pct}%</span>
+        <span className="tabular-nums">{Math.floor(shown)}%</span>
       </div>
       <div className="h-1.5 w-full overflow-hidden rounded-full bg-slate-800">
-        <div
-          className="h-full rounded-full bg-accent transition-[width] duration-500 ease-out"
-          style={{ width: `${pct}%` }}
-        />
+        <div className="h-full rounded-full bg-accent" style={{ width: `${shown}%` }} />
       </div>
     </div>
   );
@@ -117,6 +162,9 @@ export function StatusBar({
   scale?: Reconstruction["scale"] | null;
 }) {
   const warnings = scaleWarnings(scale);
+  const span = scan ? progressSpan(scan) : { pct: 0, ceiling: 0 };
+  const isRunning = !!scan?.stages.some((s) => s.state === "running");
+  const shown = useGradualPercent(span.pct, span.ceiling, isRunning);
 
   if (!scan) {
     return (
@@ -152,7 +200,7 @@ export function StatusBar({
   );
   const failed = scan.stages.find((s) => s.state === "failed");
   const running = scan.stages.find((s) => s.state === "running");
-  const pct = overallPercent(scan);
+  const pct = Math.round(span.pct);
   const showBar = scan.status !== "ready" && !failed;
 
   return (
@@ -163,13 +211,10 @@ export function StatusBar({
             <span>
               {running ? (byName.get(running.name)?.message ?? `${running.name}…`) : "Starting…"}
             </span>
-            <span className="tabular-nums">{pct}%</span>
+            <span className="tabular-nums">{Math.floor(shown)}%</span>
           </div>
           <div className="h-1.5 w-full overflow-hidden rounded-full bg-slate-800">
-            <div
-              className="h-full rounded-full bg-accent transition-[width] duration-500 ease-out"
-              style={{ width: `${pct}%` }}
-            />
+            <div className="h-full rounded-full bg-accent" style={{ width: `${shown}%` }} />
           </div>
         </div>
       ) : null}
