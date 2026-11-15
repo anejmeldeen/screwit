@@ -7,12 +7,11 @@ import { api } from "@/lib/api";
 import { DashboardPreferences } from "@/lib/dashboardPreferences";
 import { notifyAccountChange, useAccount } from "./AccountProvider";
 import { DashboardIcon, type DashboardIconName } from "./DashboardIcon";
-import { ScrewyIcon } from "./ScrewyIcon";
+import { ScrewMascot } from "./ScrewMascot";
 import { SiteHeader } from "./SiteHeader";
 
 const sections: { href: string; title: string; icon: DashboardIconName }[] = [
   { href: "/", title: "Dashboard", icon: "dashboard" },
-  { href: "/examples", title: "Examples", icon: "box" },
   { href: "/settings", title: "Settings", icon: "settings" },
 ];
 
@@ -54,7 +53,7 @@ function DashboardShell({ children }: { children: React.ReactNode }) {
             </Link>
           ))}</nav>
           <div className="sidebar-bottom">
-            <div className="sidebar-note"><span><ScrewyIcon /></span><p>A little curiosity.<br />A lot of possibility.</p></div>
+            <div className="sidebar-mascot"><ScrewMascot /></div>
             <Link href="/settings" className="sidebar-account" onClick={() => setMenuOpen(false)}>
               <span className="account-avatar">{account?.username.slice(0, 1).toUpperCase()}</span>
               <span><strong>{account?.username}</strong><small>Personal workspace</small></span>
@@ -66,7 +65,7 @@ function DashboardShell({ children }: { children: React.ReactNode }) {
         </div>
       </aside>
       <main id="main-content" className="dashboard-main">
-        <div className="dashboard-topline"><span>YOUR WORKSHOP / {sections.find((section) => section.href === path)?.title.toUpperCase()}</span><span className="workspace-private"><span />Just for you</span></div>
+        <div className="dashboard-topline"><span>YOUR WORKSHOP / {sections.find((section) => section.href === path)?.title.toUpperCase()}</span><span className="workspace-owner">{account?.username}&apos;s workspace</span></div>
         {children}
         <footer className="dashboard-footer"><span>Screw It. Let&apos;s build.</span><span>HackUMass 2026</span></footer>
       </main>

@@ -1,5 +1,5 @@
-import { WorkspaceDashboard } from "@/components/WorkspaceDashboard";
+import { redirect } from "next/navigation";
 
 export default function ExamplesPage() {
-  return <WorkspaceDashboard examplesOnly />;
+  redirect("/");
 }

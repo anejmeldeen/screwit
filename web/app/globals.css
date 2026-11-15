@@ -319,7 +319,7 @@ button:disabled { cursor: not-allowed; }
  .dashboard-main { padding-left:28px; padding-right:28px; }
  .dashboard-heading { align-items:flex-start; flex-direction:column; margin:38px 0; }
  .workspace-columns,.workspace-row { grid-template-columns:minmax(0,1fr) 120px 18px; column-gap:12px; padding-left:18px; padding-right:18px; }
- .workspace-status,.workspace-columns>span:nth-child(2) { display:none; }
+ .workspace-status,.workspace-source,.workspace-columns>span:nth-child(2) { display:none; }
  .workspace-section-note { display:none; }
  .workspace-sort>span { display:none; }
 }
@@ -360,3 +360,20 @@ button:disabled { cursor: not-allowed; }
  .settings-card { padding:0 20px; }
  .dashboard-footer { padding-top:60px; }
 }
+
+/* Keep the original interactive screw contained in the sidebar footer. */
+.sidebar-mascot { position:relative; width:100%; height:182px; margin-bottom:20px; flex-shrink:0; }
+.sidebar-mascot .mascot-wrap { position:absolute; left:50%; right:auto; bottom:0; width:300px; transform:translateX(-50%) scale(.56); transform-origin:center bottom; }
+.sidebar-mascot .mascot-surface,.sidebar-mascot .mascot-tick { border-color:#b3b49f; }
+.sidebar-mascot .mascot-shadow { display:none; }
+.sidebar-mascot .mascot-scene:focus-visible { outline:3px solid #fff4b1; outline-offset:6px; }
+
+.sidebar-mascot .mascot-hello { font-size:26px; font-weight:600; left:160px; top:-68px; padding:8px 14px; }
+
+.dashboard-main { color:#000; }
+.dashboard-heading h1 { color:#000; font-weight:800; letter-spacing:-2px; }
+.dashboard-heading h1+p,.dashboard-eyebrow,.workspace-section-note,.workspace-columns,.workspace-sort,.workspace-list-footer,.dashboard-topline { color:#000; font-weight:600; }
+.dashboard-eyebrow { text-transform:none; letter-spacing:0; font-size:14px; }
+.workspace-identity strong { color:#000; font-weight:750; }
+.workspace-source { color:#000; font-size:13px; font-weight:600; }
+.workspace-owner { letter-spacing:0; font-size:12px; }
