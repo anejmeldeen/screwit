@@ -36,8 +36,10 @@ export function ChatPanel({
   onPartChip,
   onShowCad,
   onPartsChanged,
+  selectedPartId,
 }: {
   scanId: string;
+  selectedPartId?: string | null;
   onHighlight: (ids: string[]) => void;
   onPartChip: (id: string) => void;
   onShowCad: (cad: Record<string, unknown>) => void;
@@ -107,7 +109,9 @@ export function ChatPanel({
 
       await streamChat(
         scanId,
-        text,
+        selectedPartId
+          ? text.replace(/\b(?:this part|that part|the selected (?:part|piece)|this piece)\b/gi, () => `[[part:${selectedPartId}]]`)
+          : text,
         sentImages,
         (ev: ChatEvent) => {
           switch (ev.event) {

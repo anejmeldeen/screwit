@@ -429,10 +429,13 @@ def test_tool_specs_include_add_part_probe_surface_and_remove_part():
     specs = {t["name"]: t for t in anthropic_tool_specs()}
     schema = specs["add_part"]["input_schema"]
     assert schema["required"] == ["label", "kind"]
-    assert schema["properties"]["kind"]["enum"] == ["box", "cylinder", "cone", "pyramid", "sphere",
-                                                     "torus", "capsule", "profile", "cad"]
-    assert {"size_mm", "center_mm", "base_mm", "on_part", "direction", "up", "width_axis",
-            "outline_mm", "thickness_mm", "cad_id", "attach_to", "relation"} <= set(schema["properties"])
+    assert schema["properties"]["kind"]["enum"] == [
+        "box", "cylinder", "cone", "pyramid", "triangular_prism", "sphere", "torus", "capsule", "cat_ear",
+        "profile", "headphone_ear_left", "headphone_ear_right", "cad",
+    ]
+    assert {"size_mm", "center_mm", "base_mm", "on_part", "direction", "surface", "offset_uv", "up",
+            "width_axis", "outline_mm", "thickness_mm", "cad_id", "attach_to", "relation"} <= set(
+        schema["properties"])
     assert "rotation_quat" not in schema["properties"]
     assert specs["probe_surface"]["input_schema"]["required"] == ["part_id", "direction"]
     assert specs["remove_part"]["input_schema"]["required"] == ["part_id"]
@@ -669,3 +672,73 @@ def test_chat_add_part_shows_up_in_parts_assets_graph_and_history(api, monkeypat
     assert messages[1]["content"] == "I added the support block."
     assert messages[2]["content"] == "how big is it?"
     assert f'{pid} "Block"' in driver.calls[-1]["system"]
+
+def test_offline_pair_on_real_headband(registry, tmp_path):
+    from screwit.storage import LocalStorage
+    registry = replace(registry, settings=replace(registry.settings, mode="live"), storage=LocalStorage(tmp_path))
+    from screwit.agent.offline import OfflineChatAgent
+
+    events = list(OfflineChatAgent(registry).reply("scn_headphones", "add two cat ears on the headband", []))
+    ids = next(e.part_ids for e in events if e.event == "highlight")
+    assert len(set(ids)) == 2
+    store = ScanStore(registry.data)
+    added = [p for p in store.list_parts("scn_headphones") if p.part_id in ids]
+    assert len(added) == 2
+    assert added[0].centroid_mm[0] * added[1].centroid_mm[0] < 0
+    assert all(p.centroid_mm[1] > 140 for p in added)
+    again = list(OfflineChatAgent(registry).reply("scn_headphones", "Could you give my headphones kitty ears?", []))
+    assert next(e.part_ids for e in again if e.event == "highlight") == ids
+    assert not any(e.event == "tool_call" for e in again)
+    for part in added:
+        raw = registry.storage.get_bytes(part.mesh_uri)
+        mesh = trimesh.load(io.BytesIO(raw), file_type="glb", force="scene").to_geometry()
+        side = part.label.split()[0].lower()
+        original = trimesh.load(Path(__file__).parents[2] / "screwit/agent/assets" / f"{side}_ear_curved.stl")
+        assert len(mesh.faces) == len(original.faces) == 2678
+        assert np.allclose(part.obb.extent, original.extents)
+        assert np.isclose(mesh.area, original.area, rtol=1e-5)
+
+def test_chat_builds_surface_attached_solid_without_confirmation(api):
+    response = api.post("/api/scans/scn_headphones/chat",
+                        json={"message": "Add a 20 mm sphere on the top of the headband"})
+    events = _sse_events(response.text)
+    pid = next(e.part_ids[0] for e in events if e.event == "highlight")
+    parts = api.get("/api/scans/scn_headphones/parts").json()
+    part = next(p for p in parts if p["part_id"] == pid)
+    anchor = next(p for p in parts if p["label"] == "Headband")
+    def read_mesh(p):
+        return trimesh.load(io.BytesIO(api.get(p["mesh_uri"]).content), file_type="glb", force="scene").to_geometry()
+    ball, band = read_mesh(part), read_mesh(anchor)
+    assert ball.is_watertight and len(ball.faces) >= 5000
+    assert np.allclose(ball.extents, [20, 20, 20], atol=.01)
+    # At the crown of this fixture the sphere's lower pole touches the actual headband.
+    pole = ball.vertices[ball.vertices[:, 2].argmin()]
+    _, dist, _ = trimesh.proximity.closest_point_naive(band, [pole])
+    assert dist[0] < .01
+
+
+def test_surface_snap_new_kinds_and_sides(registry):
+    """surface + offset_uv (snap to a scan-axis face of attach_to) works for the sculpted kinds and side
+    faces: the base lands on the face's outermost mesh point and up points out of that face."""
+    store = ScanStore(registry.data)
+    band = next(p for p in store.list_parts("scn_headphones") if p.label == "Headband")
+    tools = ToolContext(registry, "scn_headphones")
+    ear = tools.dispatch("add_part", {"label": "Ear", "kind": "cat_ear", "size_mm": [30, 12, 30],
+                                      "attach_to": band.part_id, "surface": "top", "offset_uv": [0.4, 0]})
+    assert isinstance(ear, PartAddedSignal), ear
+    placement = ear.result["placement"]
+    assert placement["method"] == "surface" and placement["up"] == [0.0, 0.0, 1.0]
+    assert placement["surface"]["face"] == "top" and placement["surface"]["offset_uv"] == [0.4, 0.0]
+    assert np.allclose(ear.result["extent_mm"], [30, 12, 30], atol=0.01)
+    wedge = tools.dispatch("add_part", {"label": "Wedge", "kind": "triangular_prism", "size_mm": [10, 5, 8],
+                                        "attach_to": band.part_id, "surface": "left"})
+    assert isinstance(wedge, PartAddedSignal), wedge
+    assert wedge.result["placement"]["up"] == [-1.0, 0.0, 0.0]
+    base = np.asarray(wedge.result["placement"]["base_mm"])
+    assert np.isclose(base[0], wedge.result["placement"]["surface"]["point_mm"][0])
+    assert wedge.result["center_mm"][0] < base[0]  # it stands out of the left face
+    for bad, fragment in [({"surface": "top"}, "attach_to"), ({"surface": "up", "attach_to": band.part_id}, "surface"),
+                          ({"surface": "top", "attach_to": band.part_id, "offset_uv": [2, 0]}, "between"),
+                          ({"base_mm": [0, 0, 0], "offset_uv": [0, 0]}, "offset_uv")]:
+        out = tools.dispatch("add_part", {"label": "X", "kind": "box", "size_mm": [5, 5, 5], **bad})
+        assert out["error"] == "bad_request" and fragment in out["message"], (bad, out)

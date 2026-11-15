@@ -24,6 +24,7 @@ from dataclasses import dataclass, field
 
 from screwit.agent import catalogue
 from screwit.agent.cad import TEMPLATE_SCHEMAS
+from screwit.agent.shape_commands import shape_command
 from screwit.agent.tools import CardSignal, ToolContext
 from screwit.app.registry import Registry
 from screwit.app.store import ScanStore
@@ -130,6 +131,10 @@ class OfflineChatAgent:
 
     # ------------------------------------------------------------ routing
     def _route(self, scan_id: str, message: str) -> Iterator:
+        command = shape_command(self._reg, scan_id, message)
+        if command is not None:
+            yield from command
+            return
         parts = self._store.list_parts(scan_id)
         graph = self._store.get_scene_graph(scan_id)
 

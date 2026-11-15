@@ -107,3 +107,18 @@ def _live_storage(settings: Settings):
     from screwit.storage import LocalStorage
 
     return LocalStorage(settings.data_dir)
+
+
+def fixture_asset(reg, key: str) -> tuple[bytes, str] | None:
+    """Read a demo-scan asset from the fixtures dir (used when live storage lacks it). Only serves
+    keys under fixtures/scans/<id>/..., never escaping the fixtures root."""
+    import mimetypes
+
+    if not key.startswith("scans/"):
+        return None
+    base = reg.settings.fixtures_dir.resolve()
+    path = (base / key).resolve()
+    if base not in path.parents or not path.is_file():  # no traversal, must exist
+        return None
+    ctype = mimetypes.guess_type(str(path))[0] or "application/octet-stream"
+    return path.read_bytes(), ctype

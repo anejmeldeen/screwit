@@ -1,11 +1,13 @@
 """The add_part and probe_surface tools: put a new component into the object (SPEC 6.3 tool layer).
 
-A new part is either a solid made from a few numbers (box, cylinder, cone, pyramid, sphere, torus,
-capsule, or a flat profile extruded from an outline) or the model of a CAD job placed exactly where the
+A new part is either a solid made from a few numbers (box, cylinder, cone, pyramid, triangular prism,
+sphere, torus, capsule, cat ear, a flat profile extruded from an outline, or one of the supplied
+headphone-ear meshes) or the model of a CAD job placed exactly where the
 viewer overlay showed it. Each solid is built in its own frame: width along local X, depth along local
 Y, height along local Z, with the centre of its base on the origin. It is placed with direction vectors
 a language model can reason about: `up` (where the height points), `width_axis`, and exactly one of
-on_part + direction (stand it on the outer surface of an existing part), base_mm or center_mm.
+on_part + direction (stand it on the outer surface of an existing part), surface (snap onto a
+scan-axis face of attach_to), base_mm or center_mm.
 probe_surface runs the same surface search without adding anything.
 
 The part is saved like any other part (database, and parts.json / scene_graph.json in live storage), so
@@ -26,6 +28,7 @@ import math
 import re
 import uuid
 from dataclasses import dataclass, field
+from importlib.resources import files
 from typing import get_args
 
 import numpy as np
@@ -36,8 +39,11 @@ from screwit.app.store import ScanStore
 from screwit.contracts import Part, Relation, SceneGraph
 from screwit.contracts.models import RelationType
 
-KINDS = ("box", "cylinder", "cone", "pyramid", "sphere", "torus", "capsule", "profile", "cad")
-SIZED_KINDS = frozenset({"box", "cylinder", "cone", "pyramid", "sphere", "torus", "capsule"})
+HEADPHONE_EARS = ("headphone_ear_left", "headphone_ear_right")
+KINDS = ("box", "cylinder", "cone", "pyramid", "triangular_prism", "sphere", "torus", "capsule", "cat_ear",
+         "profile", *HEADPHONE_EARS, "cad")
+SIZED_KINDS = frozenset({"box", "cylinder", "cone", "pyramid", "triangular_prism", "sphere", "torus",
+                         "capsule", "cat_ear", *HEADPHONE_EARS})
 RELATION_TYPES: tuple[str, ...] = get_args(RelationType)
 MIN_SIZE_MM = 0.1
 MAX_SIZE_MM = 2000.0
@@ -47,18 +53,21 @@ MIN_OUTLINE_POINTS = 3
 MAX_OUTLINE_POINTS = 64
 DEFAULT_EMBED_MM = 2.0
 CONTACT_TOLERANCE_MM = 0.5
-_SECTIONS = 64
+_SECTIONS = 96
 _THUMBNAIL_MAX_FACES = 20000
 _LABEL_MAX = 80
 _DESCRIPTION_MAX = 500
 _MATERIAL_MAX = 60
 _LISTED_IDS = 30
 _ID_RE = re.compile(r"^[A-Za-z0-9_.-]{1,128}$")
-_PLACEMENTS = ("on_part", "base_mm", "center_mm")
+_PLACEMENTS = ("on_part", "surface", "base_mm", "center_mm")
+# surface: (scan axis, sign) of the face of attach_to that a new part snaps onto.
+_FACES = {"top": (2, 1), "bottom": (2, -1), "right": (0, 1), "left": (0, -1),
+          "front": (1, -1), "back": (1, 1)}
 _SHAPE_ARGS = {"top_scale": ("cone", "pyramid"), "tip_radius_mm": ("cone",), "sides": ("pyramid",),
                "outline_mm": ("profile",), "thickness_mm": ("profile",)}
 _ALLOWED_ARGS = frozenset({"label", "kind", "size_mm", *_SHAPE_ARGS, *_PLACEMENTS, "direction",
-                           "embed_mm", "up", "width_axis", "cad_id", "description", "material",
+                           "embed_mm", "offset_uv", "up", "width_axis", "cad_id", "description", "material",
                            "attach_to", "relation"})
 _PROBE_ARGS = frozenset({"part_id", "direction"})
 _IDENTITY = (0.0, 0.0, 0.0, 1.0)
@@ -99,9 +108,13 @@ def input_schema() -> dict:
                 "(round when dx = dy). cone: base [w, d], height h; pointed unless top_scale > 0. "
                 "pyramid: sides 3 or 4, base [w, d], height h; pointed unless top_scale > 0. sphere: "
                 "[w, d, h], an ellipsoid when unequal. torus: a ring around up, [outer w, outer d, "
-                "tube thickness]. capsule: [diameter, diameter, total length] along up. profile: any "
-                "flat silhouette, outline_mm extruded through thickness_mm along the depth. cad: the "
-                "model of a CAD result (cad_id), placed where its preview was shown.")},
+                "tube thickness]. capsule: [diameter, diameter, total length] along up. triangular_prism: "
+                "a triangle [w, h] standing on its base edge, extruded through d. cat_ear: a sculpted "
+                "rounded-triangle ear with a raised rim, [w, d, h]. profile: any flat silhouette, "
+                "outline_mm extruded through thickness_mm along the depth. headphone_ear_left / "
+                "headphone_ear_right: the supplied curved headphone-ear meshes at their own size "
+                "(size_mm optional). cad: the model of a CAD result (cad_id), placed where its preview "
+                "was shown, or snapped with surface.")},
             "size_mm": {**_VEC3, "description": (
                 "[width, depth, height] in mm, as described for each kind; not used for profile or "
                 f"cad. Each value {MIN_SIZE_MM}-{MAX_SIZE_MM:g} mm.")},
@@ -133,6 +146,15 @@ def input_schema() -> dict:
                 "With on_part: which way to look from on_part's centre, [x, y, z] in the scan frame, "
                 "for example toward the side the new part should stand out of. The outermost surface "
                 "in that direction is used.")},
+            "surface": {"type": "string", "enum": list(_FACES), "description": (
+                "Placement: snap onto this scan-axis face of attach_to (top = +Z, bottom = -Z, right = "
+                "+X, left = -X, back = +Y, front = -Y). The outermost point of the attach_to mesh on "
+                "that face is found and the base goes there, with up pointing out of the face. Needs "
+                "attach_to. Also works for kind=cad (the model keeps its preview rotation).")},
+            "offset_uv": {"type": "array", "minItems": 2, "maxItems": 2, "items": {"type": "number"},
+                          "description": (
+                "With surface: position across the face, -1 to 1 on each of the two remaining scan axes "
+                "in XYZ order. Default [0, 0] is the middle.")},
             "embed_mm": {"type": "number", "minimum": 0, "description": (
                 f"With on_part: how far to sink the base into the surface; default the smaller of "
                 f"{DEFAULT_EMBED_MM:g} mm and 10% of the height.")},
@@ -155,7 +177,8 @@ def input_schema() -> dict:
                                                           "material, e.g. PLA or steel."},
             "attach_to": {"type": "string", "description": (
                 "Optional id of an existing part the new part touches or mounts on, when not using "
-                "on_part; records a relation in the scene graph and checks the contact.")},
+                "on_part (required with surface); records a relation in the scene graph and checks "
+                "the contact.")},
             "relation": {"type": "string", "enum": list(RELATION_TYPES), "description": (
                 "Relation from the new part to attach_to or on_part; default fastened with on_part, "
                 "rests_on with attach_to.")},
@@ -255,6 +278,8 @@ class _Request:
     placement: str = "cad"  # on_part | base_mm | center_mm | cad
     on_part: str | None = None
     direction: np.ndarray | None = None
+    surface: str | None = None
+    offset_uv: list[float] | None = None
     embed: float | None = None
     point: np.ndarray | None = None
     up: np.ndarray | None = None
@@ -301,11 +326,16 @@ def _parse(args: dict, part_ids: set[str]) -> _Request:
 
 def _parse_cad(args: dict, req: _Request, part_ids: set[str]) -> None:
     req.cad_id = _identifier(args.get("cad_id"), "cad_id")
+    if args.get("surface") is not None:
+        _parse_surface(args, req, part_ids)
+    elif args.get("offset_uv") is not None:
+        raise AddPartError("offset_uv needs surface")
     ignored = [k for k in ("size_mm", "base_mm", "center_mm", "direction", "embed_mm", "up", "width_axis")
                if args.get(k) is not None]
     if ignored:
-        req.notes.append(f"{', '.join(ignored)} not used for kind=cad: the part sits where the CAD "
-                         "preview was shown")
+        where = ("snapped to the surface with its preview rotation" if req.surface
+                 else "where the CAD preview was shown")
+        req.notes.append(f"{', '.join(ignored)} not used for kind=cad: the part sits {where}")
     if args.get("on_part") is not None:
         req.on_part = _existing_part(args["on_part"], "on_part", part_ids)
         req.notes.append("on_part only records the relation for kind=cad; the part sits where the CAD "
@@ -324,6 +354,9 @@ def _parse_shape(args: dict, req: _Request) -> None:
         thickness = _length(args["thickness_mm"], "thickness_mm", notes)
         span = req.outline.max(axis=0) - req.outline.min(axis=0)
         req.size = [float(span[0]), thickness, float(span[1])]
+        return
+    if kind in HEADPHONE_EARS and args.get("size_mm") is None:
+        req.size = [float(v) for v in _ear_asset(kind).extents]
         return
     if args.get("size_mm") is None:
         raise AddPartError(f"kind={kind} needs size_mm [width, depth, height]")
@@ -376,9 +409,15 @@ def _parse_placement(args: dict, req: _Request, part_ids: set[str]) -> None:
     if len(given) != 1:
         found = f" (got {', '.join(given)})" if given else ""
         raise AddPartError("give exactly one placement: on_part with direction (stand it on that part's "
-                           f"surface), base_mm or center_mm{found}")
+                           f"surface), surface with attach_to, base_mm or center_mm{found}")
     req.placement = given[0]
-    if req.placement == "on_part":
+    if req.placement != "surface" and args.get("offset_uv") is not None:
+        raise AddPartError("offset_uv needs surface")
+    if req.placement == "surface":
+        _parse_surface(args, req, part_ids)
+        if args.get("direction") is not None or args.get("embed_mm") is not None:
+            raise AddPartError("direction and embed_mm are only used with on_part")
+    elif req.placement == "on_part":
         req.on_part = _existing_part(args["on_part"], "on_part", part_ids)
         if args.get("direction") is None:
             raise AddPartError("on_part needs direction: which way from that part's centre to put the new "
@@ -405,6 +444,19 @@ def _parse_placement(args: dict, req: _Request, part_ids: set[str]) -> None:
     # Fail early on a width_axis parallel to an explicit up (on_part's default up is known later).
     if req.up is not None:
         _frame(req.up, req.width_axis)
+
+
+def _parse_surface(args: dict, req: _Request, part_ids: set[str]) -> None:
+    face = args.get("surface")
+    if not isinstance(face, str) or face not in _FACES:
+        raise AddPartError(f"surface must be one of {list(_FACES)}")
+    if args.get("attach_to") is None:
+        raise AddPartError("surface needs attach_to: the part whose face the new part snaps onto")
+    _existing_part(args["attach_to"], "attach_to", part_ids)
+    uv = _vector(args["offset_uv"], "offset_uv", 2) if args.get("offset_uv") is not None else [0.0, 0.0]
+    if any(abs(v) > 1 for v in uv):
+        raise AddPartError("offset_uv values must lie between -1 and 1")
+    req.surface, req.offset_uv = face, uv
 
 
 def _parse_relation(args: dict, req: _Request, part_ids: set[str]) -> None:
@@ -551,7 +603,7 @@ def _solid(req: _Request):
         mesh = trimesh.creation.cylinder(radius=0.5, height=1.0, sections=_SECTIONS)
         mesh.apply_scale([w, d, h])
     elif req.kind == "sphere":
-        mesh = trimesh.creation.icosphere(subdivisions=3, radius=0.5)
+        mesh = trimesh.creation.icosphere(subdivisions=4, radius=0.5)
         mesh.apply_scale([w, d, h])
     elif req.kind == "capsule":
         diameter = max(w, d)
@@ -563,9 +615,68 @@ def _solid(req: _Request):
         return _pyramid(w, d, h, req.sides, req.top_scale)
     elif req.kind == "torus":
         return _torus(w, d, h)
+    elif req.kind == "triangular_prism":
+        mesh = trimesh.convex.convex_hull([[x, y, z] for y in (-d / 2, d / 2)
+                                           for x, z in ((-w / 2, 0.0), (w / 2, 0.0), (0.0, h))])
+        return mesh
+    elif req.kind == "cat_ear":
+        return _on_base(_cat_ear(), [w, d, h])
+    elif req.kind in HEADPHONE_EARS:
+        mesh = _ear_asset(req.kind)
+        return _on_base(mesh, [w, d, h])
     else:
         return _extrusion(req.outline, d)
     mesh.apply_translation([0.0, 0.0, h / 2.0])
+    return mesh
+
+
+def _on_base(mesh, size: list[float]):
+    """Scale mesh to size along X, Y, Z (unless it is already that size) and stand it on the origin:
+    x and y centred, z from 0 up."""
+    extents = np.asarray(mesh.extents, dtype=float)
+    if not np.allclose(extents, size, rtol=1e-6, atol=1e-6):
+        mesh.apply_scale(np.asarray(size, dtype=float) / extents)
+    lo, hi = mesh.bounds
+    mesh.apply_translation([-(lo[0] + hi[0]) / 2.0, -(lo[1] + hi[1]) / 2.0, -lo[2]])
+    return mesh
+
+
+def _ear_asset(kind: str):
+    """One of the supplied curved headphone-ear meshes (mm), as authored."""
+    import trimesh
+
+    filename = "left_ear_curved.stl" if kind == "headphone_ear_left" else "right_ear_curved.stl"
+    asset = files("screwit.agent").joinpath("assets", filename)
+    return trimesh.load(io.BytesIO(asset.read_bytes()), file_type="stl", force="mesh")
+
+
+def _cat_ear():
+    """A rounded triangular shell with a raised rim and a recessed front panel, about a unit in size:
+    the triangle spans X (width) and Z (height), the shell's depth runs along Y. Rings share vertices
+    at every seam, including the floor of the recess, so it is closed."""
+    import trimesh
+
+    corners = np.array([[-.5, -.5], [.5, -.5], [0, .5]])
+    outline = []
+    for i, corner in enumerate(corners):
+        start = corner + .08 * (corners[i - 1] - corner)
+        end = corner + .08 * (corners[(i + 1) % 3] - corner)
+        for t in np.linspace(0, 1, 9):
+            outline.append((1 - t) ** 2 * start + 2 * t * (1 - t) * corner + t * t * end)
+    x, z = np.asarray(outline).T
+    rings = [(.88, .5), (.98, .4), (1, .25), (1, -.30), (.96, -.49), (.87, -.50), (.78, -.43), (.69, -.22)]
+    vertices = np.concatenate([np.column_stack((x * k, np.full_like(x, y), z * k)) for k, y in rings])
+    n = len(x)
+    faces = []
+    for k in range(len(rings) - 1):
+        for i in range(n):
+            a, b = k * n + i, k * n + (i + 1) % n
+            faces.extend([(a, b, b + n), (a, b + n, a + n)])
+    last = (len(rings) - 1) * n
+    for i in range(1, n - 1):
+        faces.extend([(0, i + 1, i), (last, last + i, last + i + 1)])
+    mesh = trimesh.Trimesh(vertices=vertices, faces=faces)
+    mesh.fix_normals()
     return mesh
 
 
@@ -777,6 +888,75 @@ def _surface_normal(mesh, point: np.ndarray, triangle: int, radius: float, outwa
     return ref / np.linalg.norm(ref)
 
 
+def _surface_point(reg: Registry, anchor: Part, face: str, uv) -> tuple[np.ndarray, int, int]:
+    """Where a ray along a scan axis, aimed at the face of anchor's bounding box at offset uv (-1..1 on
+    the two other axes, XYZ order), meets the anchor's actual triangles: the outermost hit. Falls back
+    to the nearest projected triangle edge when the ray passes through a hole. Returns (point, axis,
+    sign)."""
+    import trimesh
+
+    from screwit.app.registry import fixture_asset
+
+    if not isinstance(face, str) or face not in _FACES:
+        raise AddPartError(f"surface must be one of {list(_FACES)}")
+    uv = np.asarray(_vector(uv, "offset_uv", 2))
+    if np.any(np.abs(uv) > 1):
+        raise AddPartError("offset_uv values must lie between -1 and 1")
+    try:
+        if reg.storage.head(anchor.mesh_uri) is None:
+            fallback = fixture_asset(reg, anchor.mesh_uri)
+            if fallback is None:
+                raise AddPartError(f"the mesh of part {anchor.part_id!r} is missing")
+            data = fallback[0]
+        else:
+            data = reg.storage.get_bytes(anchor.mesh_uri)
+        mesh = trimesh.load(io.BytesIO(data), file_type="glb", force="scene").to_geometry()
+        triangles = mesh.triangles
+        lo, hi = mesh.bounds
+    except AddPartError:
+        raise
+    except Exception as exc:  # noqa: BLE001 - an unreadable mesh is a request-level failure
+        raise AddPartError(f"the mesh of part {anchor.part_id!r} could not be read") from exc
+    axis, sign = _FACES[face]
+    plane = [i for i in range(3) if i != axis]
+    target = (lo + hi) / 2
+    target[plane] += uv * (hi - lo)[plane] / 2
+    a, b, c = triangles.transpose(1, 0, 2)
+    u, v = (b - a)[:, plane], (c - a)[:, plane]
+    w = target[plane] - a[:, plane]
+
+    def cross(x, y):
+        return x[:, 0] * y[:, 1] - x[:, 1] * y[:, 0]
+
+    det = cross(u, v)
+    valid = np.abs(det) > 1e-12
+    det = np.where(valid, det, 1)
+    i, j = cross(w, v) / det, cross(u, w) / det
+    hit = valid & (i >= -1e-8) & (j >= -1e-8) & (i + j <= 1 + 1e-8)
+    if np.any(hit):
+        depths = (a[:, axis] + i * (b - a)[:, axis] + j * (c - a)[:, axis])[hit]
+        target[axis] = sign * np.max(sign * depths)
+    else:
+        # A hole or an open outline: use the closest projected triangle edge.
+        ends = np.roll(triangles, -1, axis=1)
+        edges = ends - triangles
+        delta = target[plane] - triangles[:, :, plane]
+        flat = edges[:, :, plane]
+        t = np.clip((delta * flat).sum(2) / np.maximum((flat * flat).sum(2), 1e-20), 0, 1)
+        points = (triangles + t[:, :, None] * edges).reshape(-1, 3)
+        distances = np.linalg.norm(points[:, plane] - target[plane], axis=1)
+        nearest = points[distances <= distances.min() + 1e-7]
+        target = nearest[np.argmax(sign * nearest[:, axis])].copy()
+    return target, axis, sign
+
+
+def _face_normal(face: str) -> np.ndarray:
+    axis, sign = _FACES[face]
+    normal = np.zeros(3)
+    normal[axis] = float(sign)
+    return normal
+
+
 def _part_mesh(reg: Registry, scan_id: str, part: Part):
     """A part's mesh (scan frame, mm), read the way render_view reads it."""
     import trimesh
@@ -825,6 +1005,10 @@ def _place(req: _Request, reg: Registry, scan_id: str, parts: dict[str, Part], h
         width, depth, up = _frame(up, req.width_axis)
         embed = req.embed if req.embed is not None else min(DEFAULT_EMBED_MM, 0.1 * height)
         base = hit.point - up * embed
+    elif req.placement == "surface":
+        point, _, _ = _surface_point(reg, parts[req.attach_to], req.surface, req.offset_uv)
+        width, depth, up = _frame(req.up if req.up is not None else _face_normal(req.surface), req.width_axis)
+        base = point
     else:
         width, depth, up = _frame(req.up if req.up is not None else _Z, req.width_axis)
         base = req.point if req.placement == "base_mm" else req.point - up * (height / 2.0)
@@ -957,6 +1141,13 @@ def add_part(reg: Registry, store: ScanStore, scan_id: str, args: dict) -> PartA
             lo, hi = (np.asarray(b, dtype=float) for b in mesh.bounds)
             rim = _base_rim(mesh)
             matrix = _matrix(quat, translate)
+            if req.surface is not None:
+                # Keep the preview rotation; move the model so its face toward the surface touches it.
+                point, axis, sign = _surface_point(reg, by_id[req.attach_to], req.surface, req.offset_uv)
+                rotated = np.asarray(mesh.vertices) @ matrix[:3, :3].T
+                depths = sign * rotated[:, axis]
+                support = rotated[np.isclose(depths, depths.min(), rtol=0, atol=1e-7)]
+                matrix[:3, 3] = point - (support.min(axis=0) + support.max(axis=0)) / 2
         else:
             mesh, cad_status = _solid(req), None
             lo, hi = (np.asarray(b, dtype=float) for b in mesh.bounds)
@@ -1043,7 +1234,10 @@ def _placement_result(req: _Request, placed: _Placed | None, quat, matrix: np.nd
                       extent: list[float]) -> dict:
     rotation = matrix[:3, :3]
     if placed is None:
-        return {"method": "cad", "rotation_quat": _round(quat, 4), "translate_mm": _round(matrix[:3, 3])}
+        out = {"method": "cad", "rotation_quat": _round(quat, 4), "translate_mm": _round(matrix[:3, 3])}
+        if req.surface is not None:
+            out["surface"] = {"part_id": req.attach_to, "face": req.surface, "offset_uv": _round(req.offset_uv, 3)}
+        return out
     up = rotation[:, 2]
     out = {"method": req.placement, "base_mm": _round(placed.base), "top_mm": _round(placed.base + up * extent[2]),
            "up": _round(up, 3), "width_axis": _round(rotation[:, 0], 3), "depth_axis": _round(rotation[:, 1], 3)}
@@ -1052,6 +1246,9 @@ def _placement_result(req: _Request, placed: _Placed | None, quat, matrix: np.nd
                           "normal": _round(placed.hit.normal, 3),
                           "found_by": "ray" if placed.hit.found_by == "ray" else "nearest point (ray missed)"}
         out["embed_mm"] = round(float(placed.embed), 2)
+    if req.surface is not None:
+        out["surface"] = {"part_id": req.attach_to, "face": req.surface, "offset_uv": _round(req.offset_uv, 3),
+                          "point_mm": _round(placed.base)}
     return out
 
 
@@ -1087,6 +1284,10 @@ def _shape_words(req: _Request, extent: list[float]) -> str:
         return f"ellipsoid {fmt_mm(w)} x {fmt_mm(d)} x {fmt_mm(h)} mm"
     if req.kind == "torus":
         return f"ring {base} outside, tube {fmt_mm(h)} mm thick"
+    if req.kind in ("triangular_prism", "cat_ear", *HEADPHONE_EARS):
+        name = {"triangular_prism": "triangular prism", "cat_ear": "cat ear"}.get(
+            req.kind, req.kind.replace("_", " "))
+        return f"{name} {fmt_mm(w)} x {fmt_mm(d)} x {fmt_mm(h)} mm (width x depth x height)"
     if req.kind == "capsule":
         return f"capsule {base}, {fmt_mm(h)} mm long"
     return (f"flat profile of {len(req.outline)} points, {fmt_mm(w)} mm wide, {fmt_mm(h)} mm tall and "

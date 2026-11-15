@@ -141,13 +141,15 @@ def anthropic_tool_specs() -> list[dict]:
         {"name": "add_part",
          "description": (
              "Add a NEW component to the object and save it: a solid (box, cylinder, cone, pyramid, "
-             "sphere, torus, capsule, or a flat profile extruded from an outline) sized in its own "
-             "frame and placed on an existing part's outer surface (on_part + direction) or at a "
-             "point (base_mm or center_mm), or the model of a CAD result placed where its preview was "
-             "shown. Scan frame: mm, Z up from the support surface. It is saved as a user-edited part "
-             "and appears in the parts list, hierarchy and 3D viewer. Call it once the user has agreed "
-             "to the design. Returns the new part id, where it went (base, up, width axis, the surface "
-             "point and normal used) and a contact check against the part it attaches to."),
+             "triangular prism, sphere, torus, capsule, cat ear, a flat profile extruded from an "
+             "outline, or a supplied headphone-ear mesh) sized in its own frame and placed on an "
+             "existing part's outer surface (on_part + direction, or attach_to + surface to snap onto "
+             "a scan-axis face) or at a point (base_mm or center_mm), or the model of a CAD result "
+             "placed where its preview was shown. Scan frame: mm, Z up from the support surface. It is "
+             "saved as a user-edited part and appears in the parts list, hierarchy and 3D viewer. On "
+             "an explicit build request call it immediately. Returns the new part id, where it went "
+             "(base, up, width axis, the surface point and normal used) and a contact check against "
+             "the part it attaches to."),
          "input_schema": input_schema()},
         {"name": "probe_surface",
          "description": (

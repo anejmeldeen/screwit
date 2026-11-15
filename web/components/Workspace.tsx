@@ -280,6 +280,7 @@ export function Workspace({
             onHighlight={onHighlight}
             onPartChip={onPartChip}
             onShowCad={onShowCad}
+            selectedPartId={selectedId}
             onPartsChanged={refreshParts}
           /></ManualContext.Provider>}
           </section>
