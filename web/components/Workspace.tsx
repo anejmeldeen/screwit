@@ -184,7 +184,6 @@ export function Workspace({
                 <i style={{backgroundColor:partColor(index, part.part_id)}} />{part.label}{hiddenPartIds.includes(part.part_id) && <small>Hidden</small>}
               </button></li>)}</ul>}
             {!parts?.length && <p className="dock-note">{creationForm ? "No parts yet" : partsReady ? "No parts available" : "Waiting for parts…"}</p>}
-            {hiddenPartIds.length > 0 && <button className="tree-show" onClick={() => setHiddenPartIds([])}>Show all parts</button>}
             </div>
           </section>
           <ResizeHandle label="Resize hierarchy height" className="object-split" orientation="horizontal"
@@ -194,6 +193,7 @@ export function Workspace({
             <h2 className="dock-heading">Inspector</h2>
             {!selected && <><h2>{name}</h2><p className="dock-note">{creationForm ? "Add photos or a video to build your assembly." : `${parts?.length ?? 0} components`}</p>
               {scaleWarnings(recon?.scale ?? null).map(w => <p className="dock-note" key={w.id}>{w.message}</p>)}</>}
+            {!selected && hiddenPartIds.length > 0 && <button onClick={() => setHiddenPartIds([])}>Show all parts</button>}
             {!creationForm && <PartsPanel hiddenPartIds={hiddenPartIds}
               onToggleHidden={id => setHiddenPartIds(ids => ids.includes(id) ? ids.filter(p => p !== id) : [...ids, id])}
               onIsolate={setIsolatedId} scanId={scanId} parts={parts} partsReady={partsReady}
