@@ -1,6 +1,8 @@
 """Basic local sign-up, sign-in and sign-out."""
 
 from fastapi import APIRouter, HTTPException, Request, Response
+from pydantic import BaseModel, Field
+from sqlalchemy import delete, update
 from sqlalchemy.exc import IntegrityError
 
 from screwit.app.accounts import (
@@ -13,7 +15,7 @@ from screwit.app.accounts import (
     start_session,
     token_hash,
 )
-from screwit.app.db import SessionRow, UserRow, db_session
+from screwit.app.db import BuildOwnerRow, SeedAccountRow, SessionRow, UserRow, db_session
 
 router = APIRouter(prefix="/auth")
 
@@ -60,3 +62,42 @@ def logout(request: Request) -> Response:
     response = Response(status_code=204, headers={"Cache-Control": "no-store"})
     response.delete_cookie(COOKIE_NAME, path="/")
     return response
+
+
+@router.patch("/username", response_model=Account)
+def change_username(credentials: Credentials, user: UserDep) -> Account:
+    with db_session() as session:
+        row = session.get(UserRow, user.username)
+        if row is None or not password_matches(credentials.password, row.password_hash):
+            raise HTTPException(403, "Current password is incorrect.")
+        if row.username != credentials.username:
+            try:
+                row.username = credentials.username
+                session.flush()
+                for table in (BuildOwnerRow, SessionRow, SeedAccountRow):
+                    session.execute(update(table).where(table.username == user.username)
+                                    .values(username=credentials.username))
+                session.commit()
+            except IntegrityError:
+                session.rollback()
+                raise HTTPException(409, "That username is already taken.") from None
+    return Account(username=credentials.username)
+
+
+class PasswordChange(BaseModel):
+    current_password: str = Field(min_length=8, max_length=128)
+    new_password: str = Field(min_length=8, max_length=128)
+
+
+@router.patch("/password", status_code=204)
+def change_password(body: PasswordChange, user: UserDep, request: Request) -> Response:
+    with db_session() as session:
+        row = session.get(UserRow, user.username)
+        if row is None or not password_matches(body.current_password, row.password_hash):
+            raise HTTPException(403, "Current password is incorrect.")
+        row.password_hash = hash_password(body.new_password)
+        current = token_hash(request.cookies.get(COOKIE_NAME, ""))
+        session.execute(delete(SessionRow).where(SessionRow.username == user.username,
+                                                 SessionRow.token_hash != current))
+        session.commit()
+    return Response(status_code=204)

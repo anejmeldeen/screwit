@@ -212,3 +212,25 @@ def test_workspace_preview_is_rendered_and_owner_only(client):
     assert preview.status_code == 200
     assert preview.headers["content-type"] == "image/png"
     assert preview.content.startswith(bytes.fromhex("89504e470d0a1a0a"))
+
+
+def test_account_settings_preserve_builds_and_reset_password(client):
+    peer = other_browser(client)
+    credentials = {"username": "admin", "password": "password123"}
+    assert peer.post("/api/auth/login", json=credentials).status_code == 200
+    builds = client.get("/api/builds").json()
+    assert client.patch("/api/auth/username", json={"username": "workshop", "password": "incorrect"}).status_code == 403
+    assert client.patch("/api/auth/username", json={**credentials, "username": "Workshop"}).json() == {
+        "username": "workshop",
+    }
+    initialize_accounts(client.app.state.settings.fixtures_dir)
+    assert client.get("/api/builds").json() == builds
+    assert peer.get("/api/auth/me").json()["username"] == "workshop"
+    assert client.patch("/api/auth/password", json={
+        "current_password": "password123", "new_password": "replacement-pass",
+    }).status_code == 204
+    assert peer.get("/api/auth/me").status_code == 401
+    assert client.get("/api/auth/me").status_code == 200
+    assert peer.post("/api/auth/login", json=credentials).status_code == 401
+    assert peer.post("/api/auth/login", json={"username": "workshop", "password": "password123"}).status_code == 401
+    assert peer.post("/api/auth/login", json={"username": "workshop", "password": "replacement-pass"}).status_code == 200

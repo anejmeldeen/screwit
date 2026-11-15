@@ -86,6 +86,12 @@ export const api = {
   register: (username: string, password: string) => request<Account>("/auth/register", {
     method: "POST", body: JSON.stringify({ username, password }),
   }),
+  changeUsername: (username: string, password: string) => request<Account>("/auth/username", {
+    method: "PATCH", body: JSON.stringify({ username, password }),
+  }),
+  changePassword: (current_password: string, new_password: string) => request<void>("/auth/password", {
+    method: "PATCH", body: JSON.stringify({ current_password, new_password }),
+  }),
   logout: () => request<void>("/auth/logout", { method: "POST" }),
   builds: () => request<BuildSummary[]>("/builds"),
   openBuild: (id: string) => request<void>(`/builds/${encodeURIComponent(id)}/open`, { method: "POST", keepalive: true }),

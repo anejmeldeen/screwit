@@ -224,8 +224,8 @@ button:disabled { cursor: not-allowed; }
 /* The personal workshop: a quiet list of builds beside a persistent tool rail. */
 .dashboard-shell { display:grid; grid-template-columns:248px minmax(0,1fr); min-height:100dvh; }
 .dashboard-sidebar { position:sticky; top:0; height:100dvh; display:flex; flex-direction:column; padding:36px 20px 20px; background:#27281f; color:#e7e4d5; }
-.sidebar-brand { padding:0 12px; margin-bottom:38px; display:flex; align-items:center; justify-content:space-between; }
-.sidebar-wordmark { color:var(--paper); font-size:34px; line-height:1; font-weight:800; letter-spacing:-2px; }
+.sidebar-brand { padding:0 12px; margin-bottom:4px; display:flex; align-items:center; justify-content:space-between; }
+.sidebar-wordmark { border-bottom:1px solid #bcbdb6; padding-bottom:4px; color:var(--paper); font-size:34px; line-height:1; font-weight:800; letter-spacing:-2px; }
 .sidebar-wordmark span { color:#fff4b1; }
 .sidebar-content { display:flex; flex-direction:column; flex:1; min-height:0; overflow-y:auto; }
 .sidebar-create { display:flex; align-items:center; justify-content:center; gap:10px; padding:13px 10px; border-radius:6px; background:var(--paper); color:#27281f; font-size:13px; font-weight:700; }
@@ -272,9 +272,8 @@ button:disabled { cursor: not-allowed; }
 .workspace-search input::placeholder { color:#726238; }
 .workspace-sort { position:relative; flex:none; }
 .workspace-sort>button { height:40px; padding:0 14px; border-radius:6px; font-size:13px; font-weight:650; }
-.workspace-sort-options { position:absolute; z-index:5; top:calc(100% + 5px); right:0; min-width:150px; padding:4px; border:1px solid var(--card-ink); border-radius:7px; background:#414141; box-shadow:1px 2px 0 var(--card-ink); }
+.workspace-sort-options { position:absolute; z-index:5; top:calc(100% + 5px); right:0; min-width:150px; padding:4px; border:1px solid var(--card-ink); border-radius:7px; background:#fff8df; box-shadow:1px 2px 0 var(--card-ink); }
 .workspace-sort-options button { display:flex; justify-content:space-between; align-items:center; gap:16px; width:100%; padding:8px; text-align:left; font-size:13px; border-radius:4px; }
-.sidebar-divider { flex:none; margin:0 12px; border:0; border-top:1px solid #bcbdb6; }
 .settings-row select { border:1px solid #ac9749; border-radius:6px; padding:10px 30px 10px 12px; background:#faedb3; color:var(--ink); font-size:12px; }
 .workspace-card,.workspace-empty,.workspace-skeletons { border:1px solid #b4a04b; border-radius:8px; background:#fbefbc; overflow:hidden; box-shadow:0 3px 0 #34312307; }
 .workspace-identity { display:flex; align-items:center; gap:16px; min-width:0; }
@@ -405,3 +404,13 @@ button:disabled { cursor: not-allowed; }
 .workspace-preview { display:block; width:100%; height:auto; aspect-ratio:5/3; object-fit:contain; border-radius:5px; }
 .workspace-preview-frame { position:relative; overflow:hidden; border-radius:5px; pointer-events:none; }
 .workspace-spin { position:absolute; inset:0; transition:opacity .15s; }
+
+.workspace-section .workspace-sort-options button { border-color:transparent; background:transparent; color:#292619; }
+.workspace-section .workspace-sort-options button[aria-pressed=true] { background:#f3d66b; }
+.workspace-section .workspace-sort-options button:hover,.workspace-section .workspace-sort-options button:focus-visible { background:#f6e9b6; }
+.account-edit { padding:18px 0; }
+.account-edit + .account-edit { border-top:1px solid #d8ca8b; }
+.account-edit summary { cursor:pointer; font-weight:650; }
+.account-edit form,.account-edit label { display:grid; gap:6px; }
+.account-edit form { max-width:330px; gap:12px; margin-top:16px; }
+.account-edit input { border:1px solid #9c8c53; padding:8px; border-radius:5px; background:#fff9df; }

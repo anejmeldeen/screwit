@@ -8,6 +8,8 @@ import { useDashboardPreferences } from "@/lib/dashboardPreferences";
 import { DashboardIcon } from "./DashboardIcon";
 import { Skeleton } from "./ui";
 
+const sortLabels = { opened: "Last opened", name: "Name", created: "Date created" } as const;
+
 const WorkspaceSpin = dynamic(() => import("./WorkspaceSpin"), { ssr: false });
 
 function WorkspacePreview({ build, spinning }: { build: BuildSummary; spinning: boolean }) {
@@ -141,12 +143,12 @@ export function WorkspaceDashboard({ examplesOnly = false }: { examplesOnly?: bo
             if (event.key === "Escape") { setSortOpen(false); sortButton.current?.focus(); }
           }}>
           <button type="button" ref={sortButton} aria-expanded={sortOpen} aria-controls="workspace-sort-options"
-            onClick={() => setSortOpen(open => !open)}>Sort by</button>
+            onClick={() => setSortOpen(open => !open)}>Sort by · {sortLabels[preferences.sort]}</button>
           <div id="workspace-sort-options" className="workspace-sort-options" role="group" aria-label="Workspace order" hidden={!sortOpen}>
-            {([["opened", "Last opened"], ["name", "Name"], ["created", "Date created"]] as const).map(([value, label]) =>
+            {(Object.keys(sortLabels) as (keyof typeof sortLabels)[]).map(value =>
               <button key={value} type="button" aria-pressed={preferences.sort === value} onClick={() => {
                 save({ sort: value }); setSortOpen(false); sortButton.current?.focus();
-              }}><span>{label}</span><span aria-hidden="true">{preferences.sort === value ? "✓" : ""}</span></button>
+              }}><span>{sortLabels[value]}</span><span aria-hidden="true">{preferences.sort === value ? "✓" : ""}</span></button>
             )}
           </div>
         </div>

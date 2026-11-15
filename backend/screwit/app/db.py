@@ -23,6 +23,12 @@ class UserRow(SQLModel, table=True):
     password_hash: str
 
 
+class SeedAccountRow(SQLModel, table=True):
+    __tablename__ = "seed_account"
+    id: int = Field(primary_key=True)
+    username: str
+
+
 class SessionRow(SQLModel, table=True):
     __tablename__ = "user_sessions"
     token_hash: str = Field(primary_key=True)
