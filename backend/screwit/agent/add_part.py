@@ -19,6 +19,7 @@ import math
 import re
 import uuid
 from dataclasses import dataclass, field
+from importlib.resources import files
 from typing import get_args
 
 import numpy as np
@@ -29,7 +30,8 @@ from screwit.app.store import ScanStore
 from screwit.contracts import Part, Relation, SceneGraph
 from screwit.contracts.models import RelationType
 
-KINDS = ("box", "cylinder", "sphere", "cad", "cone", "triangular_prism", "cat_ear")
+HEADPHONE_EARS = ("headphone_ear_left", "headphone_ear_right")
+KINDS = ("box", "cylinder", "sphere", "cad", "cone", "triangular_prism", "cat_ear", *HEADPHONE_EARS)
 RELATION_TYPES: tuple[str, ...] = get_args(RelationType)
 MIN_SIZE_MM = 0.1
 MAX_SIZE_MM = 2000.0
@@ -265,6 +267,12 @@ def _primitive(kind: str, size: list[float], axis: int | None = None):
     """A solid centred on the origin whose extents along the scan X, Y, Z axes equal size (mm)."""
     import trimesh
 
+    if kind in HEADPHONE_EARS:
+        filename = "left_ear_curved.stl" if kind == "headphone_ear_left" else "right_ear_curved.stl"
+        asset = files("screwit.agent").joinpath("assets", filename)
+        mesh = trimesh.load(io.BytesIO(asset.read_bytes()), file_type="stl", force="mesh")
+        mesh.apply_translation(-mesh.bounds.mean(axis=0))
+        return mesh
     if kind == "cat_ear":
         # Rounded triangular shell with a raised rim and recessed front panel.
         # Rings share vertices at every seam, including the floor of the recess.
@@ -403,7 +411,15 @@ def _surface_point(reg, anchor, face, uv):
     if np.any(np.abs(uv) > 1):
         raise AddPartError("offset_uv must lie between -1 and 1")
     try:
-        scene = trimesh.load(io.BytesIO(reg.storage.get_bytes(anchor.mesh_uri)), file_type="glb", force="scene")
+        if reg.storage.head(anchor.mesh_uri) is None:
+            from screwit.app.registry import fixture_asset
+            fallback = fixture_asset(reg, anchor.mesh_uri)
+            if fallback is None:
+                raise AddPartError("attachment mesh is missing")
+            data = fallback[0]
+        else:
+            data = reg.storage.get_bytes(anchor.mesh_uri)
+        scene = trimesh.load(io.BytesIO(data), file_type="glb", force="scene")
         mesh = scene.to_geometry()
         triangles = mesh.triangles
         lo, hi = mesh.bounds
@@ -544,7 +560,7 @@ def _shape_words(req: _Request, extent: list[float]) -> str:
     if req.kind == "cad":
         return f"the model of CAD result {req.cad_id}, {' x '.join(fmt_mm(v) for v in extent)} mm"
     size = req.size or extent
-    if req.kind in ("cone", "triangular_prism", "cat_ear", "box"):
+    if req.kind in ("cone", "triangular_prism", "cat_ear", "box", *HEADPHONE_EARS):
         return f"{req.kind} {' x '.join(fmt_mm(v) for v in size)} mm"
     if req.kind == "cylinder":
         axis = req.axis if req.axis is not None else 2
@@ -560,7 +576,7 @@ def _dimensions(req: _Request) -> list[dict]:
     if req.size is None:
         return []
     x, y, z = req.size
-    if req.kind in ("box", "cone", "triangular_prism", "cat_ear"):
+    if req.kind in ("box", "cone", "triangular_prism", "cat_ear", *HEADPHONE_EARS):
         named = [("size_x", x), ("size_y", y), ("size_z", z)]
     elif req.kind == "cylinder":
         axis = req.axis if req.axis is not None else 2

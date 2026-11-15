@@ -18,7 +18,7 @@ from collections.abc import Iterator
 
 from screwit.agent.loop import LlmChatAgent
 from screwit.agent.offline import OfflineChatAgent
-from screwit.agent.shape_commands import shape_command
+from screwit.agent.shape_commands import headphone_ear_command, shape_command
 from screwit.app.registry import Registry
 from screwit.contracts import DoneEvent
 from screwit.interfaces import ChatAgent
@@ -54,7 +54,8 @@ class _LlmWithOfflineFallback:
         self._reg = reg
 
     def reply(self, scan_id: str, message: str, image_uris: list[str]) -> Iterator:
-        command = shape_command(self._reg, scan_id, message) if not image_uris else None
+        route = headphone_ear_command if image_uris else shape_command
+        command = route(self._reg, scan_id, message)
         if command is not None:
             yield from command
             yield DoneEvent(message_id="msg_" + uuid.uuid4().hex[:12])

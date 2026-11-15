@@ -347,6 +347,7 @@ def test_tool_specs_include_add_part():
     assert schema["required"] == ["label", "kind"]
     assert schema["properties"]["kind"]["enum"] == [
         "box", "cylinder", "sphere", "cad", "cone", "triangular_prism", "cat_ear",
+        "headphone_ear_left", "headphone_ear_right",
     ]
     assert {"size_mm", "center_mm", "rotation_quat", "cad_id", "attach_to", "relation"} <= set(
         schema["properties"])
@@ -578,7 +579,9 @@ def test_chat_add_part_shows_up_in_parts_assets_graph_and_history(api, monkeypat
     assert messages[2]["content"] == "how big is it?"
     assert f'{pid} "Block"' in driver.calls[-1]["system"]
 
-def test_offline_pair_on_real_headband(registry):
+def test_offline_pair_on_real_headband(registry, tmp_path):
+    from screwit.storage import LocalStorage
+    registry = replace(registry, settings=replace(registry.settings, mode="live"), storage=LocalStorage(tmp_path))
     from screwit.agent.offline import OfflineChatAgent
 
     events = list(OfflineChatAgent(registry).reply("scn_headphones", "add two cat ears on the headband", []))
@@ -588,12 +591,18 @@ def test_offline_pair_on_real_headband(registry):
     added = [p for p in store.list_parts("scn_headphones") if p.part_id in ids]
     assert len(added) == 2
     assert added[0].centroid_mm[0] * added[1].centroid_mm[0] < 0
-    assert all(p.centroid_mm[2] > 0 for p in added)
+    assert all(p.centroid_mm[1] > 140 for p in added)
+    again = list(OfflineChatAgent(registry).reply("scn_headphones", "Could you give my headphones kitty ears?", []))
+    assert next(e.part_ids for e in again if e.event == "highlight") == ids
+    assert not any(e.event == "tool_call" for e in again)
     for part in added:
         raw = registry.storage.get_bytes(part.mesh_uri)
         mesh = trimesh.load(io.BytesIO(raw), file_type="glb", force="scene").to_geometry()
-        assert mesh.is_volume and mesh.is_watertight
-        assert len(mesh.faces) > 300
+        side = part.label.split()[0].lower()
+        original = trimesh.load(Path(__file__).parents[2] / "screwit/agent/assets" / f"{side}_ear_curved.stl")
+        assert len(mesh.faces) == len(original.faces) == 2678
+        assert np.allclose(part.obb.extent, original.extents)
+        assert np.isclose(mesh.area, original.area, rtol=1e-5)
 
 def test_chat_builds_surface_attached_solid_without_confirmation(api):
     response = api.post("/api/scans/scn_headphones/chat",
