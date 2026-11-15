@@ -1,6 +1,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
+import { workspaceSlugs } from "@/lib/workspacePaths";
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { api, type BuildSummary } from "@/lib/api";
@@ -120,6 +121,7 @@ export function WorkspaceDashboard({ examplesOnly = false }: { examplesOnly?: bo
   const buttons = (build: BuildSummary) => (["Rename", "Delete"] as const).map(action =>
     <button type="button" key={action} disabled={saving} aria-label={`${action} ${build.title}`} onClick={() => act(build, action)}>{action}</button>);
 
+  const slugs = workspaceSlugs(builds ?? []);
   const workspaces = (builds || []).filter((build) => !examplesOnly || build.is_example);
   const visible = workspaces.filter((build) => build.title.toLowerCase().includes(search.trim().toLowerCase())).sort((a, b) => {
     if (preferences.sort === "name") return a.title.localeCompare(b.title);
@@ -177,7 +179,7 @@ export function WorkspaceDashboard({ examplesOnly = false }: { examplesOnly?: bo
                   <input name="title" aria-label="Workspace name" defaultValue={build.title} maxLength={120} required
                     autoFocus onFocus={event => event.currentTarget.select()} readOnly={saving}
                     onKeyDown={event => { if (event.key === "Escape" && !saving) { setEditingId(null); setActionError(""); } }} />
-                </form> : <Link href={`/scan/${build.scan_id}`} className="workspace-row-link"><strong>{build.title}</strong></Link>}
+                </form> : <Link href={`/scan/${encodeURIComponent(slugs.get(build.scan_id)!)}`} className="workspace-row-link"><strong>{build.title}</strong></Link>}
                 {!build.is_example && <small>{build.input_type.charAt(0).toUpperCase() + build.input_type.slice(1)} scan</small>}</div></div></div>
               <div><span className="workspace-card-label">Actions</span><span className="workspace-actions">{editingId === build.scan_id ? <>
                 <button type="submit" form={`rename-${build.scan_id}`} disabled={saving}>Save</button>

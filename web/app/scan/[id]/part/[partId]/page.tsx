@@ -1,4 +1,4 @@
-import { Workspace } from "@/components/Workspace";
+import { NamedWorkspace } from "@/components/NamedWorkspace";
 import { ViewerPreloadLinks } from "@/components/ViewerPreloadLinks";
 
 // Deep link that focuses the viewer on one part (SPEC 2.1).
@@ -11,7 +11,7 @@ export default async function ScanPartPage({
   return (
     <>
       <ViewerPreloadLinks />
-      <Workspace scanId={id} initialPartId={partId} />
+      <NamedWorkspace key={JSON.stringify([id, partId])} segment={id} partId={partId} />
     </>
   );
 }

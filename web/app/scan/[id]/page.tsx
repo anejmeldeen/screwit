@@ -1,4 +1,4 @@
-import { Workspace } from "@/components/Workspace";
+import { NamedWorkspace } from "@/components/NamedWorkspace";
 import { ViewerPreloadLinks } from "@/components/ViewerPreloadLinks";
 
 export default async function ScanPage({
@@ -10,7 +10,7 @@ export default async function ScanPage({
   return (
     <>
       <ViewerPreloadLinks />
-      <Workspace scanId={id} />
+      <NamedWorkspace key={id} segment={id} />
     </>
   );
 }

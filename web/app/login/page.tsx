@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { api } from "@/lib/api";
 import { notifyAccountChange } from "@/components/AccountProvider";
 
@@ -11,6 +11,14 @@ export default function LoginPage() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
+  useEffect(() => {
+    const legacy = new URLSearchParams(window.location.search).get("next");
+    if (legacy !== null) {
+      try { sessionStorage.setItem("screwit:return-to", legacy); } catch { /* Default to home. */ }
+      window.history.replaceState(window.history.state, "", "/login");
+    }
+  }, []);
+
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setBusy(true);
@@ -18,9 +26,11 @@ export default function LoginPage() {
     try {
       await (register ? api.register(username, password) : api.login(username, password));
       notifyAccountChange();
-      const next = new URLSearchParams(window.location.search).get("next") || "/";
+      let next = "/";
+      try { next = sessionStorage.getItem("screwit:return-to") || "/"; sessionStorage.removeItem("screwit:return-to"); } catch { /* Default to home. */ }
       // Only return to a path in this app, never a foreign origin or the login form.
-      const target = new URL(next, window.location.origin);
+      let target = new URL("/", window.location.origin);
+      try { target = new URL(next, window.location.origin); } catch { /* Use home for malformed legacy links. */ }
       window.location.replace(target.origin === window.location.origin && target.pathname !== "/login" ? target.href : "/");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to log in. Please try again.");

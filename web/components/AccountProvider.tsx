@@ -42,7 +42,8 @@ export function AccountProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     if (!loading && !error && !account && path !== "/login") {
-      router.replace(`/login?next=${encodeURIComponent(path + window.location.search)}`);
+      try { sessionStorage.setItem("screwit:return-to", path + window.location.search + window.location.hash); } catch { /* Default to home. */ }
+      router.replace("/login");
     }
   }, [account, error, loading, path, router]);
 
