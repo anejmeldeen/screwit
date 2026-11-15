@@ -29,9 +29,7 @@ export function SiteHeader() {
     <button type="button" onClick={logout} disabled={busy}>{busy ? "Signing out…" : "Sign out"}</button>
     {error && <span role="alert">{error}</span>}
   </div>;
-  if (path.startsWith("/scan/") && path !== "/scan/new") return (
-    <header className="editor-top"><Link href="/" aria-label="Exit editor and go home">← Home</Link>{accountControls}</header>
-  );
+  if (path.startsWith("/scan/")) return null;
   return (
     <header className={`site-header ${path.startsWith("/scan/") && path !== "/scan/new" ? "site-header-workbench" : ""}`}>
       <Link href="/" className="wordmark" aria-label="Screw It home">Screw It<span aria-hidden="true">.</span></Link>

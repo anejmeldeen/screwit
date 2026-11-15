@@ -228,7 +228,8 @@ export function ViewerPanel({
   return (
     <div className="flex h-full flex-col">
       {/* Toolbar */}
-      <div className="editor-tools">
+      <div className="scene-tools"><strong>Scene</strong>
+        <details className="scene-view-options"><summary>View</summary><div>
         {/* Splat/mesh toggle. The mesh button is always present; the splat
             button appears only when a splat exists. Selecting Splat marks it as
             user-requested, which is what releases the splat fetch. */}
@@ -257,16 +258,7 @@ export function ViewerPanel({
               Original scan
             </button>
           </div>
-        ) : (
-          <button
-            data-testid="view-toggle-mesh"
-            className="rounded border border-line bg-accent px-3 py-1 text-paper"
-            disabled
-          >
-            Parts view
-          </button>
-        )}
-
+        ) : <span>Parts view</span>}
         {!isolated ? (
         <label className="flex items-center gap-2">
           <span className="text-muted">Separate parts</span>
@@ -287,6 +279,7 @@ export function ViewerPanel({
           />
         </label>
         ) : null}
+        </div></details>
 
         <button
           className={`rounded border px-2 py-1 ${
@@ -316,7 +309,7 @@ export function ViewerPanel({
           disabled={isolated}
           title={isolated ? "Set scale in the assembly window" : "Set scale from a known length"}
         >
-          Set real size
+          Set scale
         </button>
 
         {cadOverlay ? (

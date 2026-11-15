@@ -198,7 +198,7 @@ function PartCard({
             Combine…
           </button>
         ) : mergeState.pick === part.part_id ? (
-          <span className="text-muted">Choose another part below</span>
+          <span className="text-muted">Select another part in the hierarchy</span>
         ) : (
           <button
             disabled={merging}
@@ -210,7 +210,7 @@ function PartCard({
         )}
       </div>
 
-      <details className="part-details"><summary>Measurements & details</summary>
+      <details open className="part-details"><summary>Measurements & details</summary>
       {/* Dimensions table */}
       {dims.length ? (
         <div className="dimension-table-wrap"><table className="dimension-table">
@@ -345,10 +345,10 @@ export function PartsPanel({
 
   return (
     <div data-testid="parts-panel" className="space-y-3">
-      <div className="part-history"><button disabled={busy || !history.can_undo} onClick={() => recover()}>↶ Undo combine</button>{history.can_restore_example ? <button disabled={busy} onClick={() => recover(true)}>Restore original example</button> : null}</div>
+      {!selectedId && <details className="assembly-history"><summary>Assembly history</summary><div className="part-history"><button disabled={busy || !history.can_undo} onClick={() => recover()}>↶ Undo combine</button>{history.can_restore_example ? <button disabled={busy} onClick={() => recover(true)}>Restore original example</button> : null}</div></details>}
       {editError ? <p role="alert">{editError}</p> : null}
       {mergePick ? <div className="combine-hint">Choose a second part. <button onClick={() => setMergePick(null)}>Cancel</button></div> : null}
-      {parts.map((p, i) => (
+      {parts.map((p, i) => selectedId === p.part_id && (
         <PartCard
           key={p.part_id}
           part={p}

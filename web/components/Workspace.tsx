@@ -1,5 +1,7 @@
 "use client";
 
+import Link from "next/link";
+import { partColor } from "@/lib/palette";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { useScan, useReconstruction, useParts, isStageDone, usePersistentNumber } from "@/lib/hooks";
 import { scaleWarnings } from "@/lib/scaleWarnings";
@@ -11,7 +13,7 @@ import { ChatPanel } from "@/components/ChatPanel";
 import { ScanProgress } from "@/components/StatusBar";
 import { api } from "@/lib/api";
 import { ScrewyIcon } from "@/components/ScrewyIcon";
-import { EmptyState, ErrorNote } from "@/components/ui";
+import { ErrorNote } from "@/components/ui";
 import { markOnce, PERF_MARKS } from "@/lib/perf";
 import type { CadResult } from "@/lib/contracts.gen";
 import type { ViewerCadOverlay } from "@/components/viewer/Viewer";
@@ -43,37 +45,22 @@ export function Workspace({
 
   const gridRef = useRef<HTMLDivElement>(null);
   const [gridWidth, setGridWidth] = useState(0);
-  const [gridHeight, setGridHeight] = useState(0);
-  const [partsWidth, setPartsWidth] = usePersistentNumber("ui.partsWidth", 310);
-  const [chatWidth, setChatWidth] = usePersistentNumber("ui.chatWidth", 340);
-  const [partsHeight, setPartsHeight] = usePersistentNumber("ui.partsHeight", 280);
-  const [chatHeight, setChatHeight] = usePersistentNumber("ui.chatHeight", 480);
-  // Measure the grid synchronously BEFORE the first paint (useLayoutEffect), so the responsive
-  // layout (wide/stacked, panel clamps) is computed from the real width on frame one. Measuring in
-  // a plain effect left gridWidth at 0 for the first paint -> the layout rendered stacked/narrow and
-  // then visibly SNAPPED to the real layout once the ResizeObserver fired. Seed from the current
-  // client rect, then keep it live with the observer.
+  const [leftWidth, setLeftWidth] = usePersistentNumber("ui.hierarchyWidth", 220);
+  const [rightWidth, setRightWidth] = usePersistentNumber("ui.inspectorWidth", 310);
+  const [assistant, setAssistant] = useState(false);
+  const [expanded, setExpanded] = useState(true);
   useLayoutEffect(() => {
     const grid = gridRef.current;
     if (!grid) return;
-    const rect = grid.getBoundingClientRect();
-    setGridWidth(rect.width);
-    setGridHeight(rect.height);
-    const observer = new ResizeObserver(([entry]) => {
-      setGridWidth(entry.contentRect.width); setGridHeight(entry.contentRect.height);
-    });
+    setGridWidth(grid.clientWidth);
+    const observer = new ResizeObserver(() => setGridWidth(grid.clientWidth));
     observer.observe(grid);
     return () => observer.disconnect();
   }, []);
-  const wide = gridWidth >= 1280;
-  const stacked = gridWidth < 760;
-  // Keep only a small usable viewer area; panels can use the remaining space.
-  const actualPartsWidth = Math.min(partsWidth, Math.max(240, gridWidth - 260 - 244));
-  const maxChatWidth = Math.max(260, gridWidth - (wide ? actualPartsWidth + 244 : 232));
-  const actualChatWidth = Math.min(chatWidth, maxChatWidth);
-  const maxPartsWidth = Math.max(240, gridWidth - actualChatWidth - 244);
-  const actualPartsHeight = stacked ? partsHeight : Math.min(partsHeight, Math.max(160, gridHeight - 232));
-
+  const maxLeft = Math.max(150, Math.min(420, gridWidth * .27));
+  const maxRight = Math.max(220, Math.min(560, gridWidth * .35));
+  const left = Math.min(leftWidth, maxLeft);
+  const right = Math.min(rightWidth, maxRight);
   const [selectedId, setSelectedId] = useState<string | null>(initialPartId);
   const [hoveredId, setHoveredId] = useState<string | null>(null);
   const [focusPartId, setFocusPartId] = useState<string | null>(initialPartId);
@@ -155,17 +142,36 @@ export function Workspace({
     setCadOverlay({ cad, placement });
   }, []);
 
+  const name = title || savedTitle || "Workspace";
+  const selected = parts?.find(part => part.part_id === selectedId);
+  function select(id: string | null) {
+    setSelectedId(id);
+    setFocusPartId(id);
+    setAssistant(false);
+  }
+
   return (
     <div className="workbench flex flex-col">
-      <header className="workspace-titlebar"><h1>{title || savedTitle || "Workspace"}</h1><span>{creationForm ? "New workspace" : "Workspace editor"}</span></header>
+      <header className="scene-title"><Link href="/">← Workspaces</Link><span aria-hidden="true">/</span><h1>{name}</h1></header>
       {scanError ? <div className="workbench-notice"><ErrorNote message={`Could not load this object: ${scanError}`} /></div> : null}
       {scan?.status === "failed" ? <div className="workbench-notice" role="alert">This scan could not finish. Try another recording.</div> : null}
       {!creationForm && !scanError && (watching || !scan || (scan.status !== "ready" && scan.status !== "failed")) ? <div className="workbench-notice" role="status"><ScanProgress scan={scan} /></div> : null}
-      {scaleWarnings(recon?.scale ?? null).map((warning) => <div key={warning.id} className="workbench-notice" role="note">{warning.message}</div>)}
-      <div ref={gridRef} className="workbench-grid" style={{
-        "--parts-width": `${actualPartsWidth}px`, "--chat-width": `${actualChatWidth}px`,
-        "--parts-height": `${actualPartsHeight}px`, "--chat-height": `${chatHeight}px`,
-      } as CSSProperties}>
+      <div ref={gridRef} className="scene-layout" style={{ "--left": `${left}px`, "--right": `${right}px` } as CSSProperties}>
+        <aside className="scene-hierarchy" aria-label="Hierarchy">
+          <h2 className="dock-heading">Hierarchy</h2>
+          <div className="scene-root">
+            <button onClick={() => setExpanded(!expanded)} aria-label={expanded ? "Collapse assembly" : "Expand assembly"} aria-expanded={expanded}>{expanded ? "▾" : "▸"}</button>
+            <button onClick={() => select(null)} aria-pressed={!selected}>{name}</button>
+          </div>
+          {expanded && <ul className="scene-tree">{(parts || []).map((part, index) =>
+            <li key={part.part_id}><button aria-pressed={selectedId === part.part_id}
+              onClick={() => select(part.part_id)} onMouseEnter={() => setHoveredId(part.part_id)} onMouseLeave={() => setHoveredId(null)}>
+              <i style={{backgroundColor:partColor(index, part.part_id)}} />{part.label}{hiddenPartIds.includes(part.part_id) && <small>Hidden</small>}
+            </button></li>)}</ul>}
+          {!parts?.length && <p className="dock-note">{creationForm ? "No parts yet" : partsReady ? "No parts available" : "Waiting for parts…"}</p>}
+          {hiddenPartIds.length > 0 && <button className="tree-show" onClick={() => setHiddenPartIds([])}>Show all parts</button>}
+        </aside>
+        <ResizeHandle label="Resize hierarchy" className="scene-split" orientation="vertical" value={left} min={150} max={maxLeft} onChange={setLeftWidth} />
         <section className="workbench-viewer" aria-label={creationForm ? "Workspace setup" : "3D viewer"}>
           {creationForm ? <div className="workspace-setup">{creationForm}</div> : <ViewerPanel
             scanId={scanId}
@@ -176,10 +182,7 @@ export function Workspace({
             hoveredId={hoveredId}
             focusPartId={focusPartId}
             onHover={setHoveredId}
-            onSelect={(id) => {
-              setSelectedId(id);
-              setFocusPartId(id);
-            }}
+            onSelect={select}
             cadOverlay={cadOverlay}
             onScaled={() => {
               refreshParts();
@@ -187,38 +190,21 @@ export function Workspace({
           />}
         </section>
 
-        <ResizeHandle label="Resize parts panel" className="parts-resizer" orientation={wide ? "vertical" : "horizontal"}
-          value={wide ? actualPartsWidth : actualPartsHeight} min={wide ? 240 : 160}
-          max={wide ? maxPartsWidth : stacked ? Math.max(1600, gridHeight * 2) : Math.max(160, gridHeight - 232)} reverse={!stacked}
-          onChange={wide ? setPartsWidth : setPartsHeight} />
-        <section className="workbench-parts" aria-label="Object parts">
-          <div className="mb-2 flex items-center justify-between">
-            <h2 className="parts-heading">Parts</h2>
-            {hiddenPartIds.length > 0 ? <button className="text-xs text-accent" onClick={() => setHiddenPartIds([])}>Show all ({hiddenPartIds.length} hidden)</button> : null}
-          </div>
-          {partsReady && parts?.length ? <PartDownloads scanId={scanId} /> : null}
-          {parts?.find(p => p.part_id === selectedId) ? <PartDownloads scanId={scanId} part={parts.find(p => p.part_id === selectedId)} /> : null}
-          {creationForm ? <EmptyState title="No parts yet" hint="Upload your object to start. Its parts will appear here as processing finishes." /> : <PartsPanel
-            hiddenPartIds={hiddenPartIds}
-            onToggleHidden={id => setHiddenPartIds(ids => ids.includes(id) ? ids.filter(p => p !== id) : [...ids, id])}
-            onIsolate={setIsolatedId}
-            scanId={scanId}
-            parts={parts}
-            partsReady={partsReady}
-            selectedId={selectedId}
-            onSelect={(id) => {
-              setSelectedId(id);
-              setFocusPartId(id);
-            }}
-            onChanged={refreshParts}
-          />}
-        </section>
-
-        <ResizeHandle label="Resize assistant panel" className="chat-resizer" orientation={stacked ? "horizontal" : "vertical"}
-          value={stacked ? chatHeight : actualChatWidth} min={stacked ? 280 : 260}
-          max={stacked ? Math.max(1600, gridHeight * 2) : maxChatWidth} reverse={!stacked}
-          onChange={stacked ? setChatHeight : setChatWidth} />
-        <section className="workbench-chat" aria-label="Assistant">
+        <ResizeHandle label="Resize inspector" className="scene-split" orientation="vertical" value={right} min={220} max={maxRight} reverse onChange={setRightWidth} />
+        <aside className="scene-dock">
+          <div className="dock-tabs"><button aria-pressed={!assistant} onClick={() => setAssistant(false)}>Inspector</button>
+            <button aria-pressed={assistant} onClick={() => setAssistant(true)}>Screwy</button></div>
+          <section className="scene-inspector" aria-label="Inspector" hidden={assistant}>
+            {!selected && <><h2>{name}</h2><p className="dock-note">{creationForm ? "Add photos or a video to build your assembly." : `${parts?.length ?? 0} components`}</p>
+              {scaleWarnings(recon?.scale ?? null).map(w => <p className="dock-note" key={w.id}>{w.message}</p>)}</>}
+            {!creationForm && <PartsPanel hiddenPartIds={hiddenPartIds}
+              onToggleHidden={id => setHiddenPartIds(ids => ids.includes(id) ? ids.filter(p => p !== id) : [...ids, id])}
+              onIsolate={setIsolatedId} scanId={scanId} parts={parts} partsReady={partsReady}
+              selectedId={selectedId} onSelect={select} onChanged={refreshParts} />}
+            {partsReady && !!parts?.length && <details className="scene-export"><summary>Export {selected ? "component" : "assembly"}</summary>
+              <PartDownloads scanId={scanId} part={selected} /></details>}
+          </section>
+          <section className="scene-assistant" aria-label="Assistant" hidden={!assistant}>
           {creationForm ? <div className="chat-panel">
             <header className="chat-heading"><span className="chat-mark screwy-avatar"><ScrewyIcon /></span><div><h2>Screwy</h2><p>Let’s build.</p></div></header>
             <div className="chat-messages"><div className="chat-empty"><h3>Start with your object.</h3><p>Name your workspace and add a video or photos. Once your scan starts, we can explore it together.</p></div></div>
@@ -228,7 +214,8 @@ export function Workspace({
             onPartChip={onPartChip}
             onShowCad={onShowCad}
           />}
-        </section>
+          </section>
+        </aside>
       </div>
       <dialog ref={isolationDialog} aria-labelledby="isolation-title"
         onCancel={() => setIsolatedId(null)} onClose={() => setIsolatedId(null)}
