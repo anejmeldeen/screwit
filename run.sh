@@ -79,6 +79,11 @@ find_uv() {
 }
 
 # ------------------------------------------------------------------------------------- preflight
+usable_node() {
+  node_version="$(node -v 2>/dev/null)" && [[ "$node_version" =~ ^v([0-9]+)\. ]] &&
+    [ "${BASH_REMATCH[1]}" -ge 20 ] && npm_version="$(npm -v 2>/dev/null)"
+}
+
 preflight() {
   local os; os="$(uname -s)"
   case "$os" in
@@ -88,12 +93,19 @@ preflight() {
   local missing=0
   command -v git  >/dev/null 2>&1 || { err "git is missing (macOS: xcode-select --install; Linux: apt install git)"; missing=1; }
   command -v curl >/dev/null 2>&1 || { err "curl is missing (Linux: apt install curl)"; missing=1; }
-  if command -v node >/dev/null 2>&1 && command -v npm >/dev/null 2>&1; then
-    local major; major="$(node -v | sed 's/^v//' | cut -d. -f1)"
-    if [ "$major" -lt 20 ]; then err "Node $(node -v) is too old; install Node 22 (https://nodejs.org or nvm)"; missing=1
-    else ok "Node $(node -v), npm $(npm -v)"; fi
+  local node_version npm_version candidate
+  if ! usable_node; then
+    for candidate in /opt/homebrew/opt/node@22/bin /usr/local/opt/node@22/bin; do
+      if [ -x "$candidate/node" ] && [ -x "$candidate/npm" ] && PATH="$candidate:$PATH" usable_node; then
+        export PATH="$candidate:$PATH"
+        break
+      fi
+    done
+  fi
+  if usable_node; then
+    ok "Node $node_version, npm $npm_version"
   else
-    err "Node.js/npm are missing; install Node 22 (macOS: brew install node@22; Linux: https://nodejs.org)"
+    err "No working Node >= 20 and npm found. Install Node 22 (macOS: brew install node@22)."
     missing=1
   fi
   [ "$missing" = 0 ] || die "install the tools above, then run ./run.sh start again"

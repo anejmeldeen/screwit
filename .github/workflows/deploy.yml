@@ -36,6 +36,8 @@ jobs:
         run: npm ci
 
       - name: Build React app
+        env:
+          SCREWIT_STATIC_EXPORT: "1"
         run: npm run build
 
       - name: Configure Pages
