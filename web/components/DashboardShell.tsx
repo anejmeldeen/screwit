@@ -42,11 +42,11 @@ function DashboardShell({ children }: { children: React.ReactNode }) {
       <aside className="dashboard-sidebar" aria-label="Workspace navigation">
         <div className="sidebar-brand">
           <Link href="/" className="sidebar-wordmark" aria-label="Screw It workspaces">Screw It<span>.</span>
-            <svg className="sidebar-screw" viewBox="0 0 124 16" aria-hidden="true">
-              <path fill="currentColor" d="M3 1h5l5 4h97l12 3-12 3H13l-5 4H3Q1 15 1 13V3q0-2 2-2Z" />
+            <svg className="sidebar-screw" viewBox="0 0 166 16" aria-hidden="true">
+              <path fill="currentColor" d="M3 1h5l5 4h139l12 3-12 3H13l-5 4H3Q1 15 1 13V3q0-2 2-2Z" />
               <path stroke="#27281f" strokeWidth="1.5" d="M5 4v8" />
-              {Array.from({ length: 14 }, (_, i) => <path key={i} d={`M${24 + i * 6} 4l-3 8`} stroke="currentColor" strokeWidth="2" />)}
-              {Array.from({ length: 14 }, (_, i) => <path key={i} d={`M${26 + i * 6} 5l-2.5 6`} stroke="#27281f" strokeWidth="1.4" />)}
+              {Array.from({ length: 21 }, (_, i) => <path key={i} d={`M${24 + i * 6} 4l-3 8`} stroke="currentColor" strokeWidth="2" />)}
+              {Array.from({ length: 21 }, (_, i) => <path key={i} d={`M${26 + i * 6} 5l-2.5 6`} stroke="#27281f" strokeWidth="1.4" />)}
             </svg>
           </Link>
           <button className="sidebar-menu" type="button" aria-label="Toggle navigation" aria-expanded={menuOpen} aria-controls="sidebar-navigation" onClick={() => setMenuOpen(!menuOpen)}><DashboardIcon name="menu" /></button>

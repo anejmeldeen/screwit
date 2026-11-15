@@ -223,10 +223,10 @@ button:disabled { cursor: not-allowed; }
 
 /* The personal workshop: a quiet list of builds beside a persistent tool rail. */
 .dashboard-shell { display:grid; grid-template-columns:248px minmax(0,1fr); min-height:100dvh; }
-.dashboard-sidebar { --divider-gap:20px; position:sticky; top:0; height:100dvh; display:flex; flex-direction:column; padding:36px 20px 20px; background:#27281f; color:#e7e4d5; }
+.dashboard-sidebar { --divider-gap:15px; position:sticky; top:0; height:100dvh; display:flex; flex-direction:column; padding:36px 20px 20px; background:#27281f; color:#e7e4d5; }
 .sidebar-brand { padding:0 12px; margin-bottom:var(--divider-gap); display:flex; align-items:center; justify-content:space-between; }
 .sidebar-wordmark { color:var(--paper); font-size:34px; line-height:1; font-weight:800; letter-spacing:-2px; }
-.sidebar-screw { display:block; width:100%; height:14px; margin-top:12px; color:#bcbdb6; }
+.sidebar-screw { display:block; width:145px; height:14px; margin-top:12px; color:#bcbdb6; }
 .sidebar-wordmark span { color:#fff4b1; }
 .sidebar-content { display:flex; flex-direction:column; flex:1; min-height:0; overflow-y:auto; }
 .sidebar-create { display:flex; align-items:center; justify-content:center; gap:10px; padding:13px 10px; border-radius:6px; background:var(--paper); color:#27281f; font-size:13px; font-weight:700; }
