@@ -27,12 +27,13 @@
 #   SCREWIT_SKIP_MODELS=1 skip the model stack and weights (mock mode or tests only)
 #
 # Config via env (defaults in parens):
-#   SCREWIT_PORT (8000)  WEB_PORT (3000)  SCREWIT_DEVICE (cpu)  SCREWIT_CPU_VIEW_CAP (8)
+#   SCREWIT_PORT (8000)  WEB_PORT (3000)  SCREWIT_CPU_VIEW_CAP (8; also capped to what RAM can hold)
+#   SCREWIT_DEVICE (auto: an NVIDIA GPU, else the Apple GPU (about 10x faster than the CPU), else cpu)
 #   SCREWIT_INFER_GS (0)  SCREWIT_MODEL (anthropic/claude-sonnet-4.5)  SCREWIT_DATA_DIR (<repo>/data-live)
-#   SCREWIT_LLM (openrouter; also bedrock, anthropic, fake)  SCREWIT_RELOAD (0)
+#   SCREWIT_LLM (openrouter; also bedrock, anthropic, fake)  SCREWIT_LLM_CACHE (1)  SCREWIT_RELOAD (0)
 #   Scan quality (usually leave at defaults):
-#   SCREWIT_DEPTH_CLEAN (1)  SCREWIT_MIN_VIEWS (2)  SCREWIT_SMOOTH_ITERS (80)  SCREWIT_DENOISE (1)
-#   SCREWIT_REMOVE_TABLE (1)
+#   SCREWIT_DEPTH_CLEAN (1)  SCREWIT_MIN_VIEWS (1 = off; 2 peels single-view rim flaps but eats lower walls)
+#   SCREWIT_SMOOTH_ITERS (80)  SCREWIT_DENOISE (1)  SCREWIT_REMOVE_TABLE (1)
 
 set -euo pipefail
 
@@ -256,11 +257,17 @@ start() {
   update_repo
   ensure_installed
 
-  info "Starting backend: http://127.0.0.1:${SCREWIT_PORT:-8000}  (device=${SCREWIT_DEVICE:-cpu}, llm=${SCREWIT_LLM:-openrouter})"
+  info "Starting backend: http://127.0.0.1:${SCREWIT_PORT:-8000}  (device=${SCREWIT_DEVICE:-auto}, llm=${SCREWIT_LLM:-openrouter})"
   (
     cd "$ROOT"
     export SCREWIT_MODE=live
-    export SCREWIT_DEVICE="${SCREWIT_DEVICE:-cpu}"
+    export SCREWIT_DEVICE="${SCREWIT_DEVICE:-auto}"
+    # Depth Anything 3 uses one op the Apple GPU lacks (bicubic upsampling); run it on the CPU
+    # instead of failing. Must be set before torch loads, so it lives here, not in the code.
+    export PYTORCH_ENABLE_MPS_FALLBACK=1
+    # Reuse Claude's answers for identical requests (a re-scan of the same video): faster, and the
+    # same parts every time. Stored under the data dir in llm-cache/.
+    export SCREWIT_LLM_CACHE="${SCREWIT_LLM_CACHE:-1}"
     export SCREWIT_CPU_VIEW_CAP="${SCREWIT_CPU_VIEW_CAP:-8}"
     export SCREWIT_INFER_GS="${SCREWIT_INFER_GS:-0}"
     export SCREWIT_PORT="${SCREWIT_PORT:-8000}"

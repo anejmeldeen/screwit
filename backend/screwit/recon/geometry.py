@@ -269,13 +269,35 @@ def gaussians_from_depth(result: GeometryResult, images: list[np.ndarray], *, st
 
 # --------------------------------------------------------------------------- GPU adapters
 
-# CPU fallback profile (CPU findings 8): on CPU, cap views and hand every model call the device.
+# View cap for host-memory devices (CPU and Apple MPS); ``SCREWIT_CPU_VIEW_CAP`` overrides it. The
+# real model also reports a memory limit (DepthAnything3Adapter.max_views) that the pipeline applies
+# on top: DA3 (nested giant) holds the whole multi-view batch in memory. Measured on a 36 GiB M3 Pro
+# at 504x280: 8 views peak at 25.6 GB on the CPU and 28.8 GB on MPS, and 16 views ran the machine
+# out of memory. ``max_views_for_memory`` allows one view per 4 GB after 6 GB of headroom (8 views on
+# a 36 GiB Mac, 15 on 64 GiB, 2 on 16 GiB).
 CPU_VIEW_CAP = 16
 
 
+def _ram_gb() -> float:
+    import os
+
+    try:
+        return os.sysconf("SC_PAGE_SIZE") * os.sysconf("SC_PHYS_PAGES") / 1e9
+    except (ValueError, OSError, AttributeError):
+        return 0.0
+
+
+def max_views_for_memory(ram_gb: float | None = None) -> int:
+    """Most views the real model can take on a host-memory device without exhausting RAM (>= 2)."""
+    ram = _ram_gb() if ram_gb is None else ram_gb
+    if ram <= 0:
+        return CPU_VIEW_CAP
+    return max(2, int((ram - 6.0) / 4.0))
+
+
 def _cpu_view_cap() -> int:
-    """Max views fed to the model on CPU. ``SCREWIT_CPU_VIEW_CAP`` overrides the default of 16; fewer
-    views is faster (DA3 time scales with view count) at some cost to coverage. Clamped to >= 2."""
+    """Max views fed to the model on CPU or MPS. ``SCREWIT_CPU_VIEW_CAP`` overrides the default of
+    16; fewer views is faster and lighter at some cost to coverage. Clamped to >= 2."""
     import os
 
     raw = os.environ.get("SCREWIT_CPU_VIEW_CAP")
@@ -288,25 +310,45 @@ def _cpu_view_cap() -> int:
 
 
 def _default_device() -> str:
-    """Device for the model adapters: ``SCREWIT_DEVICE`` env, else cuda if available, else cpu."""
+    """Device for the model adapters: ``SCREWIT_DEVICE`` env (``auto`` or unset picks), else cuda,
+    else Apple MPS, else cpu. MPS runs Depth Anything 3 about 10x faster than the CPU with the same
+    output (median depth difference under 0.06%)."""
     import os
 
-    env = os.environ.get("SCREWIT_DEVICE")
-    if env:
+    env = (os.environ.get("SCREWIT_DEVICE") or "").strip().lower()
+    if env and env != "auto":
         return env
+    # Read when torch first loads (this is usually the first import of torch in the process): an op
+    # the Apple GPU lacks (Depth Anything 3's bicubic upsampling) then runs on the CPU, not fails.
+    os.environ.setdefault("PYTORCH_ENABLE_MPS_FALLBACK", "1")
     try:
         import torch
 
-        return "cuda" if torch.cuda.is_available() else "cpu"
+        if torch.cuda.is_available():
+            return "cuda"
+        if getattr(torch.backends, "mps", None) is not None and torch.backends.mps.is_available():
+            return "mps"
+        return "cpu"
     except ImportError:
         return "cpu"
 
 
-def cap_views(frame_names: list[str], device: str | None = None) -> list[str]:
-    """Reduce the view count on CPU (findings 8): evenly subsample to the CPU view cap."""
+def cap_views(frame_names: list[str], device: str | None = None,
+              limit: int | None = None) -> list[str]:
+    """Reduce the view count on host-memory devices (CPU, MPS; findings 8): evenly subsample to the
+    view cap, and to ``limit`` (the model's memory limit) when given. CUDA GPUs take every keyframe
+    unless a limit says otherwise."""
+    import logging
+
     dev = device or _default_device()
-    cap = _cpu_view_cap()
-    if dev != "cpu" or len(frame_names) <= cap:
+    cap = len(frame_names) if dev.startswith("cuda") else _cpu_view_cap()
+    if limit is not None and limit < cap:
+        if cap < len(frame_names) or limit < len(frame_names):
+            logging.getLogger(__name__).info(
+                "using %d views (the model's memory limit on this machine) instead of %d",
+                limit, min(cap, len(frame_names)))
+        cap = max(2, int(limit))
+    if len(frame_names) <= cap:
         return list(frame_names)
     idx = np.linspace(0, len(frame_names) - 1, cap).round().astype(int)
     seen: list[str] = []
@@ -368,6 +410,27 @@ def _empty_cloud():
     )
 
 
+def _run_in_full_precision(model) -> None:  # pragma: no cover - needs weights
+    """Make a loaded DepthAnything3 skip its half-precision autocast on Apple MPS.
+
+    DA3's ``forward`` always wraps the network in ``torch.autocast(<device>, float16)`` unless the
+    device has CUDA bf16. On MPS (torch 2.5) that hands scaled_dot_product_attention a float16 value
+    tensor with float32 query and key and raises. Full precision measured faster than half on the
+    M3 Pro anyway (15.8 s vs 21.6 s for 8 views) at the same peak memory. This replaces the instance's
+    ``forward`` with the same call minus the autocast (signature of the pinned DA3 commit)."""
+    import types
+
+    import torch
+
+    def forward(self, image, extrinsics=None, intrinsics=None, export_feat_layers=None,
+                infer_gs=False, use_ray_pose=False, ref_view_strategy="saddle_balanced"):
+        with torch.no_grad():
+            return self.model(image, extrinsics, intrinsics, export_feat_layers, infer_gs,
+                              use_ray_pose, ref_view_strategy)
+
+    model.forward = types.MethodType(forward, model)
+
+
 class DepthAnything3Adapter:
     """DA3NESTED-GIANT-LARGE-1.1 with a Gaussian head (SPEC 6.1 step 2). Lazy-imports torch; real
     runs carry @pytest.mark.gpu. API verified against the CPU findings (cpu-verify/FINDINGS.md)."""
@@ -395,7 +458,35 @@ class DepthAnything3Adapter:
             from depth_anything_3.api import DepthAnything3  # type: ignore
 
             self._model = DepthAnything3.from_pretrained(self.model_id).to(self.device)
+            if self.device == "mps":
+                _run_in_full_precision(self._model)
         return self._model
+
+    def max_views(self) -> int | None:
+        """Views this model can take at once without exhausting memory: on CPU and Apple MPS the
+        batch lives in host RAM (about 3-4 GB per view at 504x280), so it depends on the machine.
+        None (no limit) on CUDA, whose memory the GPU worker image sizes."""
+        if self.device.startswith("cuda"):
+            return None
+        return max_views_for_memory()
+
+    def release(self) -> None:
+        """Drop the model and return its memory (weights plus the allocator's cached activations,
+        about 26 GB after an 8-view pass). Called after every geometry run: keeping it resident in
+        the API process doubled peak memory when anything else loaded a copy."""
+        import gc
+
+        self._model = None
+        gc.collect()
+        try:
+            import torch
+
+            if self.device.startswith("cuda") and torch.cuda.is_available():
+                torch.cuda.empty_cache()
+            elif self.device == "mps" and torch.backends.mps.is_available():
+                torch.mps.empty_cache()
+        except Exception:  # noqa: BLE001 - freeing memory is best-effort
+            pass
 
     def run(self, frames_dir: Path, frame_names: list[str]) -> GeometryResult:  # pragma: no cover - weights
         model = self._load()
