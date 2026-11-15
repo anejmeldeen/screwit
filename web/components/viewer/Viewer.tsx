@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, lazy, useCallback, useEffect, useMemo, useRef } from "react";
+import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { Matrix4, Vector3, PerspectiveCamera, GridHelper, Box3, Quaternion } from "three";
 import { OrbitControls as OrbitControlsImpl } from "three/examples/jsm/controls/OrbitControls.js";
@@ -131,7 +131,10 @@ function FocusController({
   return null;
 }
 
-function FitObject({ parts, matrix }: { parts: Part[]; matrix: Matrix4 }) {
+function FitObject({ parts, matrix, zoomAction, onZoom }: {
+  parts: Part[]; matrix: Matrix4; zoomAction: RefObject<((factor: number) => void) | null>;
+  onZoom: (percent: number) => void;
+}) {
   const camera = useThree((s) => s.camera);
   const controls = useThree((s) => s.controls as unknown as OrbitControlsImpl | null);
   const size = useThree((s) => s.size);
@@ -151,7 +154,7 @@ function FitObject({ parts, matrix }: { parts: Part[]; matrix: Matrix4 }) {
     return box;
   }, [parts, matrix]);
   useEffect(() => {
-    if (!controls || bounds.isEmpty()) return;
+    if (!controls || bounds.isEmpty() || !size.width || !size.height) return;
     const center = bounds.getCenter(new Vector3());
     const radius = Math.max(bounds.getSize(new Vector3()).length() / 2, 0.025);
     const vertical = (camera as PerspectiveCamera).fov * Math.PI / 360;
@@ -161,7 +164,18 @@ function FitObject({ parts, matrix }: { parts: Part[]; matrix: Matrix4 }) {
     controls.target.copy(center);
     controls.update();
     invalidate();
-  }, [bounds, camera, controls, size.width, size.height, invalidate]);
+    const report = () => onZoom(Math.round(100 * distance / Math.max(controls.getDistance(), 0.00001)));
+    report();
+    controls.addEventListener("change", report);
+    zoomAction.current = factor => {
+      const offset = camera.position.clone().sub(controls.target);
+      const next = Math.max(distance / 20, Math.min(distance * 10, offset.length() / factor));
+      camera.position.copy(controls.target).add(offset.setLength(next));
+      controls.update();
+      invalidate();
+    };
+    return () => { controls.removeEventListener("change", report); zoomAction.current = null; };
+  }, [bounds, camera, controls, size.width, size.height, invalidate, zoomAction, onZoom]);
   return null;
 }
 
@@ -217,11 +231,14 @@ export function Viewer(props: ViewerProps) {
     return part ? new Vector3().fromArray(part.centroid_mm as number[]).applyMatrix4(parentMatrix) : null;
   }, [centroids, focusPartId, parts, parentMatrix]);
 
+  const zoomAction = useRef<((factor: number) => void) | null>(null);
+  const [zoomPercent, setZoomPercent] = useState(100);
   const placement = cadOverlay?.placement ?? null;
   const editing = measureActive || explode > 0 || hiddenPartIds.length > 0;
   const meshVisible = mode === "mesh" || editing;
 
   return (
+    <div className="relative h-full w-full">
     <Canvas
       data-testid="viewer-canvas"
       // Render on demand when idle; orbit/measure interactions invalidate.
@@ -294,10 +311,16 @@ export function Viewer(props: ViewerProps) {
       </group>
 
       <OrbitControlsLite />
-      <FitObject parts={parts} matrix={parentMatrix} />
+      <FitObject parts={parts} matrix={parentMatrix} zoomAction={zoomAction} onZoom={setZoomPercent} />
       <FocusController target={focusTarget} />
       <FpsSampler onSample={onFpsSample} />
     </Canvas>
+    <div className="scene-zoom" role="group" aria-label="Scene zoom">
+      <button aria-label="Zoom out" disabled={!parts.length || zoomPercent <= 10} onClick={() => zoomAction.current?.(0.8)}>−</button>
+      <output aria-label="Current zoom">{zoomPercent}%</output>
+      <button aria-label="Zoom in" disabled={!parts.length || zoomPercent >= 2000} onClick={() => zoomAction.current?.(1.25)}>+</button>
+    </div>
+    </div>
   );
 }
 

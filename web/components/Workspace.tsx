@@ -30,7 +30,7 @@ export function Workspace({
 }) {
   const { scan, error: scanError } = useScan(scanId);
   const { recon } = useReconstruction(scanId, scan);
-  const { parts, refresh: refreshParts } = useParts(scanId, scan);
+  const { parts, setParts, refresh: refreshParts } = useParts(scanId, scan);
 
   const [savedTitle, setSavedTitle] = useState("");
   useEffect(() => {
@@ -158,7 +158,29 @@ export function Workspace({
 
   const name = title || savedTitle || "Workspace";
   const selected = parts?.find(part => part.part_id === selectedId);
-  function select(id: string | null) {
+  const [combineFrom, setCombineFrom] = useState<string | null>(null);
+  const [combineError, setCombineError] = useState("");
+  const combining = useRef(false);
+  async function select(id: string | null) {
+    if (combining.current) return;
+    if (combineFrom && id) {
+      if (id === combineFrom) return;
+      combining.current = true;
+      setCombineError("");
+      try {
+        const merged = await api.mergeParts(scanId, {part_ids: [combineFrom, id]});
+        setParts(current => [...(current ?? []).filter(p => p.part_id !== combineFrom && p.part_id !== id), merged]);
+        setHiddenPartIds(current => current.filter(p => p !== combineFrom && p !== id));
+        setSelectedId(merged.part_id);
+        setCombineFrom(null);
+        refreshParts();
+      } catch (err) {
+        setCombineError(err instanceof Error ? err.message : "Could not combine these parts.");
+      } finally { combining.current = false; }
+      return;
+    }
+    setCombineFrom(null);
+    setCombineError("");
     setSelectedId(id);
     setFocusPartId(null);
   }
@@ -169,6 +191,10 @@ export function Workspace({
       {scanError ? <div className="workbench-notice"><ErrorNote message={`Could not load this object: ${scanError}`} /></div> : null}
       {scan?.status === "failed" ? <div className="workbench-notice" role="alert">This scan could not finish. Try another recording.</div> : null}
       {!creationForm && !scanError && (watching || !scan || (scan.status !== "ready" && scan.status !== "failed")) ? <div className="workbench-notice" role="status"><ScanProgress scan={scan} /></div> : null}
+      {combineFrom && <div className="workbench-notice" role="status">Choose another part in the scene or hierarchy.{" "}
+        <button onClick={() => { if (!combining.current) { setCombineFrom(null); setCombineError(""); } }}>Cancel</button>
+        {combineError && <span role="alert"> {combineError}</span>}
+      </div>}
       <div ref={gridRef} className="scene-layout" style={{ "--left": `${left}px`, "--right": `${right}px` } as CSSProperties}>
         <aside ref={dockRef} className="scene-object-dock" style={{ gridTemplateRows: `${hierarchyHeight}px 12px minmax(0,1fr)` }}>
           <section className="scene-hierarchy" aria-label="Hierarchy">
@@ -197,14 +223,14 @@ export function Workspace({
             {!creationForm && <PartsPanel hiddenPartIds={hiddenPartIds}
               onToggleHidden={id => setHiddenPartIds(ids => ids.includes(id) ? ids.filter(p => p !== id) : [...ids, id])}
               onIsolate={setIsolatedId} scanId={scanId} parts={parts} partsReady={partsReady}
-              selectedId={selectedId} onChanged={refreshParts} />}
-            {partsReady && !!parts?.length && <details open className="scene-export"><summary>Export {selected ? "component" : "assembly"}</summary>
+              selectedId={selectedId} onCombine={() => { setCombineFrom(selectedId); setCombineError(""); }} onChanged={refreshParts} />}
+            {partsReady && !!parts?.length && <details className="scene-export"><summary>Export {selected ? "component" : "assembly"}</summary>
               <PartDownloads scanId={scanId} part={selected} /></details>}
           </section>
         </aside>
         <ResizeHandle label="Resize hierarchy and inspector" className="scene-split" orientation="vertical" value={left} min={150} max={maxLeft} onChange={setLeftWidth} />
         <section className="workbench-viewer" aria-label={creationForm ? "Workspace setup" : "3D viewer"}>
-          {creationForm ? <div className="workspace-setup">{creationForm}</div> : <ViewerPanel
+          {creationForm ? <div className="workspace-setup">{creationForm}</div> : <ViewerPanel combining={!!combineFrom}
             scanId={scanId}
             recon={recon}
             parts={parts ?? []}

@@ -46,7 +46,7 @@ function PartCard({
   selected,
   onChanged,
   scanId,
-  mergeState,
+  onCombine,
   hidden, onToggleHidden, onIsolate,
 }: {
   hidden: boolean;
@@ -57,11 +57,7 @@ function PartCard({
   selected: boolean;
   onChanged: () => void;
   scanId: string;
-  mergeState: {
-    pick: string | null;
-    setPick: (id: string | null) => void;
-    label: string;
-  };
+  onCombine: () => void;
 }) {
   const dims = resolveAllDimensions(part);
   const editable = editableMeasurements(part);
@@ -69,7 +65,7 @@ function PartCard({
   const [label, setLabel] = useState(part.label);
   const [err, setErr] = useState<string | null>(null);
   const [caliperBusy, setCaliperBusy] = useState(false);
-  const [merging, setMerging] = useState(false);
+
 
   async function saveLabel() {
     setErr(null);
@@ -99,21 +95,6 @@ function PartCard({
     } finally {
       setCaliperBusy(false);
     }
-  }
-
-  async function doMerge(otherId: string) {
-    if (merging) return;
-    setMerging(true);
-    setErr(null);
-    try {
-      await api.mergeParts(scanId, {
-        part_ids: [part.part_id, otherId],
-      } as never);
-      mergeState.setPick(null);
-      onChanged();
-    } catch (e) {
-      setErr(e instanceof ApiError ? `${e.message} (${e.status})` : String(e));
-    } finally { setMerging(false); }
   }
 
   return (
@@ -146,7 +127,7 @@ function PartCard({
 
 
       {/* Actions */}
-      <details open className="component-section"><summary>Actions</summary><div className="component-actions">
+      <details className="component-section"><summary>Actions</summary><div className="component-actions">
         <button aria-label={`${hidden ? "Show" : "Hide"} ${part.label}`} aria-pressed={hidden}
           onClick={() => onToggleHidden(part.part_id)}
           className="rounded border border-line px-1.5 py-0.5 hover:border-accent">
@@ -176,28 +157,11 @@ function PartCard({
             Rename
           </button>
         )}
-        {mergeState.pick === null ? (
-          <button
-            onClick={() => mergeState.setPick(part.part_id)}
-            className="rounded border border-line px-1.5 py-0.5 hover:border-line"
-          >
-            Combine
-          </button>
-        ) : mergeState.pick === part.part_id ? (
-          <span className="text-muted">Select another part in the hierarchy</span>
-        ) : (
-          <button
-            disabled={merging}
-            onClick={() => doMerge(mergeState.pick!)}
-            className="rounded border border-amber-600 px-1.5 py-0.5 text-amber-800"
-          >
-            {merging ? "Combining…" : `Combine with ${mergeState.label}`}
-          </button>
-        )}
+        <button onClick={onCombine}>Combine</button>
       </div>
 
       </details>
-      <details open className="part-details"><summary>Measurements</summary>
+      <details className="part-details"><summary>Measurements</summary>
       {/* Dimensions table */}
       {dims.length ? (
         <div className="dimension-table-wrap"><table className="dimension-table">
@@ -219,7 +183,7 @@ function PartCard({
 
       {/* Caliper entry per feature measurement */}
       {editable.length ? (
-        <details open className="mt-2 text-xs">
+        <details className="mt-2 text-xs">
           <summary>Caliper values (mm)</summary>
           <div className="mt-2 space-y-1">
             {editable.map((e) => (
@@ -268,7 +232,7 @@ export function PartsPanel({
   scanId,
   parts,
   partsReady,
-  selectedId,
+  selectedId, onCombine,
   onChanged,
 }: {
   hiddenPartIds?: string[];
@@ -278,9 +242,9 @@ export function PartsPanel({
   parts: Part[] | null;
   partsReady: boolean;
   selectedId: string | null;
+  onCombine: () => void;
   onChanged: () => void;
 }) {
-  const [mergePick, setMergePick] = useState<string | null>(null);
   const [history, setHistory] = useState({can_undo: false, can_restore_example: false});
   const [busy, setBusy] = useState(false);
   const [editError, setEditError] = useState("");
@@ -294,7 +258,7 @@ export function PartsPanel({
     setBusy(true); setEditError("");
     try {
       if (reset) await api.restoreExample(scanId); else await api.undoMerge(scanId);
-      setMergePick(null); onChanged();
+      onChanged();
     } catch (e) { setEditError(e instanceof Error ? e.message : String(e)); }
     finally { setBusy(false); }
   }
@@ -328,9 +292,8 @@ export function PartsPanel({
 
   return (
     <div data-testid="parts-panel" className="space-y-3">
-      {!selectedId && <details open className="assembly-history"><summary>Assembly history</summary><div className="part-history"><button disabled={busy || !history.can_undo} onClick={() => recover()}>↶ Undo combine</button>{history.can_restore_example ? <button disabled={busy} onClick={() => recover(true)}>Restore original example</button> : null}</div></details>}
+      {!selectedId && <details className="assembly-history"><summary>Assembly history</summary><div className="part-history"><button disabled={busy || !history.can_undo} onClick={() => recover()}>↶ Undo combine</button>{history.can_restore_example ? <button disabled={busy} onClick={() => recover(true)}>Restore original example</button> : null}</div></details>}
       {editError ? <p role="alert">{editError}</p> : null}
-      {mergePick ? <div className="combine-hint">Choose a second part. <button onClick={() => setMergePick(null)}>Cancel</button></div> : null}
       {parts.map((p, i) => selectedId === p.part_id && (
         <PartCard
           key={p.part_id}
@@ -340,7 +303,7 @@ export function PartsPanel({
           selected={selectedId === p.part_id}
           onChanged={onChanged}
           scanId={scanId}
-          mergeState={{ pick: mergePick, setPick: setMergePick, label: parts.find((p) => p.part_id === mergePick)?.label ?? "selected part" }}
+          onCombine={onCombine}
         />
       ))}
     </div>

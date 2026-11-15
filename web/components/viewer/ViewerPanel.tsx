@@ -47,6 +47,7 @@ const CARD_LONG_EDGE_MM = 85.6; // credit-card long edge, default known length
 
 export interface ViewerPanelProps {
   isolated?: boolean;
+  combining?: boolean;
   hiddenPartIds?: string[];
   scanId: string;
   recon: Reconstruction | null;
@@ -63,7 +64,7 @@ export interface ViewerPanelProps {
 
 export function ViewerPanel({
   scanId,
-  isolated = false,
+  isolated = false, combining = false,
   hiddenPartIds = NO_HIDDEN_PARTS,
   recon,
   parts,
@@ -93,6 +94,9 @@ export function ViewerPanel({
   const [err, setErr] = useState<string | null>(null);
   // The mesh has been drawn at least once (viewer:first-mesh fired). The splat
   // is never fetched before this, so the mesh always wins the "visible" budget.
+  useEffect(() => {
+    if (combining) { setMeasureActive(false); setScaleActive(false); setMode("mesh"); }
+  }, [combining]);
   const [meshDrawn, setMeshDrawn] = useState(false);
   // The user explicitly asked for the splat view (phone only ever fetches the
   // splat after this). On desktop we also allow it after idle (see effect).

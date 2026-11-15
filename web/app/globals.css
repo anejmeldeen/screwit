@@ -518,3 +518,6 @@ button:disabled { cursor: not-allowed; }
 .component-section { margin-top:10px; }
 
 .hierarchy-contents { display:flow-root; padding-bottom:4px; }
+.scene-zoom { position:absolute; top:10px; right:10px; display:flex; align-items:center; gap:4px; background:#242521; padding:4px; border:1px solid #494c42; border-radius:6px; }
+.scene-zoom output { min-width:44px; text-align:center; font-size:12px; font-variant-numeric:tabular-nums; }
+.scene-zoom button { min-width:30px; }
