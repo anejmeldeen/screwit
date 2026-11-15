@@ -46,12 +46,12 @@ export function Workspace({
   const gridRef = useRef<HTMLDivElement>(null);
   const dockRef = useRef<HTMLElement>(null);
   const [dockHeight, setDockHeight] = useState(0);
-  const [split, setSplit] = usePersistentNumber("ui.hierarchyPercent", 35);
+  const [split, setSplit] = usePersistentNumber("ui.hierarchyPercent", 24);
   const hierarchyRatio = Math.max(10, Math.min(90, split)) / 100;
   const availableHeight = Math.max(1, dockHeight - 12);
   const [gridWidth, setGridWidth] = useState(0);
-  const [leftWidth, setLeftWidth] = usePersistentNumber("ui.objectDockWidth", 310);
-  const [rightWidth, setRightWidth] = usePersistentNumber("ui.assistantWidth", 310);
+  const [leftWidth, setLeftWidth] = usePersistentNumber("ui.objectDockWidth", 0);
+  const [rightWidth, setRightWidth] = usePersistentNumber("ui.assistantWidth", 0);
   const [expanded, setExpanded] = useState(true);
   useLayoutEffect(() => {
     const grid = gridRef.current;
@@ -66,8 +66,8 @@ export function Workspace({
   }, []);
   const maxLeft = Math.max(150, Math.min(420, gridWidth * .27));
   const maxRight = Math.max(220, Math.min(560, gridWidth * .35));
-  const left = Math.min(leftWidth, maxLeft);
-  const right = Math.min(rightWidth, maxRight);
+  const left = Math.min(leftWidth || Math.max(150, gridWidth * .165), maxLeft);
+  const right = Math.min(rightWidth || Math.max(220, gridWidth * .215), maxRight);
   const [selectedId, setSelectedId] = useState<string | null>(initialPartId);
   const [hoveredId, setHoveredId] = useState<string | null>(null);
   const [focusPartId, setFocusPartId] = useState<string | null>(initialPartId);
@@ -189,8 +189,8 @@ export function Workspace({
               onToggleHidden={id => setHiddenPartIds(ids => ids.includes(id) ? ids.filter(p => p !== id) : [...ids, id])}
               onIsolate={setIsolatedId} scanId={scanId} parts={parts} partsReady={partsReady}
               selectedId={selectedId} onSelect={select} onChanged={refreshParts} />}
-            {partsReady && !!parts?.length && <section className="scene-export"><h3>Export {selected ? "component" : "assembly"}</h3>
-              <PartDownloads scanId={scanId} part={selected} /></section>}
+            {partsReady && !!parts?.length && <details open className="scene-export"><summary>Export {selected ? "component" : "assembly"}</summary>
+              <PartDownloads scanId={scanId} part={selected} /></details>}
           </section>
         </aside>
         <ResizeHandle label="Resize hierarchy and inspector" className="scene-split" orientation="vertical" value={left} min={150} max={maxLeft} onChange={setLeftWidth} />

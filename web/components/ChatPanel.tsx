@@ -147,9 +147,7 @@ export function ChatPanel({
           <div className="chat-empty">
             <h3>Hi, I’m Screwy.</h3>
             <p>What would you like to change? Select a part or tell me what you have in mind.</p>
-            <div className="chat-suggestions">
-              {["Explain the parts", "Help me fix this", "Make a replacement"].map((prompt) => <button type="button" key={prompt} onClick={() => setInput(prompt)}>{prompt}</button>)}
-            </div>
+
           </div>
         ) : null}
         {messages.map((msg) => (
@@ -179,6 +177,9 @@ export function ChatPanel({
         </div>
       ) : null}
 
+      {messages.length === 0 && <div className="chat-suggestions">
+              {["Explain the parts", "Help me fix this", "Make a replacement"].map((prompt) => <button type="button" key={prompt} onClick={() => setInput(prompt)}>{prompt}</button>)}
+            </div>}
       <div className="chat-composer">
         <label className="chat-attach" aria-label="Attach an image">
           <span aria-hidden="true">+</span>

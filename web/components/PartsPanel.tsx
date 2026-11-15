@@ -160,7 +160,7 @@ function PartCard({
       </button>
 
       {/* Actions */}
-      <div className="component-actions">
+      <details open className="component-section"><summary>Actions</summary><div className="component-actions">
         <button aria-label={`${hidden ? "Show" : "Hide"} ${part.label}`} aria-pressed={hidden}
           onClick={() => onToggleHidden(part.part_id)}
           className="rounded border border-line px-1.5 py-0.5 hover:border-accent">
@@ -210,7 +210,8 @@ function PartCard({
         )}
       </div>
 
-      <section className="part-details"><h3>Measurements</h3>
+      </details>
+      <details open className="part-details"><summary>Measurements</summary>
       {/* Dimensions table */}
       {dims.length ? (
         <div className="dimension-table-wrap"><table className="dimension-table">
@@ -232,10 +233,8 @@ function PartCard({
 
       {/* Caliper entry per feature measurement */}
       {editable.length ? (
-        <section className="mt-2 text-xs">
-          <h3>
-            Caliper values (mm)
-          </h3>
+        <details open className="mt-2 text-xs">
+          <summary>Caliper values (mm)</summary>
           <div className="mt-2 space-y-1">
             {editable.map((e) => (
               <div
@@ -269,10 +268,10 @@ function PartCard({
               </div>
             ))}
           </div>
-        </section>
+        </details>
       ) : null}
 
-      </section>
+      </details>
       {err ? <p className="mt-2 text-xs text-rose-800">{err}</p> : null}
     </div>
   );
@@ -345,7 +344,7 @@ export function PartsPanel({
 
   return (
     <div data-testid="parts-panel" className="space-y-3">
-      {!selectedId && <section className="assembly-history"><h3>Assembly history</h3><div className="part-history"><button disabled={busy || !history.can_undo} onClick={() => recover()}>↶ Undo combine</button>{history.can_restore_example ? <button disabled={busy} onClick={() => recover(true)}>Restore original example</button> : null}</div></section>}
+      {!selectedId && <details open className="assembly-history"><summary>Assembly history</summary><div className="part-history"><button disabled={busy || !history.can_undo} onClick={() => recover()}>↶ Undo combine</button>{history.can_restore_example ? <button disabled={busy} onClick={() => recover(true)}>Restore original example</button> : null}</div></details>}
       {editError ? <p role="alert">{editError}</p> : null}
       {mergePick ? <div className="combine-hint">Choose a second part. <button onClick={() => setMergePick(null)}>Cancel</button></div> : null}
       {parts.map((p, i) => selectedId === p.part_id && (

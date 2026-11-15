@@ -512,3 +512,6 @@ button:disabled { cursor: not-allowed; }
  .scene-object-dock { display:grid; height:clamp(360px,70dvh,640px); }
  .scene-object-dock .scene-hierarchy { max-height:none; }
 }
+.chat-panel>.chat-suggestions { flex:none; margin:0 16px 8px; gap:5px; }
+.scene-inspector summary { cursor:pointer; font-size:12px; font-weight:650; color:#e1dcbf; padding:8px 0; }
+.component-section { margin-top:10px; }
