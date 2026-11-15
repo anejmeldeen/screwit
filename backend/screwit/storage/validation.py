@@ -10,17 +10,31 @@ Beyond the header probe, every video is partly DECODED inside the containment: a
 25 s H.264 stream while the bitstream is truncated, so the probe alone accepts a broken file. The
 validator decodes the stream to null and rejects on decoder errors or when the readable duration
 falls far short of the declared one.
+
+A run that the containment itself stopped (wall-clock or CPU-time limit, a signal) is never turned
+into a verdict on the file: it raises RuntimeError, which the job reports as "could not check the
+upload" instead of "upload rejected".
 """
 
 from __future__ import annotations
 
+import os
 import re
+import shutil
 import sys
 import tempfile
+from dataclasses import replace
 from pathlib import Path
 
 from screwit.interfaces import MediaInfo, Storage
-from screwit.storage.containment import Containment, Limits, run_contained
+from screwit.storage.containment import (
+    Containment,
+    Limits,
+    RunResult,
+    docker_available,
+    media_budget,
+    run_contained,
+)
 
 # Magic bytes we accept for the container families in SPEC 2.2 / 6.1.
 _VIDEO_MAGIC = (
@@ -42,6 +56,12 @@ _MIN_DIM = 64
 _READABLE_DURATION_MIN_FRACTION = 0.85
 # Threads for the containment decode check (see MediaValidator._decode_check).
 DECODE_THREADS = 4
+# Floors for the decode check's limits; above them the budget scales with the duration.
+_DECODE_MIN_CPU_S = 120
+_DECODE_MIN_WALL_S = 180
+# ffmpeg's exit code when a signal stopped it (it catches SIGXCPU from RLIMIT_CPU, SIGTERM, SIGINT).
+# Bad input gives other codes (0 with error lines, 1, 69 for too many decode errors, 183, 234).
+_FFMPEG_SIGNAL_EXIT = 255
 
 # ffmpeg -i parse patterns.
 _DURATION_RE = re.compile(rb"Duration:\s*(\d+):(\d\d):(\d\d(?:\.\d+)?)")
@@ -61,6 +81,20 @@ _RESOURCE_FAIL_RE = re.compile(
     re.IGNORECASE,
 )
 _OUT_TIME_US_RE = re.compile(rb"out_time_us=(\d+)")
+
+
+def _decode_hwaccel_args() -> tuple[str, ...]:
+    """``-hwaccel videotoolbox`` for the decode check on macOS outside docker, else ().
+
+    Hardware decode read better.mov (87.2 s of 4K HDR HEVC) in 9 s and 4 CPU-s, against 34-45 s and
+    122-161 CPU-s in software. It is only a fast path: ``_decode_check`` keeps its result only when it
+    is spotless and lets the software decoder decide everything else. ``SCREWIT_FFMPEG_HWACCEL``
+    (shared with recon.frames) set to anything but ``videotoolbox`` turns it off.
+    """
+    override = os.environ.get("SCREWIT_FFMPEG_HWACCEL", "").strip().lower()
+    if override not in ("", "videotoolbox") or sys.platform != "darwin" or docker_available():
+        return ()
+    return ("-hwaccel", "videotoolbox")
 
 
 class MediaValidator:
@@ -86,19 +120,37 @@ class MediaValidator:
             raise ValueError("uploaded file not found in storage")
 
         scratch = Path(tempfile.mkdtemp(prefix="media_"))
-        # Copy the media INTO the job dir (the only path visible in docker containment).
-        src = storage.local_path(key, scratch)
-        local = scratch / ("upload" + Path(key).suffix)
-        if src.resolve() != local.resolve():
-            local.write_bytes(src.read_bytes())
-        data_head = local.read_bytes()[:64]
+        try:
+            # Copy the media INTO the job dir (the only path visible in docker containment).
+            src = storage.local_path(key, scratch)
+            local = scratch / ("upload" + Path(key).suffix)
+            if src.resolve() != local.resolve():
+                local.write_bytes(src.read_bytes())
+            data_head = local.read_bytes()[:64]
 
-        kind = scan.input.type
-        if kind == "mesh":
-            return self._validate_mesh(local, scratch)
-        if kind == "photos":
-            return self._validate_photo(local, data_head, scratch)
-        return self._validate_video(local, data_head, scratch)
+            kind = scan.input.type
+            if kind == "mesh":
+                return self._validate_mesh(local, scratch)
+            if kind == "photos":
+                return self._validate_photo(local, data_head, scratch)
+            return self._validate_video(local, data_head, scratch)
+        finally:
+            # The job dir holds a full copy of the upload (280 MB for a 90 s 4K phone clip).
+            shutil.rmtree(scratch, ignore_errors=True)
+
+    @staticmethod
+    def _raise_if_stopped(res: RunResult, what: str, *, ffmpeg: bool = True) -> None:
+        """Raise RuntimeError, not a file verdict, when the containment rather than the file ended a run.
+
+        A run cut short by its wall-clock or CPU-time limit or by a signal says nothing about the
+        file; reading its partial output as one is how a CPU limit once reported a whole 87 s video
+        as "truncated" after 73.8 s. ffmpeg turns SIGXCPU into exit code 255, so for ffmpeg 255 counts
+        as stopped even when the CPU time cannot be measured (docker)."""
+        reason = res.containment_failure()
+        if reason is None and ffmpeg and res.returncode == _FFMPEG_SIGNAL_EXIT:
+            reason = "exited with code 255, which ffmpeg returns when a signal stops it"
+        if reason is not None:
+            raise RuntimeError(f"{what} was stopped under containment: it {reason}; not a file verdict")
 
     # -- video -------------------------------------------------------------
 
@@ -109,6 +161,7 @@ class MediaValidator:
         res = run_contained([self._ffmpeg_path(), "-hide_banner", "-i", str(local)], scratch,
                             limits=self._limits)
         self.last_containment = res.containment
+        self._raise_if_stopped(res, "the media probe")
         text = res.stderr  # ffmpeg writes stream info to stderr
 
         dur = self._parse_duration(text)
@@ -154,47 +207,70 @@ class MediaValidator:
         """Decode the video stream to null inside containment; reject on decoder errors or a readable
         duration far short of the declared one (SPEC 3.3, truncated phone video).
 
-        Decode with at most 4 threads (``DECODE_THREADS``) under a dedicated, larger decode budget
-        whose process-count limit (512) leaves ample room for them, so the limit cannot make a valid
-        file look broken. Single-threaded, the check alone took 34 s on a 30 s 4K HDR clip; 4
-        threads take 10 s with the same decoder and the same verdict. A resource/containment failure
-        is re-raised so it is not mistaken for corruption."""
-        import os
-        from dataclasses import replace
+        RLIMIT_CPU counts CPU time summed over the ``DECODE_THREADS`` decoder threads, so the CPU and
+        wall-clock limits scale with the declared duration (``containment.media_budget``): 969 CPU-s
+        and 303 s for better.mov's 87.2 s of 4K HDR HEVC, which needed 122-161 CPU-s and 34-45 s in
+        software here, and 655 CPU-s and 199 s with every thread on an efficiency core. The flat
+        120 CPU-s this check used to get ran out at 73.8 s of that clip. The process-count limit (512)
+        leaves room for the threads. A run the containment stopped raises RuntimeError
+        (``_raise_if_stopped``), never "truncated".
 
+        On macOS the clip is first decoded with VideoToolbox (9 s and 4 CPU-s for better.mov). That
+        result is kept only when it is spotless: exit 0, nothing on stderr, at least the readable
+        fraction of the declared duration. Every other outcome is decided by the software decoder, so
+        the hardware path can make a check faster but never changes its verdict.
+        """
         base = self._limits or Limits()
-        decode_limits = replace(base, cpu_s=max(base.cpu_s, 120),
-                                wall_timeout_s=max(base.wall_timeout_s, 180),
-                                nproc=max(base.nproc, 512))
-        threads = str(max(1, min(DECODE_THREADS, os.cpu_count() or 1)))
+        threads = max(1, min(DECODE_THREADS, os.cpu_count() or 1))
+        budget = media_budget(declared_s, threads=threads, min_cpu_s=_DECODE_MIN_CPU_S,
+                              min_wall_s=_DECODE_MIN_WALL_S)
+        limits = replace(base, cpu_s=max(base.cpu_s, budget.cpu_s),
+                         wall_timeout_s=max(base.wall_timeout_s, budget.wall_timeout_s),
+                         nproc=max(base.nproc, 512))
+        min_readable_s = declared_s * _READABLE_DURATION_MIN_FRACTION
 
-        prog = scratch / "progress.txt"
-        res = run_contained(
-            [self._ffmpeg_path(), "-v", "error", "-threads", threads, "-i", str(local),
-             "-map", "0:v:0", "-an", "-threads", threads, "-progress", str(prog), "-f", "null", "-"],
-            scratch, limits=decode_limits,
-        )
-        self.last_containment = res.containment
+        hwaccel = _decode_hwaccel_args()
+        if hwaccel:
+            res, readable_s = self._decode_to_null(local, scratch, limits, threads, hwaccel,
+                                                   "progress_hw.txt")
+            if (res.returncode == 0 and not res.stderr.strip() and readable_s is not None
+                    and readable_s >= min_readable_s):
+                return
+
+        res, readable_s = self._decode_to_null(local, scratch, limits, threads, (), "progress.txt")
+        self._raise_if_stopped(res, "the media decode")
         if _RESOURCE_FAIL_RE.search(res.stderr) and not _DECODE_ERROR_RE.search(res.stderr):
             raise RuntimeError(
                 "media decode could not run under containment (resource limit); not a file verdict"
             )
         if _DECODE_ERROR_RE.search(res.stderr):
             raise ValueError("the video could not be fully decoded; it is truncated or corrupt")
-
-        readable_us = None
-        if prog.exists():
-            matches = _OUT_TIME_US_RE.findall(prog.read_bytes())
-            if matches:
-                readable_us = int(matches[-1])
-        if readable_us is None:
+        if readable_s is None:
             raise ValueError("the video stream could not be read to the end; it may be truncated")
-        readable_s = readable_us / 1_000_000
-        if readable_s < declared_s * _READABLE_DURATION_MIN_FRACTION:
+        if readable_s < min_readable_s:
             raise ValueError(
                 f"only {readable_s:.1f} s of the declared {declared_s:.1f} s video could be decoded; "
                 f"the file is truncated"
             )
+
+    def _decode_to_null(self, local: Path, scratch: Path, limits: Limits, threads: int,
+                        hwaccel: tuple[str, ...], progress_name: str) -> tuple[RunResult, float | None]:
+        """One contained decode of the first video stream to null; returns the run and the readable
+        duration in seconds from ffmpeg's progress report (None when it reported none)."""
+        prog = scratch / progress_name
+        n = str(threads)
+        res = run_contained(
+            [self._ffmpeg_path(), "-v", "error", "-threads", n, *hwaccel, "-i", str(local),
+             "-map", "0:v:0", "-an", "-threads", n, "-progress", str(prog), "-f", "null", "-"],
+            scratch, limits=limits,
+        )
+        self.last_containment = res.containment
+        readable_s = None
+        if prog.exists():
+            matches = _OUT_TIME_US_RE.findall(prog.read_bytes())
+            if matches:
+                readable_s = int(matches[-1]) / 1_000_000
+        return res, readable_s
 
     @staticmethod
     def _parse_duration(text: bytes) -> float | None:
@@ -245,6 +321,7 @@ class MediaValidator:
         res = run_contained([self._python_for_photos(), "-c", script, str(local)], scratch,
                             limits=self._limits)
         self.last_containment = res.containment
+        self._raise_if_stopped(res, "the image check", ffmpeg=False)
         if res.returncode != 0:
             raise ValueError("image could not be decoded; it may be truncated or not a real image")
         try:

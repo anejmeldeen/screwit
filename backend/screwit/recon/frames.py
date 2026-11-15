@@ -7,16 +7,20 @@ detection and the agent's close-ups, and the model-grid copy (long side 504, eac
 multiple of 14, with the exact per-axis mapping recorded in frames.json).
 
 All ffmpeg calls use ONE helper (``_run_ffmpeg``) that applies a wall-clock timeout, CPU/memory/pids
-rlimits, and a no-network sandbox when one is available unprivileged (SPEC 3.3 containment).
+rlimits, and a no-network sandbox when one is available unprivileged (SPEC 3.3 containment). RLIMIT_CPU
+counts CPU time over all of ffmpeg's threads, so the extraction's CPU and wall-clock limits scale with
+the video duration (``extraction_budget``), and a run stopped by a limit says so in its error.
 """
 
 from __future__ import annotations
 
 import json
+import math
 import os
 import re
 import resource
 import shutil
+import signal
 import subprocess
 import sys
 from dataclasses import asdict, dataclass
@@ -24,6 +28,14 @@ from functools import lru_cache
 from pathlib import Path
 
 import numpy as np
+
+from screwit.storage.containment import (
+    CPU_LIMIT_REACHED_FRACTION,
+    MAX_BUDGETED_MEDIA_S,
+    MediaBudget,
+    media_budget,
+    run_measured,
+)
 
 MODEL_LONG_SIDE = 504
 GRID_MULTIPLE = 14
@@ -34,10 +46,14 @@ BLUR_DROP_FRACTION = 0.30
 # useful downstream. Inputs already smaller than this are left untouched.
 FULL_RES_MAX_LONG_SIDE = 1920
 
-# Resource ceilings for every contained ffmpeg invocation (SPEC 3.3).
+# Resource ceilings for every contained ffmpeg invocation (SPEC 3.3): the limits of the probe and
+# capability checks, and the floors of the extraction, whose budget scales with the video duration.
 FFMPEG_TIMEOUT_S = 300
 FFMPEG_CPU_S = 240
 FFMPEG_MEM_BYTES = 4 * 1024 * 1024 * 1024
+FFMPEG_THREADS = 4  # decoder threads (-threads before -i)
+# Tone-map, resize and JPEG-encode one sampled 4K frame: about 14 CPU-s for better.mov's 80 frames.
+SAMPLED_FRAME_CPU_S = 0.2
 # RLIMIT_NPROC caps the user's TOTAL processes, not just this child's, so it must sit above the
 # number already running or ffmpeg cannot spawn its decode threads ("Resource temporarily
 # unavailable"). The real containment is the wall-clock timeout, the memory cap and the no-network
@@ -86,7 +102,8 @@ def network_sandbox_prefix() -> list[str]:
     return _SANDBOX_PREFIX
 
 
-def containment_description() -> str:
+def containment_description(cpu_s: int = FFMPEG_CPU_S, timeout_s: int = FFMPEG_TIMEOUT_S) -> str:
+    """The containment an ffmpeg run got, for frames.json; pass the extraction's own budget."""
     prefix = network_sandbox_prefix()
     if prefix and prefix[0].endswith("unshare"):
         net = "no-network via `unshare -rn`"
@@ -94,54 +111,98 @@ def containment_description() -> str:
         net = "no-network via `bwrap --unshare-net`"
     else:
         net = "no unprivileged no-network sandbox available (ffmpeg is launched without it)"
-    return (f"ffmpeg: wall-clock timeout {FFMPEG_TIMEOUT_S}s, rlimits CPU {FFMPEG_CPU_S}s / "
+    return (f"ffmpeg: wall-clock timeout {timeout_s}s, rlimits CPU {cpu_s}s / "
             f"RSS {FFMPEG_MEM_BYTES // (1024 * 1024)}MiB / {FFMPEG_NPROC} procs via preexec_fn; {net}")
 
 
-def _rlimits() -> None:  # pragma: no cover - runs only in the child process
-    def _try(which, soft, hard):
-        # Best-effort: a platform that rejects or lacks a limit (macOS raises on RLIMIT_AS, where a
-        # process reserves far more address space than any sane cap) must not crash the child, which
-        # otherwise surfaces as "Exception occurred in preexec_fn" and fails every ffmpeg call.
+def _child_limits(cpu_s: int):
+    """preexec_fn applying the rlimits, with RLIMIT_CPU (summed over all threads) set to `cpu_s`."""
+
+    def _apply() -> None:  # pragma: no cover - runs only in the child process
+        def _try(which, soft, hard):
+            # Best-effort: a platform that rejects or lacks a limit (macOS raises on RLIMIT_AS, where
+            # a process reserves far more address space than any sane cap) must not crash the child,
+            # which otherwise surfaces as "Exception occurred in preexec_fn" and fails every call.
+            try:
+                resource.setrlimit(which, (soft, hard))
+            except (ValueError, OSError, AttributeError):
+                pass
+
+        _try(resource.RLIMIT_CPU, cpu_s, cpu_s)
+        _try(resource.RLIMIT_AS, FFMPEG_MEM_BYTES, FFMPEG_MEM_BYTES)
         try:
-            resource.setrlimit(which, (soft, hard))
-        except (ValueError, OSError, AttributeError):
+            soft, hard = resource.getrlimit(resource.RLIMIT_NPROC)
+            # Cap processes as a fork-bomb backstop, but never raise above (or fight) the inherited
+            # hard limit, and never below what the host already needs to run ffmpeg's decode threads.
+            cap = FFMPEG_NPROC if hard == resource.RLIM_INFINITY else min(FFMPEG_NPROC, hard)
+            resource.setrlimit(resource.RLIMIT_NPROC, (cap, hard))
+        except (ValueError, OSError):
             pass
 
-    _try(resource.RLIMIT_CPU, FFMPEG_CPU_S, FFMPEG_CPU_S)
-    _try(resource.RLIMIT_AS, FFMPEG_MEM_BYTES, FFMPEG_MEM_BYTES)
-    try:
-        soft, hard = resource.getrlimit(resource.RLIMIT_NPROC)
-        # Cap processes as a fork-bomb backstop, but never raise above (or fight) the inherited
-        # hard limit, and never below what the host already needs to run ffmpeg's decode threads.
-        cap = FFMPEG_NPROC if hard == resource.RLIM_INFINITY else min(FFMPEG_NPROC, hard)
-        resource.setrlimit(resource.RLIMIT_NPROC, (cap, hard))
-    except (ValueError, OSError):
-        pass
+    return _apply
 
 
-def _run_ffmpeg(args: list[str], *, allow_fail: bool = False) -> subprocess.CompletedProcess:
-    """The single contained ffmpeg entry point used for probing, tone-mapping and extraction."""
+# ffmpeg redraws its progress meter ("frame= ... speed=1.8x") with carriage returns; in an error
+# tail those lines crowd out the actual error.
+_PROGRESS_LINE_RE = re.compile(r"^\s*(frame|size)=")
+
+
+def _stderr_tail(stderr: bytes, limit: int = 800) -> str:
+    lines = [ln for ln in re.split(r"[\r\n]+", stderr.decode("utf-8", "replace"))
+             if ln.strip() and not _PROGRESS_LINE_RE.match(ln)]
+    return "\n".join(lines)[-limit:]
+
+
+def _run_ffmpeg(args: list[str], *, allow_fail: bool = False, cpu_s: int = FFMPEG_CPU_S,
+                timeout_s: int = FFMPEG_TIMEOUT_S) -> subprocess.CompletedProcess:
+    """The single contained ffmpeg entry point used for probing, tone-mapping and extraction.
+
+    ``cpu_s`` is RLIMIT_CPU, summed over all of ffmpeg's threads, and ``timeout_s`` the wall clock;
+    extraction passes its duration-scaled ``extraction_budget``. A run stopped by either limit raises
+    RuntimeError naming the limit, even with ``allow_fail``: its output was cut short. The CPU limit
+    is recognised from the measured CPU time, because ffmpeg catches SIGXCPU and exits 255.
+    """
     prefix = network_sandbox_prefix()
-    cmd = [*prefix, ffmpeg_exe(), "-nostdin", "-hide_banner", "-threads", "4", *args]
+    cmd = [*prefix, ffmpeg_exe(), "-nostdin", "-hide_banner", "-threads", str(FFMPEG_THREADS), *args]
     # glibc gives each thread its own malloc arena (64 MiB of address space each); on a many-core
     # host the HEVC/HDR tone-map path then exceeds the RLIMIT_AS cap and the encoder fails with
     # ENOMEM. Two arenas keep the address space inside the cap without changing the output.
     env = {**os.environ, "MALLOC_ARENA_MAX": "2"}
-    try:
-        proc = subprocess.run(
-            cmd,
-            capture_output=True,
-            timeout=FFMPEG_TIMEOUT_S,
-            preexec_fn=_rlimits,
-            env=env,
-        )
-    except subprocess.TimeoutExpired as e:
-        raise RuntimeError(f"ffmpeg timed out after {FFMPEG_TIMEOUT_S}s") from e
-    if proc.returncode != 0 and not allow_fail:
-        tail = proc.stderr.decode("utf-8", "replace")[-800:]
-        raise RuntimeError(f"ffmpeg failed ({proc.returncode}): {tail}")
-    return proc
+    run = run_measured(cmd, timeout_s=timeout_s, env=env, preexec_fn=_child_limits(cpu_s))
+    if run.timed_out:
+        raise RuntimeError(f"ffmpeg timed out after {timeout_s}s (its wall-clock limit)")
+    if run.returncode != 0:
+        if run.cpu_s is not None and run.cpu_s >= CPU_LIMIT_REACHED_FRACTION * cpu_s:
+            raise RuntimeError(
+                f"ffmpeg ran out of its CPU budget: it used {run.cpu_s:.0f} of its {cpu_s} CPU-seconds "
+                f"in {run.wall_s:.0f} s and was stopped (exit {run.returncode}); "
+                f"{_stderr_tail(run.stderr, 400)}")
+        if run.returncode < 0:
+            try:
+                name = signal.Signals(-run.returncode).name
+            except ValueError:
+                name = f"signal {-run.returncode}"
+            raise RuntimeError(f"ffmpeg was killed by {name}; {_stderr_tail(run.stderr, 400)}")
+        if not allow_fail:
+            raise RuntimeError(f"ffmpeg failed ({run.returncode}): {_stderr_tail(run.stderr)}")
+    return subprocess.CompletedProcess(cmd, run.returncode, run.stdout, run.stderr)
+
+
+def extraction_budget(duration_s: float, fps: float) -> MediaBudget:
+    """CPU and wall-clock limits for extracting keyframes from a `duration_s` video sampled at `fps`.
+
+    The work is decoding every frame (the validator's software-decode rate, 1.85 CPU-s per second of
+    4K HDR HEVC) plus filtering and encoding each sampled frame; ``containment.media_budget`` adds the
+    headroom for efficiency cores and safety. Never below FFMPEG_CPU_S / FFMPEG_TIMEOUT_S. better.mov
+    (87.2 s) gets 1066 CPU-s and 334 s; it needed 17.7 CPU-s and 10.6 s with VideoToolbox decode,
+    156 CPU-s and 40 s decoding in software, and 83 CPU-s and 48 s on the efficiency cores alone.
+    """
+    budgeted_s = MAX_BUDGETED_MEDIA_S
+    if math.isfinite(duration_s):
+        budgeted_s = min(max(duration_s, 0.0), MAX_BUDGETED_MEDIA_S)
+    sampled = math.ceil(budgeted_s * fps) + 1
+    return media_budget(duration_s, threads=FFMPEG_THREADS, fixed_cpu_s=sampled * SAMPLED_FRAME_CPU_S,
+                        min_cpu_s=FFMPEG_CPU_S, min_wall_s=FFMPEG_TIMEOUT_S)
 
 
 @lru_cache(maxsize=1)
@@ -305,6 +366,15 @@ def _tonemap_filter(hdr: bool) -> str | None:
             "zscale=p=bt709:t=bt709:m=bt709:r=tv,format=yuv420p")
 
 
+def _downscale_filter() -> str:
+    # Downscale oversized captures so the long side is at most FULL_RES_MAX_LONG_SIDE, preserving
+    # aspect and keeping both sides even. Smaller inputs pass through unchanged (the min()/max()
+    # make the scale a no-op when the clip is already within the cap).
+    cap = FULL_RES_MAX_LONG_SIDE
+    return (f"scale='if(gte(iw,ih),min(iw,{cap}),-2)':'if(gte(iw,ih),-2,min(ih,{cap}))':"
+            f"flags=lanczos")
+
+
 def extract_video_frames(video_path: Path, out_dir: Path, *, duration_s: float | None = None) -> FramesIndex:
     """Extract keyframes from a video into ``out_dir`` (full-res under ``frames/`` and model-grid
     under ``frames/model/``), drop the blurriest 30%, and write ``frames.json``."""
@@ -323,19 +393,19 @@ def extract_video_frames(video_path: Path, out_dir: Path, *, duration_s: float |
 
     raw_dir = out_dir / "_raw"
     raw_dir.mkdir(exist_ok=True)
-    vf = f"fps={fps:.4f}"
-    # Downscale oversized captures so the long side is at most FULL_RES_MAX_LONG_SIDE, preserving
-    # aspect and keeping both sides even. Smaller inputs pass through unchanged (the min()/max()
-    # make the scale a no-op when the clip is already within the cap).
-    cap = FULL_RES_MAX_LONG_SIDE
-    downscale = (f"scale='if(gte(iw,ih),min(iw,{cap}),-2)':'if(gte(iw,ih),-2,min(ih,{cap}))':"
-                 f"flags=lanczos")
-    vf = f"{downscale},{vf}"
+    # Sample first: fps keeps ~80 of the clip's frames (80 of 2617 for better.mov), so the tone-map
+    # and resize run on those and not on every decoded frame. It picks frames by timestamp alone,
+    # so the frames are identical to filtering first (byte-for-byte on better.mov) at 1/20 of the CPU
+    # time (17.7 instead of 367 CPU-s), which a 90 s 4K HDR clip otherwise needs and runs out of.
+    chain = [f"fps={fps:.4f}"]
     tone = _tonemap_filter(probe.hdr)
     if tone:
-        vf = f"{tone},{vf}"
+        chain.append(tone)
+    chain.append(_downscale_filter())
+    vf = ",".join(chain)
+    budget = extraction_budget(dur, fps)
     _run_ffmpeg([*_hwaccel_decode_args(), "-i", str(video_path), "-vf", vf, "-q:v", "2",
-                 str(raw_dir / "raw_%05d.jpg")])
+                 str(raw_dir / "raw_%05d.jpg")], cpu_s=budget.cpu_s, timeout_s=budget.wall_timeout_s)
 
     raw_frames = sorted(raw_dir.glob("raw_*.jpg"))
     if not raw_frames:
@@ -379,7 +449,9 @@ def extract_video_frames(video_path: Path, out_dir: Path, *, duration_s: float |
     shutil.rmtree(raw_dir, ignore_errors=True)
 
     index = FramesIndex(source=video_path.name, fps=fps, total_sampled=len(raw_frames),
-                        kept=len(entries), containment=containment_description(), frames=entries)
+                        kept=len(entries),
+                        containment=containment_description(budget.cpu_s, budget.wall_timeout_s),
+                        frames=entries)
     (out_dir / "frames.json").write_text(json.dumps(index.to_json(), indent=2))
     return index
 
