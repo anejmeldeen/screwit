@@ -7,6 +7,7 @@ import { useEffect, useRef, useState } from "react";
 import { api, type BuildSummary } from "@/lib/api";
 import { useDashboardPreferences } from "@/lib/dashboardPreferences";
 import { DashboardIcon } from "./DashboardIcon";
+import { ScrewyIcon } from "./ScrewyIcon";
 import { Skeleton } from "./ui";
 
 const sortLabels = { opened: "Last opened", name: "Name", created: "Date created" } as const;
@@ -15,7 +16,13 @@ const WorkspaceSpin = dynamic(() => import("./WorkspaceSpin"), { ssr: false });
 
 function WorkspacePreview({ build, spinning }: { build: BuildSummary; spinning: boolean }) {
   const [failed, setFailed] = useState(false);
-  if (failed || (!build.is_example && build.status !== "ready")) return null;
+  // No model yet (still building, failed, or never uploaded): a placeholder screw in the same frame,
+  // so every card keeps the same shape.
+  if (failed || (!build.is_example && build.status !== "ready")) {
+    return <div className="workspace-preview-frame is-placeholder" role="img" aria-label={`${build.title} has no 3D model yet`}>
+      <ScrewyIcon />
+    </div>;
+  }
   const id = encodeURIComponent(build.scan_id);
   const src = build.is_example ? `/examples/${id}.webp` : `/api/builds/${id}/preview.png`;
   return <div className="workspace-preview-frame">

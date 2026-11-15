@@ -422,6 +422,8 @@ button:disabled { cursor: not-allowed; }
 
 .workspace-preview { display:block; width:100%; height:auto; aspect-ratio:5/3; object-fit:contain; border-radius:5px; }
 .workspace-preview-frame { position:relative; overflow:hidden; border-radius:5px; pointer-events:none; }
+.workspace-preview-frame.is-placeholder { display:grid; place-items:center; aspect-ratio:5/3; background:#181a1e; }
+.workspace-preview-frame.is-placeholder svg { width:52px; height:auto; opacity:.85; }
 .workspace-spin { position:absolute; inset:0; transition:opacity .15s; }
 
 .workspace-section .workspace-sort-options button { border-color:transparent; background:transparent; color:#292619; }
