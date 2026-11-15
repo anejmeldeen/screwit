@@ -2,9 +2,9 @@
 
 import dynamic from "next/dynamic";
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { api, type BuildSummary } from "@/lib/api";
-import { useDashboardPreferences, type WorkspaceSort } from "@/lib/dashboardPreferences";
+import { useDashboardPreferences } from "@/lib/dashboardPreferences";
 import { DashboardIcon } from "./DashboardIcon";
 import { Skeleton } from "./ui";
 
@@ -38,6 +38,17 @@ export function WorkspaceDashboard({ examplesOnly = false }: { examplesOnly?: bo
   const [builds, setBuilds] = useState<BuildSummary[] | null>(null);
   const [error, setError] = useState(false);
   const [attempt, setAttempt] = useState(0);
+  const [sortOpen, setSortOpen] = useState(false);
+  const sortControl = useRef<HTMLDivElement>(null);
+  const sortButton = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    if (!sortOpen) return;
+    function outside(event: PointerEvent) {
+      if (!sortControl.current?.contains(event.target as Node)) setSortOpen(false);
+    }
+    document.addEventListener("pointerdown", outside);
+    return () => document.removeEventListener("pointerdown", outside);
+  }, [sortOpen]);
   const [hovered, setHovered] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   useEffect(() => {
@@ -124,9 +135,21 @@ export function WorkspaceDashboard({ examplesOnly = false }: { examplesOnly?: bo
       </div>
       <div className="workspace-toolbar">
         <label className="workspace-search"><DashboardIcon name="search" /><span className="sr-only">Search workspaces</span><input type="search" placeholder="Find a workspace…" value={search} onChange={(event) => setSearch(event.target.value)} /></label>
-        <label className="workspace-sort" title="Sort workspaces">
-          <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 4v15m-6-6 6 6 6-6" /></svg>
-          <select aria-label="Sort workspaces" value={preferences.sort} onChange={(event) => save({ sort: event.target.value as WorkspaceSort })}><option value="opened">Last opened</option><option value="name">Name</option><option value="created">Date created</option></select></label>
+        <div className="workspace-sort" ref={sortControl}
+          onBlur={event => { if (!event.currentTarget.contains(event.relatedTarget)) setSortOpen(false); }}
+          onKeyDown={event => {
+            if (event.key === "Escape") { setSortOpen(false); sortButton.current?.focus(); }
+          }}>
+          <button type="button" ref={sortButton} aria-expanded={sortOpen} aria-controls="workspace-sort-options"
+            onClick={() => setSortOpen(open => !open)}>Sort by</button>
+          <div id="workspace-sort-options" className="workspace-sort-options" role="group" aria-label="Workspace order" hidden={!sortOpen}>
+            {([["opened", "Last opened"], ["name", "Name"], ["created", "Date created"]] as const).map(([value, label]) =>
+              <button key={value} type="button" aria-pressed={preferences.sort === value} onClick={() => {
+                save({ sort: value }); setSortOpen(false); sortButton.current?.focus();
+              }}><span>{label}</span><span aria-hidden="true">{preferences.sort === value ? "✓" : ""}</span></button>
+            )}
+          </div>
+        </div>
       </div>
       {actionError && <p role="alert">{actionError}</p>}
       {menu && <div className="workspace-context" aria-label="Workspace actions" role="group" style={{ left: menu.x, top: menu.y }}>{buttons(menu.build)}</div>}

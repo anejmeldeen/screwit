@@ -45,6 +45,7 @@ function DashboardShell({ children }: { children: React.ReactNode }) {
           <button className="sidebar-menu" type="button" aria-label="Toggle navigation" aria-expanded={menuOpen} aria-controls="sidebar-navigation" onClick={() => setMenuOpen(!menuOpen)}><DashboardIcon name="menu" /></button>
         </div>
         <div id="sidebar-navigation" className={`sidebar-content ${menuOpen ? "is-open" : ""}`}>
+          <hr className="sidebar-divider" />
           {path !== "/" && <Link href="/scan/new" className="sidebar-create"><DashboardIcon name="plus" />New workspace</Link>}
           <p className="sidebar-label">Your workshop</p>
           <nav aria-label="Main navigation">{sections.map((section) => (
