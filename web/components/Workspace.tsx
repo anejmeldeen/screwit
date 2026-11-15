@@ -178,8 +178,8 @@ export function Workspace({
               onToggleHidden={id => setHiddenPartIds(ids => ids.includes(id) ? ids.filter(p => p !== id) : [...ids, id])}
               onIsolate={setIsolatedId} scanId={scanId} parts={parts} partsReady={partsReady}
               selectedId={selectedId} onSelect={select} onChanged={refreshParts} />}
-            {partsReady && !!parts?.length && <details className="scene-export"><summary>Export {selected ? "component" : "assembly"}</summary>
-              <PartDownloads scanId={scanId} part={selected} /></details>}
+            {partsReady && !!parts?.length && <section className="scene-export"><h3>Export {selected ? "component" : "assembly"}</h3>
+              <PartDownloads scanId={scanId} part={selected} /></section>}
           </section>
         </aside>
         <ResizeHandle label="Resize hierarchy and inspector" className="scene-split" orientation="vertical" value={left} min={150} max={maxLeft} onChange={setLeftWidth} />

@@ -491,3 +491,23 @@ button:disabled { cursor: not-allowed; }
  .scene-object-dock .scene-hierarchy { max-height:240px; }
  .scene-object-dock .scene-inspector { flex:auto; }
 }
+
+@media(min-width:760px) {
+ .scene-object-dock { display:grid; grid-template-rows:minmax(0,1fr) minmax(0,1fr); }
+ .scene-object-dock .scene-hierarchy { max-height:none; }
+}
+.scene-object-dock .scene-inspector { border-top:6px solid #151614; }
+.scene-inspector :is(.scene-export,.assembly-history,.part-details) h3 { margin:8px 0; font-size:12px; font-weight:650; color:#e1dcbf; }
+.scene-inspector h3 + .part-history { margin-bottom:0; }
+.component-actions,.scene-inspector .part-history,.scene-inspector .part-downloads>div { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,90px),1fr)); gap:6px; margin-top:10px; }
+.component-actions>span,.rename-controls { grid-column:1 / -1; }
+.rename-controls { display:flex; gap:4px; flex-wrap:wrap; }
+.scene-inspector .part-downloads { padding:0 0 12px; }
+.scene-display-controls,.measurement-modes { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+.scene-display-controls:empty { display:none; }
+.scene-tools { padding:8px 10px; gap:8px; }
+.scene-tools strong { margin-right:4px; }
+.measurement-modes { margin-bottom:8px; }
+@media(max-width:759px) {
+ .scene-object-dock .scene-inspector { margin-top:14px; }
+}

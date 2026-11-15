@@ -160,7 +160,7 @@ function PartCard({
       </button>
 
       {/* Actions */}
-      <div className="mt-2 flex flex-wrap gap-2 text-xs">
+      <div className="component-actions">
         <button aria-label={`${hidden ? "Show" : "Hide"} ${part.label}`} aria-pressed={hidden}
           onClick={() => onToggleHidden(part.part_id)}
           className="rounded border border-line px-1.5 py-0.5 hover:border-accent">
@@ -169,7 +169,7 @@ function PartCard({
         <button aria-label={`Isolate ${part.label}`} onClick={() => onIsolate(part.part_id)}
           className="rounded border border-line px-1.5 py-0.5 hover:border-accent">Isolate…</button>
         {renaming ? (
-          <span className="flex items-center gap-1">
+          <span className="rename-controls">
             <input
               value={label}
               onChange={(e) => setLabel(e.target.value)}
@@ -210,7 +210,7 @@ function PartCard({
         )}
       </div>
 
-      <details open className="part-details"><summary>Measurements & details</summary>
+      <section className="part-details"><h3>Measurements</h3>
       {/* Dimensions table */}
       {dims.length ? (
         <div className="dimension-table-wrap"><table className="dimension-table">
@@ -232,10 +232,10 @@ function PartCard({
 
       {/* Caliper entry per feature measurement */}
       {editable.length ? (
-        <details className="mt-2 text-xs">
-          <summary className="cursor-pointer text-muted">
-            Enter caliper value
-          </summary>
+        <section className="mt-2 text-xs">
+          <h3>
+            Caliper values (mm)
+          </h3>
           <div className="mt-2 space-y-1">
             {editable.map((e) => (
               <div
@@ -269,10 +269,10 @@ function PartCard({
               </div>
             ))}
           </div>
-        </details>
+        </section>
       ) : null}
 
-      </details>
+      </section>
       {err ? <p className="mt-2 text-xs text-rose-800">{err}</p> : null}
     </div>
   );
@@ -345,7 +345,7 @@ export function PartsPanel({
 
   return (
     <div data-testid="parts-panel" className="space-y-3">
-      {!selectedId && <details className="assembly-history"><summary>Assembly history</summary><div className="part-history"><button disabled={busy || !history.can_undo} onClick={() => recover()}>↶ Undo combine</button>{history.can_restore_example ? <button disabled={busy} onClick={() => recover(true)}>Restore original example</button> : null}</div></details>}
+      {!selectedId && <section className="assembly-history"><h3>Assembly history</h3><div className="part-history"><button disabled={busy || !history.can_undo} onClick={() => recover()}>↶ Undo combine</button>{history.can_restore_example ? <button disabled={busy} onClick={() => recover(true)}>Restore original example</button> : null}</div></section>}
       {editError ? <p role="alert">{editError}</p> : null}
       {mergePick ? <div className="combine-hint">Choose a second part. <button onClick={() => setMergePick(null)}>Cancel</button></div> : null}
       {parts.map((p, i) => selectedId === p.part_id && (

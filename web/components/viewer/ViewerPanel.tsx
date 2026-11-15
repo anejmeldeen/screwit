@@ -229,7 +229,7 @@ export function ViewerPanel({
     <div className="flex h-full flex-col">
       {/* Toolbar */}
       <div className="scene-tools"><strong>Scene</strong>
-        <details className="scene-view-options"><summary>View</summary><div>
+        <div className="scene-display-controls" role="group" aria-label="Display controls">
         {/* Splat/mesh toggle. The mesh button is always present; the splat
             button appears only when a splat exists. Selecting Splat marks it as
             user-requested, which is what releases the splat fetch. */}
@@ -258,7 +258,7 @@ export function ViewerPanel({
               Original scan
             </button>
           </div>
-        ) : <span>Parts view</span>}
+        ) : null}
         {!isolated ? (
         <label className="flex items-center gap-2">
           <span className="text-muted">Separate parts</span>
@@ -279,12 +279,13 @@ export function ViewerPanel({
           />
         </label>
         ) : null}
-        </div></details>
+        </div>
 
         <button
           className={`rounded border px-2 py-1 ${
             measureActive ? "border-accent text-accent" : "border-line"
           }`}
+          aria-pressed={measureActive}
           onClick={() => {
             setMeasureActive((v) => !v);
             setMode("mesh"); setExplode(0);
@@ -299,6 +300,7 @@ export function ViewerPanel({
           className={`rounded border px-2 py-1 ${
             scaleActive ? "border-accent text-accent" : "border-line"
           } ${needsScale ? "ring-1 ring-amber-500" : ""}`}
+          aria-pressed={scaleActive}
           onClick={() => {
             setScaleActive((v) => !v);
             setMeasureMode("point");
@@ -329,14 +331,11 @@ export function ViewerPanel({
         <div className="flex flex-wrap items-center gap-3 border-b border-line bg-wash px-3 py-2 text-sm">
           {measureActive ? (
             <span className="text-ink">
-              <select aria-label="Measurement type" value={measureMode}
-                onChange={e => { setMeasureMode(e.target.value as MeasureMode); resetPoints(); }}
-                className="mr-2 max-w-full rounded border border-line bg-panel px-2 py-1">
-                <option value="point">Point to point</option>
-                <option value="edge-length">Edge length (including curves)</option>
-                <option value="edge-distance">Edge to edge</option>
-                <option value="face-distance">Face to face</option>
-              </select>
+              <span className="measurement-modes" role="group" aria-label="Measurement type">
+                {([["point", "Point to point"], ["edge-length", "Edge length"], ["edge-distance", "Edge to edge"], ["face-distance", "Face to face"]] as const).map(([mode, label]) =>
+                  <button key={mode} aria-pressed={measureMode === mode} onClick={() => { setMeasureMode(mode); resetPoints(); }}>{label}</button>)}
+              </span>
+
               {measureMode === "point" ? `Click any two positions on the mesh surface. ${points.length}/2 picked.` :
                 measureMode === "edge-length" ? "Hover near an outlined edge, then click to measure the highlighted chain." :
                 `Click two highlighted ${measureMode === "face-distance" ? "faces" : "edges"}. ${featurePicks.length}/2 picked. Distance is the shortest gap.`}
