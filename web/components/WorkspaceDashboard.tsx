@@ -131,7 +131,7 @@ export function WorkspaceDashboard({ examplesOnly = false }: { examplesOnly?: bo
                     autoFocus onFocus={event => event.currentTarget.select()} readOnly={saving}
                     onKeyDown={event => { if (event.key === "Escape" && !saving) { setEditingId(null); setActionError(""); } }} />
                 </form> : <Link href={`/scan/${build.scan_id}`} className="workspace-row-link"><strong>{build.title}</strong></Link>}
-                <small>{build.is_example ? "Example workspace" : `${build.input_type.charAt(0).toUpperCase() + build.input_type.slice(1)} scan`}</small></div></div></div>
+                {!build.is_example && <small>{build.input_type.charAt(0).toUpperCase() + build.input_type.slice(1)} scan</small>}</div></div></div>
               <div><span className="workspace-card-label">Actions</span><span className="workspace-actions">{editingId === build.scan_id ? <>
                 <button type="submit" form={`rename-${build.scan_id}`} disabled={saving}>Save</button>
                 <button type="button" disabled={saving} onClick={() => { setEditingId(null); setActionError(""); }}>Cancel</button>
