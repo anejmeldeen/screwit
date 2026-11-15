@@ -415,3 +415,4 @@ button:disabled { cursor: not-allowed; }
 .account-edit form,.account-edit label { display:grid; gap:6px; }
 .account-edit form { max-width:330px; gap:12px; margin-top:16px; }
 .account-edit input { border:1px solid #9c8c53; padding:8px; border-radius:5px; background:#fff9df; }
+.connection-preview { border:1px solid #b4a04b; border-radius:6px; padding:7px 12px; background:#f4e7af; color:#5d5539; font-size:12px; }
