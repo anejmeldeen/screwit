@@ -159,3 +159,34 @@ def test_connector_next_to_different_kinds_still_folds_whole():
     assert cut.n == p.n
     assert len(set(folded)) == 2 and folded[2] in (folded[0], folded[1])
     assert pa.fold_connectors(p, [0, 1, 2]) == folded
+
+
+def _bar(cuts: list[float]) -> tuple[pa.Patches, np.ndarray]:
+    """A long bar split along X at ``cuts`` into consecutive patches 0, 1, 2, ... (patch == group)."""
+    bar = trimesh.creation.box([120.0, 10.0, 10.0])
+    for _ in range(5):
+        bar = bar.subdivide()
+    x = bar.triangles_center[:, 0]
+    labels = np.searchsorted(np.asarray(cuts), x).astype(np.int64)
+    return _patches_from_labels(bar, labels), labels
+
+
+def test_repeated_layer_joins_the_repeated_part_it_sits_on():
+    """[pad A][cup A][band][cup B][pad B]: each pad borders only its cup, the cups also hold the
+    band, so each pad becomes part of its own cup (an ear cup read as cup plus cushion)."""
+    p, _ = _bar([-48.0, -20.0, 20.0, 48.0])
+    kinds = ["pad", "cup", "band", "cup", "pad"]
+    owner = pa.merge_paired_subparts(p, [0, 1, 2, 3, 4], kinds)
+    assert owner == [1, 1, 2, 3, 3]
+
+
+def test_parts_that_only_touch_each_other_are_kept():
+    """[lid A][box A][box B][lid B]: lids and boxes lean only on each other, so nothing is a layer."""
+    p, _ = _bar([-30.0, 0.0, 30.0])
+    assert pa.merge_paired_subparts(p, [0, 1, 2, 3], ["lid", "box", "box", "lid"]) == [0, 1, 2, 3]
+
+
+def test_a_single_part_on_another_is_kept():
+    """[knob][door][frame]: one copy is never a repeated layer, so the knob stays its own part."""
+    p, _ = _bar([-40.0, 20.0])
+    assert pa.merge_paired_subparts(p, [0, 1, 2], ["knob", "door", "frame"]) == [0, 1, 2]

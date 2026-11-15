@@ -538,6 +538,78 @@ def fold_connectors_cut(p: Patches, owner: list[int], *, min_groups: int = 2,
     return p, [remap[o] for o in owner], parent
 
 
+# ------------------------------------------------------------------------------- paired sub-parts
+
+LAYER_SHARE = 0.7   # share of a repeated kind's boundary that must be with its host kind
+
+
+def merge_paired_subparts(p: Patches, owner: list[int], kinds: list[str]) -> list[int]:
+    """Merge a repeated sub-part into the repeated part it sits on, generically.
+
+    A kind with two or more copies whose boundary is mostly (``LAYER_SHARE``) with ONE other kind,
+    where that other kind has the same number of copies, connects to the rest of the object and
+    leans on this kind less than this kind leans on it, is a layer of that part
+    rather than a component of its own: the VLM read each ear cup of a headphone scan as "ear cup"
+    plus "ear cushion" and the cut between the two followed a crease, not the cushion, so neither
+    piece was a real cushion. Each copy joins the copy it shares the longest boundary with; nothing
+    is merged unless that pairs the copies one to one. Pure geometry plus the VLM's own kind keys
+    (``kinds``, one per group in ``owner``): no category or label text is consulted. Parts that
+    only touch each other (a lid on a box) and single parts (a knob on a door) are kept.
+
+    Returns the new patch->group map; group ids are those of ``owner`` (merged groups vanish)."""
+    owner = list(owner)
+    for _ in range(len(set(kinds))):
+        groups = sorted(set(owner))
+        by_kind: dict[str, list[int]] = {}
+        for g in groups:
+            by_kind.setdefault(kinds[g], []).append(g)
+        seams = _group_shared_boundary(p, owner)
+
+        def neighbours(gs: list[int], seams: dict = seams) -> dict[int, float]:
+            out: dict[int, float] = {}
+            for (a, b), ln in seams.items():
+                for x, y in ((a, b), (b, a)):
+                    if x in gs and y not in gs:
+                        out[y] = out.get(y, 0.0) + ln
+            return out
+
+        merged = False
+        for kind, members in by_kind.items():
+            if len(members) < 2:
+                continue
+            near = neighbours(members)
+            total = sum(near.values())
+            by_host: dict[str, float] = {}
+            for g, ln in near.items():
+                by_host[kinds[g]] = by_host.get(kinds[g], 0.0) + ln
+            if not total:
+                continue
+            host_kind = max(by_host, key=by_host.get)
+            share = by_host[host_kind] / total
+            hosts = by_kind[host_kind]
+            if share < LAYER_SHARE or len(hosts) != len(members):
+                continue
+            back = neighbours(hosts)
+            back_total = sum(back.values())
+            back_share = sum(ln for g, ln in back.items() if kinds[g] == kind) / (back_total or 1.0)
+            if back_share >= share or back_share > 1.0 - 1e-9:
+                continue        # the pair only leans on itself: two parts, not a layer of one
+            pairing = {}
+            for g in members:
+                own = {h: ln for (a, b), ln in seams.items() for h in (a, b)
+                       if g in (a, b) and h != g and h in hosts}
+                if own:
+                    pairing[g] = max(own, key=own.get)
+            if len(pairing) != len(members) or len(set(pairing.values())) != len(members):
+                continue
+            owner = [pairing.get(o, o) for o in owner]
+            merged = True
+            break
+        if not merged:
+            break
+    return owner
+
+
 # ------------------------------------------------------------------------------- rendering
 
 # Region colours for the candidate renders, in group order (group 0 is the largest), with the names

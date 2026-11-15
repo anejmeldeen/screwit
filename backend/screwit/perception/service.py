@@ -285,6 +285,11 @@ class PerceptionImpl(PerceptionService):
         # between those copies instead of going whole to one (kinds come from the VLM grouping).
         group_kinds = ([(replies[g].label or "").strip().lower() for g in range(max(owner) + 1)]
                        if replies and all(g in replies for g in range(max(owner) + 1)) else None)
+        # A repeated layer of a repeated part (each ear cup read as "cup" plus "cushion") joins
+        # the part it sits on, so a component comes out whole. Group ids are kept, so the labels
+        # of the surviving groups still apply.
+        if group_kinds is not None:
+            owner = pa.merge_paired_subparts(patches, owner, group_kinds)
         cut, folded, parent = pa.fold_connectors_cut(patches, owner, kinds=group_kinds)
         if folded != list(owner) or cut.n != patches.n:
             if replies:
