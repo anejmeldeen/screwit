@@ -40,6 +40,8 @@ export interface BuildSummary {
   title: string;
   status: string;
   created_at: string;
+  updated_at: string;
+  input_type: string;
   is_example: boolean;
 }
 

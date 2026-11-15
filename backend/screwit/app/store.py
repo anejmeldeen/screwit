@@ -8,11 +8,12 @@ written or returned has been through a contract model (AGENTS.md: never persist 
 from __future__ import annotations
 
 import json
-from datetime import datetime
+from datetime import UTC, datetime
 
-from sqlmodel import select
+from sqlmodel import Session, select
 
 from screwit.app.db import (
+    BuildActivityRow,
     BuildOwnerRow,
     CadJobRow,
     ChatMessageRow,
@@ -32,6 +33,15 @@ from screwit.contracts import (
     Scan,
     SceneGraph,
 )
+
+
+def _touch_build(session: Session, scan_id: str) -> None:
+    activity = session.get(BuildActivityRow, scan_id)
+    if activity is None:
+        activity = BuildActivityRow(scan_id=scan_id, updated_at=datetime.now(UTC))
+    else:
+        activity.updated_at = datetime.now(UTC)
+    session.add(activity)
 
 
 class ScanStore:
@@ -60,6 +70,7 @@ class ScanStore:
             s.add(row)
             if owner is not None and s.get(BuildOwnerRow, scan.scan_id) is None:
                 s.add(BuildOwnerRow(scan_id=scan.scan_id, username=owner))
+            _touch_build(s, scan.scan_id)
             s.commit()
 
     # -------------------------------------------------------------- reconstruction
@@ -78,6 +89,7 @@ class ScanStore:
             s.add(ReconstructionRow(scan_id=recon.scan_id,
                                     reconstruction_revision=recon.reconstruction_revision,
                                     recon_json=recon.model_dump_json()))
+            _touch_build(s, recon.scan_id)
             s.commit()
 
     # -------------------------------------------------------------- parts
@@ -100,6 +112,7 @@ class ScanStore:
                               reconstruction_revision=p.reconstruction_revision,
                               measurement_revision=p.measurement_revision,
                               part_json=p.model_dump_json()))
+            _touch_build(s, scan_id)
             s.commit()
 
     def save_part(self, scan_id: str, part: Part) -> None:
@@ -123,6 +136,7 @@ class ScanStore:
             s.add(SceneGraphRow(scan_id=graph.scan_id,
                                 reconstruction_revision=reconstruction_revision,
                                 graph_json=graph.model_dump_json()))
+            _touch_build(s, graph.scan_id)
             s.commit()
 
     # -------------------------------------------------------------- chat
@@ -137,6 +151,7 @@ class ScanStore:
         with db_session() as s:
             s.add(ChatMessageRow(scan_id=scan_id, message_id=message.message_id, role=message.role,
                                  created_at=message.created_at, message_json=message.model_dump_json()))
+            _touch_build(s, scan_id)
             s.commit()
 
     # -------------------------------------------------------------- CAD jobs
@@ -152,6 +167,7 @@ class ScanStore:
             row.request_json = req.model_dump_json()
             row.result_json = result.model_dump_json()
             s.add(row)
+            _touch_build(s, req.scan_id)
             s.commit()
 
     def get_cad_job(self, scan_id: str, cad_id: str) -> tuple[CadRequest, CadResult] | None:
@@ -180,6 +196,7 @@ class ScanStore:
                 if not result.stale:
                     row.result_json = result.model_copy(update={"stale": True}).model_dump_json()
                     s.add(row)
+                    _touch_build(s, scan_id)
             s.commit()
 
     def cad_jobs_referencing(self, scan_id: str, part_ids: set[str]) -> list[str]:
@@ -203,6 +220,7 @@ class ScanStore:
                 result = CadResult.model_validate_json(row.result_json)
                 row.result_json = result.model_copy(update={"stale": True}).model_dump_json()
                 s.add(row)
+                _touch_build(s, scan_id)
             s.commit()
 
 

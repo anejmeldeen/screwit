@@ -37,6 +37,12 @@ class BuildOwnerRow(SQLModel, table=True):
     username: str = Field(index=True)
 
 
+class BuildActivityRow(SQLModel, table=True):
+    __tablename__ = "build_activity"
+    scan_id: str = Field(primary_key=True)
+    updated_at: datetime
+
+
 class ScanRow(SQLModel, table=True):
     __tablename__ = "scans"
     scan_id: str = Field(primary_key=True)

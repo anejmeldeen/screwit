@@ -1,14 +1,14 @@
 """The signed-in account's saved builds, including admin's existing examples."""
 
 import json
-from datetime import datetime
+from datetime import UTC, datetime
 
 from fastapi import APIRouter
 from pydantic import BaseModel
 from sqlmodel import select
 
 from screwit.app.accounts import UserDep
-from screwit.app.db import BuildOwnerRow, db_session
+from screwit.app.db import BuildActivityRow, BuildOwnerRow, db_session
 from screwit.app.deps import RegistryDep
 from screwit.app.store import ScanStore
 from screwit.contracts import DemoScan
@@ -21,6 +21,8 @@ class BuildSummary(BaseModel):
     title: str
     status: str
     created_at: datetime
+    updated_at: datetime
+    input_type: str
     is_example: bool
 
 
@@ -31,6 +33,13 @@ def list_builds(reg: RegistryDep, user: UserDep) -> list[BuildSummary]:
     titles = {demo.scan_id: demo.title for demo in demos}
     with db_session() as session:
         owned = session.exec(select(BuildOwnerRow).where(BuildOwnerRow.username == user.username)).all()
+        activity = {
+            row.scan_id: row.updated_at.replace(tzinfo=UTC) if row.updated_at.tzinfo is None else row.updated_at
+            for row in session.exec(
+                select(BuildActivityRow).join(BuildOwnerRow, BuildActivityRow.scan_id == BuildOwnerRow.scan_id)
+                .where(BuildOwnerRow.username == user.username)
+            ).all()
+        }
     store = ScanStore(reg.data)
     builds = []
     for owner in owned:
@@ -42,5 +51,6 @@ def list_builds(reg: RegistryDep, user: UserDep) -> list[BuildSummary]:
             scan_id=scan.scan_id,
             title=titles.get(scan.scan_id, default_title),
             status=scan.status, created_at=scan.created_at, is_example=scan.scan_id in titles,
+            updated_at=activity.get(scan.scan_id, scan.created_at), input_type=scan.input.type,
         ))
-    return sorted(builds, key=lambda build: build.created_at, reverse=True)
+    return sorted(builds, key=lambda build: build.updated_at, reverse=True)

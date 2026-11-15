@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { SiteHeader } from "@/components/SiteHeader";
+import { AppShell } from "@/components/DashboardShell";
 import { AccountProvider } from "@/components/AccountProvider";
 import "./globals.css";
 
@@ -14,8 +14,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body>
         <a href="#main-content" className="skip-link">Skip to content</a>
         <AccountProvider>
-          <SiteHeader />
-          <main id="main-content">{children}</main>
+          <AppShell>{children}</AppShell>
         </AccountProvider>
       </body>
     </html>
