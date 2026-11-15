@@ -26,12 +26,12 @@ SDF_TRUNC_M = 0.004
 DEPTH_TRUNC_M = 1.5
 WEB_TRIANGLE_CAP = 200_000
 REPAIR_TRIANGLE_CAP = 400_000
-# Taubin smoothing of the fused surface. TSDF at 1 mm voxels leaves a stair-stepped (aliased)
-# surface on real CPU scans; Taubin (lambda>0 then mu<0 passes) removes that high-frequency noise
-# WITHOUT the volume shrink a plain Laplacian causes, so dimensions stay faithful. Applied in
-# repair_mesh (the pipeline cleanup), NOT in fuse_tsdf, so the raw-fusion golden test is unaffected.
-# Tunable via SCREWIT_SMOOTH_ITERS (0 disables).
-SMOOTH_ITERS = 30
+# Taubin smoothing of the fused surface (taubin_smooth): lambda/mu passes remove high-frequency
+# bumps without the volume shrink of a plain Laplacian, with open-boundary vertices pinned so many
+# passes cannot grow spikes. Measured on the headphones scan: 80 passes leave the p1-p99 extents
+# unchanged to 0.1 mm and take 0.1 s. Applied in repair_mesh (the pipeline cleanup), NOT in
+# fuse_tsdf, so the raw-fusion golden test is unaffected. Tunable via SCREWIT_SMOOTH_ITERS (0 off).
+SMOOTH_ITERS = 80
 
 
 @dataclass
@@ -39,6 +39,23 @@ class MeshResult:
     vertices_mm: np.ndarray    # (V, 3) float32, scan frame mm
     triangles: np.ndarray      # (T, 3) int32
     vertex_colors: np.ndarray  # (V, 3) float in [0, 1]
+
+
+def fusion_resolution(object_size_mm: float | None) -> tuple[float, float]:
+    """(voxel_length_m, sdf_trunc_m) for an object whose bounding-box diagonal is ``object_size_mm``.
+
+    A fixed 1 mm voxel is finer than the depth noise on the CPU path (two views disagree by about
+    4-6 mm about the same surface at 0.7 m), so it reconstructs the noise as bumps and costs time
+    with no detail gain. Scale the voxel with the object (diagonal / 200, clamped to 1-3 mm) so the
+    triangle count stays roughly constant across object sizes. The truncation band stays at 4 mm
+    (2.5 voxels above 1.6 mm voxels): the band's silhouette bulge adds roughly its own width to
+    measured sizes (the cube golden reads 107 mm at 10 mm), so it must not grow with the voxel. A
+    100 mm object keeps the original 1 mm / 4 mm; the headphones (about 290 mm) get 1.45 mm / 4 mm,
+    about 2x fewer triangles."""
+    if not object_size_mm or not np.isfinite(object_size_mm) or object_size_mm <= 0:
+        return VOXEL_LENGTH_M, SDF_TRUNC_M
+    voxel_mm = float(np.clip(object_size_mm / 200.0, 1.0, 3.0))
+    return voxel_mm / 1000.0, max(SDF_TRUNC_M, 2.5 * voxel_mm / 1000.0)
 
 
 def _make_volume(voxel_length: float = VOXEL_LENGTH_M, sdf_trunc: float = SDF_TRUNC_M):
@@ -49,26 +66,6 @@ def _make_volume(voxel_length: float = VOXEL_LENGTH_M, sdf_trunc: float = SDF_TR
         sdf_trunc=sdf_trunc,
         color_type=o3d.pipelines.integration.TSDFVolumeColorType.RGB8,
     )
-
-
-def _smooth_mesh(mesh, iterations: int | None = None):
-    """Taubin-smooth an Open3D mesh in place of plain Laplacian: it removes TSDF staircase noise
-    without shrinking the volume (dimensions preserved). No-op when disabled or the mesh is tiny.
-    Vertex colours are preserved by Open3D's filter. Best-effort: never fail the fuse."""
-    import os
-
-    if iterations is None:
-        iterations = int(os.environ.get("SCREWIT_SMOOTH_ITERS", SMOOTH_ITERS))
-    if iterations <= 0 or len(mesh.triangles) < 50:
-        return mesh
-    try:
-        sm = mesh.filter_smooth_taubin(number_of_iterations=iterations)
-        if len(sm.triangles) >= 50:  # guard against a degenerate smoothing result
-            sm.compute_vertex_normals()
-            return sm
-    except Exception:  # noqa: BLE001 - smoothing is cosmetic; keep the unsmoothed mesh on error
-        pass
-    return mesh
 
 
 def _remove_support_slab(mesh: MeshResult) -> MeshResult:
@@ -269,33 +266,97 @@ def _decimate(mesh: MeshResult, target_triangles: int) -> MeshResult:
 
 
 def repair_mesh(mesh: MeshResult, triangle_cap: int = REPAIR_TRIANGLE_CAP) -> MeshResult:
-    """Close small holes with pymeshfix. pymeshfix time grows steeply with size on noisy real scans
-    (about 11 s at 225k triangles, 11 minutes at 1M on 32 cores), so larger meshes are decimated to
-    ``triangle_cap`` first; at 1 mm voxels that still keeps sub-millimetre surface detail.
+    """Clean the fused surface and close its small holes.
 
-    Before repair, the fused surface is denoised (stray floaters, TSDF speckle) and Taubin-smoothed
-    (removes the 1 mm voxel staircase without shrinking the volume). This is the pipeline's cosmetic
-    cleanup; it lives here, not in ``fuse_tsdf``, so the raw-fusion golden test measures unsmoothed
-    geometry while every real scan gets the clean surface."""
-    import pymeshfix
+    Steps: cut a fused support slab if one survived, drop floaters, Taubin-smooth (shrink-free),
+    decimate above ``triangle_cap``, then fill holes up to 5% of the object's size with Open3D's
+    hole filler. The cleanup lives here, not in ``fuse_tsdf``, so the raw-fusion golden test still
+    measures unsmoothed geometry.
 
+    This used to be pymeshfix, which closes every hole however large: on the headphones scan it
+    spent 158-280 s turning 394k triangles into 1.1M by capping the large openings (the open bottom
+    of the cut-away table) with invented surface. Filling only small holes takes about 20 ms and
+    leaves real openings open, which is what the viewer, the measurements and the part segmentation
+    want."""
     if mesh.triangles.shape[0] == 0:
         return mesh
     mesh = _cleanup_surface(mesh)
     if mesh.triangles.shape[0] > triangle_cap:
         mesh = _decimate(mesh, triangle_cap)
-    fixer = pymeshfix.MeshFix(mesh.vertices_mm.astype(np.float64), mesh.triangles.astype(np.int32))
-    fixer.repair()
-    v = np.asarray(fixer.points, np.float32)
-    f = np.asarray(fixer.faces, np.int32)
-    # pymeshfix drops colours; re-sample nearest original vertex colour.
-    colors = _nearest_colors(mesh.vertices_mm, mesh.vertex_colors, v)
-    return MeshResult(vertices_mm=v, triangles=f, vertex_colors=colors)
+    return _fill_small_holes(mesh)
+
+
+def _fill_small_holes(mesh: MeshResult, rel_size: float = 0.05) -> MeshResult:
+    """Fill holes whose size is under ``rel_size`` of the bounding-box diagonal (Open3D tensor API).
+    Best-effort: on any failure the mesh is returned unchanged."""
+    if mesh.triangles.shape[0] < 4:
+        return mesh
+    try:
+        import open3d as o3d
+
+        diag = float(np.linalg.norm(np.ptp(mesh.vertices_mm, axis=0)))
+        tm = o3d.t.geometry.TriangleMesh(
+            o3d.core.Tensor(mesh.vertices_mm.astype(np.float32)),
+            o3d.core.Tensor(mesh.triangles.astype(np.int32)))
+        filled = tm.fill_holes(hole_size=max(1.0, rel_size * diag))
+        v = filled.vertex.positions.numpy().astype(np.float32)
+        f = filled.triangle.indices.numpy().astype(np.int32)
+        if len(f) < len(mesh.triangles):
+            return mesh
+        colors = (mesh.vertex_colors if len(v) == len(mesh.vertices_mm)
+                  else _nearest_colors(mesh.vertices_mm, mesh.vertex_colors, v))
+        return MeshResult(vertices_mm=v, triangles=f, vertex_colors=colors)
+    except Exception:  # noqa: BLE001 - hole filling is cosmetic
+        return mesh
+
+
+def taubin_smooth(vertices: np.ndarray, triangles: np.ndarray, iterations: int,
+                  lam: float = 0.5, mu: float = -0.53, max_move_edges: float = 3.0) -> np.ndarray:
+    """Taubin smoothing (lambda/mu passes of the uniform Laplacian) that removes high-frequency
+    bumps without shrinking the volume, with two guards Open3D's filter lacks:
+
+    - open-boundary vertices stay fixed (a boundary vertex has a one-sided neighbourhood, so the
+      Laplacian pulls it inward every pass and, after many passes, out into needle spikes);
+    - no vertex moves more than ``max_move_edges`` median edge lengths from where it started.
+    """
+    from scipy.sparse import coo_matrix, diags
+
+    v0 = np.asarray(vertices, np.float64)
+    f = np.asarray(triangles, np.int64)
+    n = len(v0)
+    if iterations <= 0 or len(f) < 50:
+        return v0.astype(np.float32)
+    e = np.concatenate([f[:, [0, 1]], f[:, [1, 2]], f[:, [2, 0]]])
+    a = coo_matrix((np.ones(2 * len(e)), (np.r_[e[:, 0], e[:, 1]], np.r_[e[:, 1], e[:, 0]])),
+                   shape=(n, n)).tocsr()
+    a.data[:] = 1.0                                      # duplicate edges count once
+    deg = np.asarray(a.sum(axis=1)).ravel()
+    lap = diags(1.0 / np.maximum(deg, 1.0)) @ a          # neighbour mean
+    key = np.sort(e, axis=1)
+    _, inv, cnt = np.unique(key[:, 0] * n + key[:, 1], return_inverse=True, return_counts=True)
+    boundary = np.zeros(n, bool)
+    be = key[cnt[inv] == 1]
+    boundary[be.ravel()] = True
+    free = (~boundary & (deg > 0))[:, None]
+    lens = np.linalg.norm(v0[e[:, 0]] - v0[e[:, 1]], axis=1)
+    cap = max_move_edges * float(np.median(lens)) if len(lens) else 0.0
+    v = v0.copy()
+    for _ in range(iterations):
+        for step in (lam, mu):
+            v = np.where(free, v + step * (lap @ v - v), v)
+    if cap > 0:
+        d = v - v0
+        norm = np.linalg.norm(d, axis=1, keepdims=True)
+        v = v0 + d * np.minimum(1.0, cap / np.maximum(norm, 1e-12))
+    return v.astype(np.float32)
 
 
 def _cleanup_surface(mesh: MeshResult) -> MeshResult:
-    """Denoise + Taubin-smooth a MeshResult via an Open3D round-trip, preserving vertex colours.
-    Best-effort: returns the input unchanged on any error or a tiny mesh."""
+    """Cut a fused support slab, drop floaters (Open3D), then boundary-safe Taubin smoothing,
+    preserving vertex colours. Best-effort: returns the input unchanged on any error or a tiny
+    mesh."""
+    import os
+
     import numpy as _np
 
     if mesh.triangles.shape[0] < 100:
@@ -310,7 +371,6 @@ def _cleanup_surface(mesh: MeshResult) -> MeshResult:
         om.vertex_colors = o3d.utility.Vector3dVector(
             _np.clip(mesh.vertex_colors, 0, 1).astype(_np.float64))
         om = _denoise_mesh(om)
-        om = _smooth_mesh(om)
         v = _np.asarray(om.vertices, _np.float32)
         t = _np.asarray(om.triangles, _np.int32)
         if v.shape[0] < 3 or t.shape[0] < 1:
@@ -318,6 +378,8 @@ def _cleanup_surface(mesh: MeshResult) -> MeshResult:
         cols = _np.asarray(om.vertex_colors)
         if cols.shape[0] != v.shape[0]:
             cols = _nearest_colors(mesh.vertices_mm, mesh.vertex_colors, v)
+        iters = int(os.environ.get("SCREWIT_SMOOTH_ITERS", SMOOTH_ITERS))
+        v = taubin_smooth(v, t, iters)
         return MeshResult(vertices_mm=v, triangles=t, vertex_colors=cols)
     except Exception:  # noqa: BLE001 - cleanup is cosmetic; keep the raw mesh on error
         return mesh
@@ -356,3 +418,86 @@ def write_web_glb(mesh: MeshResult, path: Path, triangle_cap: int = WEB_TRIANGLE
     tm = to_trimesh(mesh)
     tm.export(Path(path))
     return int(tm.faces.shape[0])
+
+
+def drop_unsupported(mesh: MeshResult, depths_mm: list[np.ndarray], intrinsics, extrinsics_mm,
+                     *, tol_mm: float, min_views: int = 2, rim_rings: int = 4,
+                     rounds: int = 3) -> MeshResult:
+    """Peel the ragged single-view flaps off the surface's open edges.
+
+    A vertex counts as observed by a view when it projects inside that view and the view's depth
+    there is within ``tol_mm`` of the vertex's own depth. TSDF keeps whatever a single view saw at
+    its silhouette: thin flaps that end in a free edge along rims. Only faces within ``rim_rings``
+    edge rings of an open boundary are candidates, peeled for ``rounds`` passes, so a flap is cut
+    back to where two views agree but an interior surface that only one view saw (a thin band's far
+    side) is kept: dropping those too punched holes that broke a headband into pieces and derailed
+    the part segmentation. Specks under 1% of the mesh are removed. Disable with SCREWIT_MIN_VIEWS=1.
+    """
+    import os
+
+    from scipy.sparse import coo_matrix
+
+    min_views = int(os.environ.get("SCREWIT_MIN_VIEWS", min_views))
+    if min_views <= 1 or mesh.triangles.shape[0] < 100 or len(depths_mm) < min_views:
+        return mesh
+    v = mesh.vertices_mm.astype(np.float64)
+    support = np.zeros(len(v), np.int32)
+    for depth, k, e in zip(depths_mm, intrinsics, extrinsics_mm, strict=False):
+        k = np.asarray(k, float)
+        e = np.asarray(e, float)
+        h, w = depth.shape
+        pc = v @ e[:3, :3].T + e[:3, 3]
+        z = pc[:, 2]
+        front = z > 1e-6
+        u = np.full(len(v), -1)
+        r = np.full(len(v), -1)
+        u[front] = np.round(k[0, 0] * pc[front, 0] / z[front] + k[0, 2]).astype(int)
+        r[front] = np.round(k[1, 1] * pc[front, 1] / z[front] + k[1, 2]).astype(int)
+        inb = front & (u >= 0) & (u < w) & (r >= 0) & (r < h)
+        d = np.zeros(len(v))
+        d[inb] = depth[r[inb], u[inb]]
+        support += (inb & (d > 0) & (np.abs(d - z) <= tol_mm)).astype(np.int32)
+    low_v = support < min_views
+    tris = mesh.triangles.astype(np.int64)
+    alive = np.ones(len(tris), bool)
+    n = len(v)
+    for _ in range(rounds):
+        t = tris[alive]
+        e = np.sort(np.concatenate([t[:, [0, 1]], t[:, [1, 2]], t[:, [2, 0]]]), axis=1)
+        key = e[:, 0] * n + e[:, 1]
+        _, inv, cnt = np.unique(key, return_inverse=True, return_counts=True)
+        near = np.zeros(n, bool)
+        near[e[cnt[inv] == 1].ravel()] = True                  # open-boundary vertices
+        adj = coo_matrix((np.ones(len(e)), (e[:, 0], e[:, 1])), shape=(n, n)).tocsr()
+        adj = adj + adj.T
+        for _ in range(rim_rings):
+            near = near | (adj @ near.astype(np.float64) > 0)
+        drop = alive.copy()
+        drop[alive] = low_v[t].all(axis=1) & near[t].any(axis=1)
+        if not drop.any():
+            break
+        alive &= ~drop
+    if alive.sum() < 0.5 * len(alive):   # implausible: keep the mesh rather than gut it
+        return mesh
+    return _compact(mesh, alive, min_component_frac=0.01)
+
+
+def _compact(mesh: MeshResult, keep_face: np.ndarray, min_component_frac: float = 0.0) -> MeshResult:
+    """Keep the given faces (and drop connected pieces under ``min_component_frac`` of them)."""
+    from scipy.sparse import coo_matrix
+    from scipy.sparse.csgraph import connected_components
+
+    tris = mesh.triangles[keep_face]
+    if min_component_frac > 0 and len(tris):
+        edges = np.concatenate([tris[:, [0, 1]], tris[:, [1, 2]]])
+        n = len(mesh.vertices_mm)
+        _, comp = connected_components(coo_matrix((np.ones(len(edges)), (edges[:, 0], edges[:, 1])),
+                                                  shape=(n, n)), directed=False)
+        fc = comp[tris[:, 0]]
+        sizes = np.bincount(fc)
+        tris = tris[sizes[fc] >= min_component_frac * len(tris)]
+    used = np.unique(tris)
+    remap = -np.ones(len(mesh.vertices_mm), np.int64)
+    remap[used] = np.arange(len(used))
+    return MeshResult(vertices_mm=mesh.vertices_mm[used], triangles=remap[tris].astype(np.int32),
+                      vertex_colors=mesh.vertex_colors[used])

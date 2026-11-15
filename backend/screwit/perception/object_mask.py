@@ -49,16 +49,6 @@ def _backproject(depth: np.ndarray, k: np.ndarray, w2c: np.ndarray, stride: int 
     return world, ys, xs
 
 
-def _shrink_factor(uv: np.ndarray, spacing: float) -> float:
-    """Scale factor (<=1) that pulls a 2D footprint inward toward its centroid by about one sample
-    spacing, so the base add-back stays inside the true object outline. Clamped to [0.5, 0.98]."""
-    centroid = uv.mean(axis=0)
-    reach = float(np.median(np.linalg.norm(uv - centroid, axis=1)))
-    if reach <= 1e-9:
-        return 0.98
-    return float(np.clip(1.0 - spacing / reach, 0.5, 0.98))
-
-
 def _camera_centres(cams) -> np.ndarray:
     out = []
     for c in cams:
@@ -130,19 +120,41 @@ class GeometricObjectMasker:
         n, d = plane
 
         height = pts @ n + d
-        cand = pts[height > 3.0 * thr]
+        # Noise-adaptive threshold. The fixed 1% of viewing distance (7 mm at 0.7 m) is the worst
+        # case; once the pipeline has flattened each view's table (recon.depthclean) the table is
+        # typically within 1-2 mm of the plane, and a fixed 7 mm band cut ~10 mm off every object's
+        # bottom and dropped thin flat objects (a phone lying flat) entirely. Use 3x the measured
+        # table noise (robust MAD of the near-plane points), capped at the old 1% and floored at
+        # 0.3% of the viewing distance.
+        near_plane = np.abs(height) < thr
+        cand_k = 3.0
+        if near_plane.sum() > 500:
+            h_np = height[near_plane]
+            mad = 1.4826 * float(np.median(np.abs(h_np - np.median(h_np))))
+            if 3.0 * mad < thr:          # measured noise is below the worst case: trust it
+                thr = max(3.0 * mad, 0.003 * cam_dist)
+                cand_k = 2.0
+        cand = pts[height > cand_k * thr]
         if len(cand) < 200:
             self.last_info = MaskInfo(method="all_valid_depth", plane_threshold_mm=thr,
                                       notes=["nothing stands on the support plane"])
             return fallback
 
-        pcd = o3d.geometry.PointCloud(o3d.utility.Vector3dVector(cand))
         # Neighbourhood radius: above the plane noise and the back-projection spacing (stride-2
         # pixels at the viewing distance), so one object's points join into one cluster.
         fx = float(np.median([np.asarray(c.K, dtype=np.float64).reshape(3, 3)[0, 0] for c in cams]))
         spacing = 2.0 * cam_dist / max(fx, 1e-6)
         eps = max(4.0 * thr, 0.02 * cam_dist, 3.0 * spacing)
-        labels = np.asarray(pcd.cluster_dbscan(eps=eps, min_points=20))
+        # DBSCAN cost grows with neighbours-per-point, and at this eps a dense object has thousands
+        # of neighbours per point (one real scan spent 331 s here). Cluster a voxel-downsampled copy
+        # (voxel eps/3 keeps every cluster connected), then give every full-resolution point the
+        # label of its nearest voxel. Same partition, a fraction of the time.
+        pcd = o3d.geometry.PointCloud(o3d.utility.Vector3dVector(cand))
+        pcd = pcd.voxel_down_sample(voxel_size=eps / 3.0)
+        ds = np.asarray(pcd.points)
+        ds_labels = np.asarray(pcd.cluster_dbscan(eps=eps, min_points=5))
+        _, nearest_ds = cKDTree(ds).query(cand, k=1)
+        labels = ds_labels[nearest_ds]
         ids = [i for i in np.unique(labels) if i >= 0]
         if not ids:
             self.last_info = MaskInfo(method="all_valid_depth", plane_threshold_mm=thr,
@@ -173,25 +185,11 @@ class GeometricObjectMasker:
         v_axis = np.cross(n, u_axis)
         obj_h = obj @ n + d
         base = obj[obj_h <= np.percentile(obj_h, 10)]
-        # The base add-back recovers the object's bottom contact patch (the band was excluded to
-        # drop the table). On an UPRIGHT object that is a few mm; on a FLAT, wide object (an ear
-        # cushion lying down) a naive nearest-point test grabs a ring of table all around the
-        # perimeter and fuses it in. So re-add a band pixel only when it lies INSIDE the object's
-        # base footprint (the 2D hull of the base points), shrunk inward by one sample spacing, not
-        # merely near some base point. A perimeter ring of table falls outside and is dropped.
-        base_uv = np.stack([base @ u_axis, base @ v_axis], axis=1) if len(base) else None
-        base_tri = base_centroid = None
-        if base_uv is not None and len(base_uv) >= 3:
-            from scipy.spatial import Delaunay
-
-            try:
-                base_centroid = base_uv.mean(axis=0)
-                # Shrink the footprint toward its centroid by one spacing so the add-back cannot
-                # reach past the true object outline into the table.
-                shrunk = base_centroid + (base_uv - base_centroid) * _shrink_factor(base_uv, spacing)
-                base_tri = Delaunay(shrunk)
-            except Exception:  # noqa: BLE001 - degenerate (collinear) base -> skip add-back
-                base_tri = None
+        # Only band pixels within one sample spacing of an actual base point (measured in the plane)
+        # come back. An earlier version filled the convex hull of the base instead, which for a
+        # ring-shaped object (a headband, a hose loop, a U-bend) added back the whole table inside
+        # the ring and fused it in as a sheet.
+        base_tree = cKDTree(np.stack([base @ u_axis, base @ v_axis], axis=1)) if len(base) else None
 
         out = []
         total = 0
@@ -208,11 +206,11 @@ class GeometricObjectMasker:
                 sel = np.flatnonzero(above)[hit]
                 mask[ys[sel], xs[sel]] = True
                 band = np.flatnonzero((h_all > -thr) & ~above)
-                if base_tri is not None and len(band):
+                if base_tree is not None and len(band):
                     q = p[band]
-                    quv = np.stack([q @ u_axis, q @ v_axis], axis=1)
-                    inside = base_tri.find_simplex(quv) >= 0  # strictly within the base footprint
-                    keep = band[inside]
+                    dist, _ = base_tree.query(np.stack([q @ u_axis, q @ v_axis], axis=1), k=1,
+                                              distance_upper_bound=spacing)
+                    keep = band[np.isfinite(dist)]
                     mask[ys[keep], xs[keep]] = True
             out.append(mask)
             total += int(mask.sum())

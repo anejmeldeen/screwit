@@ -13,6 +13,7 @@ helper when present.
 from __future__ import annotations
 
 import logging
+import os
 import tempfile
 import time
 from contextlib import contextmanager
@@ -207,7 +208,19 @@ class ReconPipelineImpl:
             extr_scan = geom_mod.apply_similarity_to_cameras(
                 result.extrinsics, scale_res.r, scale_res.t, scale_res.s)
             depth_scan = [d * scale_res.s for d in result.depth]
-            timer.done("scale", f"{scale_res.info.method}, {scale_res.info.corner_views} views")
+            # Clean the depth before anything consumes it (mask, bbox, mesh): flatten each view onto
+            # the shared support plane, drop silhouette flying pixels and multi-view outliers, and
+            # edge-preserving smooth the rest. See recon/depthclean.py for the measured reasons.
+            clean_note = ""
+            if os.environ.get("SCREWIT_DEPTH_CLEAN", "1").strip().lower() not in ("0", "false", "off", "no"):
+                from . import depthclean
+
+                clean_info = depthclean.CleanInfo()
+                depth_scan = depthclean.clean(depth_scan, result.intrinsics, extr_scan,
+                                              info=clean_info)
+                clean_note = "; " + clean_info.note()
+            timer.done("scale", f"{scale_res.info.method}, {scale_res.info.corner_views} views"
+                                f"{clean_note}")
 
             # ---- object mask ----
             timer.start("object_mask")
@@ -273,9 +286,11 @@ class ReconPipelineImpl:
             timer.start("mesh")
             # TSDF fusion is a blocking per-frame loop; creep the bar while it runs so the long
             # mesh stage (can be ~90s on CPU) does not sit frozen.
-            with timer.creep(0.05, 0.9, 60.0, "fusing mesh"):
+            with timer.creep(0.05, 0.9, 20.0, "fusing mesh"):
                 mesh_tris, mesh_glb_path = self._stage_mesh(scan_id, storage, frame_set, depth_scan,
-                                                            masks, extr_scan, result, scratch)
+                                                            masks, extr_scan, result, scratch,
+                                                            object_size_mm=float(np.linalg.norm(
+                                                                bbox_max - bbox_min)))
             # Phone-sized variants from the full assets, if the X5 optimizer is installed.
             full_splat_path = splat_manifest.get("ply_path") if len(cloud_scan) > 0 else None
             mesh_mobile_key, splat_mobile_key = self._maybe_mobile_variants(
@@ -292,7 +307,7 @@ class ReconPipelineImpl:
             # ---- parts (P3) ----
             timer.start("parts")
             mesh_path = storage.local_path(self._key(scan_id, "mesh/object.glb"), scratch)
-            with timer.creep(0.05, 0.9, 20.0, "detecting and naming parts"):
+            with timer.creep(0.05, 0.9, 40.0, "detecting and naming parts"):
                 perception.parts(scan_id, frame_set, masks, mesh_path, rev, storage)
             timer.done("parts")
         _ = recon
@@ -450,17 +465,24 @@ class ReconPipelineImpl:
 
     # -- mesh ---------------------------------------------------------------
 
-    def _stage_mesh(self, scan_id, storage, frame_set, depth_scan, masks, extr_scan, result, scratch):
+    def _stage_mesh(self, scan_id, storage, frame_set, depth_scan, masks, extr_scan, result, scratch,
+                    object_size_mm: float | None = None):
         masked_depth = [np.where(m, d, 0.0).astype(np.float32) for d, m in zip(depth_scan, masks, strict=False)]
         colors = frame_set.images
-        mesh = tsdf_mod.fuse_tsdf(masked_depth, colors, result.intrinsics, extr_scan)
+        voxel_m, trunc_m = tsdf_mod.fusion_resolution(object_size_mm)
+        mesh = tsdf_mod.fuse_tsdf(masked_depth, colors, result.intrinsics, extr_scan,
+                                  voxel_length=voxel_m, sdf_trunc=trunc_m)
+        # Drop surface fewer than two views confirm (the ragged single-view flaps along rims).
+        mesh = tsdf_mod.drop_unsupported(mesh, masked_depth, result.intrinsics, extr_scan,
+                                         tol_mm=1000.0 * trunc_m)
         mesh = tsdf_mod.repair_mesh(mesh)
         # Sparse CPU scans sometimes fragment and the largest-component rule drops the object,
         # yielding an empty mesh. Retry once, looser: wider truncation to bridge gaps and keep ALL
         # sizeable components (not just the largest), so the object survives.
         if mesh.triangles.shape[0] < 100:
             mesh = tsdf_mod.fuse_tsdf(masked_depth, colors, result.intrinsics, extr_scan,
-                                      keep_largest=False, sdf_trunc=0.012)
+                                      keep_largest=False, voxel_length=voxel_m,
+                                      sdf_trunc=3.0 * trunc_m)
             mesh = tsdf_mod.repair_mesh(mesh)
         full_path = scratch / "object_full.ply"
         glb_path = scratch / "object.glb"
