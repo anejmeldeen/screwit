@@ -1,0 +1,377 @@
+[
+  {
+    "part_id": "p1",
+    "color_source_id": null,
+    "reconstruction_revision": 1,
+    "measurement_revision": 1,
+    "label": "Headband",
+    "label_confidence": 1.0,
+    "description": "Curved over-ear headband with padded underside; illustrative Crusher Evo-inspired shape.",
+    "mesh_uri": "scans/scn_headphones/parts/p1.glb",
+    "thumbnail_uri": "scans/scn_headphones/renders/p1.png",
+    "centroid_mm": [
+      0.0,
+      0.0,
+      186.49323359712722
+    ],
+    "obb": {
+      "center": [
+        0.0,
+        0.0,
+        186.49323359712722
+      ],
+      "extent": [
+        198.0,
+        29.0,
+        98.98646719425443
+      ],
+      "rotation_quat": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ]
+    },
+    "dimensions": [
+      {
+        "name": "width",
+        "value": {
+          "scan_mm": 198.0,
+          "snapped_mm": null,
+          "snap_rule": null,
+          "caliper_mm": null,
+          "user_confirmed": false,
+          "preferred": "scan"
+        }
+      },
+      {
+        "name": "depth",
+        "value": {
+          "scan_mm": 29.0,
+          "snapped_mm": null,
+          "snap_rule": null,
+          "caliper_mm": null,
+          "user_confirmed": false,
+          "preferred": "scan"
+        }
+      },
+      {
+        "name": "height",
+        "value": {
+          "scan_mm": 98.98646719425443,
+          "snapped_mm": null,
+          "snap_rule": null,
+          "caliper_mm": null,
+          "user_confirmed": false,
+          "preferred": "scan"
+        }
+      }
+    ],
+    "features": [],
+    "material_guess": {
+      "value": "Illustrative material",
+      "confidence": 1.0
+    },
+    "source": "user_edited"
+  },
+  {
+    "part_id": "p2",
+    "color_source_id": null,
+    "reconstruction_revision": 1,
+    "measurement_revision": 1,
+    "label": "Left earcup",
+    "label_confidence": 1.0,
+    "description": "Separate oval driver housing with swivel hinge and headband slider.",
+    "mesh_uri": "scans/scn_headphones/parts/p2.glb",
+    "thumbnail_uri": "scans/scn_headphones/renders/p2.png",
+    "centroid_mm": [
+      -94.0,
+      0.0,
+      95.0
+    ],
+    "obb": {
+      "center": [
+        -94.0,
+        0.0,
+        95.0
+      ],
+      "extent": [
+        34.0,
+        68.0,
+        110.0
+      ],
+      "rotation_quat": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ]
+    },
+    "dimensions": [
+      {
+        "name": "width",
+        "value": {
+          "scan_mm": 34.0,
+          "snapped_mm": null,
+          "snap_rule": null,
+          "caliper_mm": null,
+          "user_confirmed": false,
+          "preferred": "scan"
+        }
+      },
+      {
+        "name": "depth",
+        "value": {
+          "scan_mm": 68.0,
+          "snapped_mm": null,
+          "snap_rule": null,
+          "caliper_mm": null,
+          "user_confirmed": false,
+          "preferred": "scan"
+        }
+      },
+      {
+        "name": "height",
+        "value": {
+          "scan_mm": 110.0,
+          "snapped_mm": null,
+          "snap_rule": null,
+          "caliper_mm": null,
+          "user_confirmed": false,
+          "preferred": "scan"
+        }
+      }
+    ],
+    "features": [],
+    "material_guess": {
+      "value": "Illustrative material",
+      "confidence": 1.0
+    },
+    "source": "user_edited"
+  },
+  {
+    "part_id": "p3",
+    "color_source_id": null,
+    "reconstruction_revision": 1,
+    "measurement_revision": 1,
+    "label": "Right earcup",
+    "label_confidence": 1.0,
+    "description": "Separate oval driver housing with swivel hinge and headband slider.",
+    "mesh_uri": "scans/scn_headphones/parts/p3.glb",
+    "thumbnail_uri": "scans/scn_headphones/renders/p3.png",
+    "centroid_mm": [
+      94.0,
+      0.0,
+      95.0
+    ],
+    "obb": {
+      "center": [
+        94.0,
+        0.0,
+        95.0
+      ],
+      "extent": [
+        34.0,
+        68.0,
+        110.0
+      ],
+      "rotation_quat": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ]
+    },
+    "dimensions": [
+      {
+        "name": "width",
+        "value": {
+          "scan_mm": 34.0,
+          "snapped_mm": null,
+          "snap_rule": null,
+          "caliper_mm": null,
+          "user_confirmed": false,
+          "preferred": "scan"
+        }
+      },
+      {
+        "name": "depth",
+        "value": {
+          "scan_mm": 68.0,
+          "snapped_mm": null,
+          "snap_rule": null,
+          "caliper_mm": null,
+          "user_confirmed": false,
+          "preferred": "scan"
+        }
+      },
+      {
+        "name": "height",
+        "value": {
+          "scan_mm": 110.0,
+          "snapped_mm": null,
+          "snap_rule": null,
+          "caliper_mm": null,
+          "user_confirmed": false,
+          "preferred": "scan"
+        }
+      }
+    ],
+    "features": [],
+    "material_guess": {
+      "value": "Illustrative material",
+      "confidence": 1.0
+    },
+    "source": "user_edited"
+  },
+  {
+    "part_id": "p4",
+    "color_source_id": null,
+    "reconstruction_revision": 1,
+    "measurement_revision": 1,
+    "label": "Left ear cushion",
+    "label_confidence": 1.0,
+    "description": "Removable oval padded earmuff with an open center.",
+    "mesh_uri": "scans/scn_headphones/parts/p4.glb",
+    "thumbnail_uri": "scans/scn_headphones/renders/p4.png",
+    "centroid_mm": [
+      -75.0,
+      0.0,
+      88.0
+    ],
+    "obb": {
+      "center": [
+        -75.0,
+        0.0,
+        88.0
+      ],
+      "extent": [
+        14.0,
+        64.0,
+        86.0
+      ],
+      "rotation_quat": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ]
+    },
+    "dimensions": [
+      {
+        "name": "width",
+        "value": {
+          "scan_mm": 14.0,
+          "snapped_mm": null,
+          "snap_rule": null,
+          "caliper_mm": null,
+          "user_confirmed": false,
+          "preferred": "scan"
+        }
+      },
+      {
+        "name": "depth",
+        "value": {
+          "scan_mm": 64.0,
+          "snapped_mm": null,
+          "snap_rule": null,
+          "caliper_mm": null,
+          "user_confirmed": false,
+          "preferred": "scan"
+        }
+      },
+      {
+        "name": "height",
+        "value": {
+          "scan_mm": 86.0,
+          "snapped_mm": null,
+          "snap_rule": null,
+          "caliper_mm": null,
+          "user_confirmed": false,
+          "preferred": "scan"
+        }
+      }
+    ],
+    "features": [],
+    "material_guess": {
+      "value": "Illustrative material",
+      "confidence": 1.0
+    },
+    "source": "user_edited"
+  },
+  {
+    "part_id": "p5",
+    "color_source_id": null,
+    "reconstruction_revision": 1,
+    "measurement_revision": 1,
+    "label": "Right ear cushion",
+    "label_confidence": 1.0,
+    "description": "Removable oval padded earmuff with an open center.",
+    "mesh_uri": "scans/scn_headphones/parts/p5.glb",
+    "thumbnail_uri": "scans/scn_headphones/renders/p5.png",
+    "centroid_mm": [
+      75.0,
+      0.0,
+      88.0
+    ],
+    "obb": {
+      "center": [
+        75.0,
+        0.0,
+        88.0
+      ],
+      "extent": [
+        14.0,
+        64.0,
+        86.0
+      ],
+      "rotation_quat": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ]
+    },
+    "dimensions": [
+      {
+        "name": "width",
+        "value": {
+          "scan_mm": 14.0,
+          "snapped_mm": null,
+          "snap_rule": null,
+          "caliper_mm": null,
+          "user_confirmed": false,
+          "preferred": "scan"
+        }
+      },
+      {
+        "name": "depth",
+        "value": {
+          "scan_mm": 64.0,
+          "snapped_mm": null,
+          "snap_rule": null,
+          "caliper_mm": null,
+          "user_confirmed": false,
+          "preferred": "scan"
+        }
+      },
+      {
+        "name": "height",
+        "value": {
+          "scan_mm": 86.0,
+          "snapped_mm": null,
+          "snap_rule": null,
+          "caliper_mm": null,
+          "user_confirmed": false,
+          "preferred": "scan"
+        }
+      }
+    ],
+    "features": [],
+    "material_guess": {
+      "value": "Illustrative material",
+      "confidence": 1.0
+    },
+    "source": "user_edited"
+  }
+]
