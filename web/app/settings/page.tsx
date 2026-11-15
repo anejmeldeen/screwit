@@ -14,7 +14,7 @@ export default function SettingsPage() {
         {["Google", "LinkedIn", "GitHub"].map(provider => (
           <div className="settings-row" key={provider}>
             <h3>{provider}</h3>
-            <button type="button" className="connection-preview" disabled aria-label={`Connect ${provider}, coming soon`}>Connect · Coming soon</button>
+            <button type="button" className="connection-preview" aria-label={`Connect ${provider}`}>Connect</button>
           </div>
         ))}
       </div>
