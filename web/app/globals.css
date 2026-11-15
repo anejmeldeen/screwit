@@ -223,14 +223,15 @@ button:disabled { cursor: not-allowed; }
 
 /* The personal workshop: a quiet list of builds beside a persistent tool rail. */
 .dashboard-shell { display:grid; grid-template-columns:248px minmax(0,1fr); min-height:100dvh; }
-.dashboard-sidebar { position:sticky; top:0; height:100dvh; display:flex; flex-direction:column; padding:36px 20px 20px; background:#27281f; color:#e7e4d5; }
-.sidebar-brand { padding:0 12px; margin-bottom:4px; display:flex; align-items:center; justify-content:space-between; }
-.sidebar-wordmark { border-bottom:1px solid #bcbdb6; padding-bottom:4px; color:var(--paper); font-size:34px; line-height:1; font-weight:800; letter-spacing:-2px; }
+.dashboard-sidebar { --divider-gap:20px; position:sticky; top:0; height:100dvh; display:flex; flex-direction:column; padding:36px 20px 20px; background:#27281f; color:#e7e4d5; }
+.sidebar-brand { padding:0 12px; margin-bottom:var(--divider-gap); display:flex; align-items:center; justify-content:space-between; }
+.sidebar-wordmark { border-bottom:1px solid #bcbdb6; padding-bottom:var(--divider-gap); color:var(--paper); font-size:34px; line-height:1; font-weight:800; letter-spacing:-2px; }
 .sidebar-wordmark span { color:#fff4b1; }
 .sidebar-content { display:flex; flex-direction:column; flex:1; min-height:0; overflow-y:auto; }
 .sidebar-create { display:flex; align-items:center; justify-content:center; gap:10px; padding:13px 10px; border-radius:6px; background:var(--paper); color:#27281f; font-size:13px; font-weight:700; }
 .sidebar-create:hover { background:#ffe681; }
 .sidebar-label { font-size:10px; text-transform:uppercase; letter-spacing:1.8px; color:#9b9c89; margin:36px 12px 13px; }
+.sidebar-label:first-child { margin-top:0; }
 .dashboard-sidebar nav { display:flex; flex-direction:column; gap:5px; }
 .dashboard-sidebar nav a { display:flex; align-items:center; gap:12px; padding:13px 12px; border-radius:6px; font-size:14px; color:#c0c1af; }
 .dashboard-sidebar nav a:hover { background:#ffffff08; color:#fff4b1; }
@@ -320,7 +321,7 @@ button:disabled { cursor: not-allowed; }
  .sidebar-brand { margin:0; padding:0; }
  .sidebar-wordmark { font-size:28px; }
  .sidebar-menu { display:grid; place-items:center; width:36px; height:36px; border:1px solid #686849; border-radius:5px; color:var(--paper); }
- .sidebar-content { display:none; padding-top:24px; }
+ .sidebar-content { display:none; padding-top:var(--divider-gap); }
  .sidebar-content.is-open { display:flex; }
  .sidebar-bottom { padding-top:24px; }
  .sidebar-note { display:none; }
