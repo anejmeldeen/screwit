@@ -345,7 +345,9 @@ def test_tool_specs_include_add_part():
     spec = next(t for t in anthropic_tool_specs() if t["name"] == "add_part")
     schema = spec["input_schema"]
     assert schema["required"] == ["label", "kind"]
-    assert schema["properties"]["kind"]["enum"] == ["box", "cylinder", "sphere", "cad"]
+    assert schema["properties"]["kind"]["enum"] == [
+        "box", "cylinder", "sphere", "cad", "cone", "triangular_prism", "cat_ear",
+    ]
     assert {"size_mm", "center_mm", "rotation_quat", "cad_id", "attach_to", "relation"} <= set(
         schema["properties"])
 
@@ -575,3 +577,38 @@ def test_chat_add_part_shows_up_in_parts_assets_graph_and_history(api, monkeypat
     assert messages[1]["content"] == "I added the support block."
     assert messages[2]["content"] == "how big is it?"
     assert f'{pid} "Block"' in driver.calls[-1]["system"]
+
+def test_offline_pair_on_real_headband(registry):
+    from screwit.agent.offline import OfflineChatAgent
+
+    events = list(OfflineChatAgent(registry).reply("scn_headphones", "add two cat ears on the headband", []))
+    ids = next(e.part_ids for e in events if e.event == "highlight")
+    assert len(set(ids)) == 2
+    store = ScanStore(registry.data)
+    added = [p for p in store.list_parts("scn_headphones") if p.part_id in ids]
+    assert len(added) == 2
+    assert added[0].centroid_mm[0] * added[1].centroid_mm[0] < 0
+    assert all(p.centroid_mm[2] > 0 for p in added)
+    for part in added:
+        raw = registry.storage.get_bytes(part.mesh_uri)
+        mesh = trimesh.load(io.BytesIO(raw), file_type="glb", force="scene").to_geometry()
+        assert mesh.is_volume and mesh.is_watertight
+        assert len(mesh.faces) > 300
+
+def test_chat_builds_surface_attached_solid_without_confirmation(api):
+    response = api.post("/api/scans/scn_headphones/chat",
+                        json={"message": "Add a 20 mm sphere on the top of the headband"})
+    events = _sse_events(response.text)
+    pid = next(e.part_ids[0] for e in events if e.event == "highlight")
+    parts = api.get("/api/scans/scn_headphones/parts").json()
+    part = next(p for p in parts if p["part_id"] == pid)
+    anchor = next(p for p in parts if p["label"] == "Headband")
+    def read_mesh(p):
+        return trimesh.load(io.BytesIO(api.get(p["mesh_uri"]).content), file_type="glb", force="scene").to_geometry()
+    ball, band = read_mesh(part), read_mesh(anchor)
+    assert ball.is_watertight and len(ball.faces) >= 5000
+    assert np.allclose(ball.extents, [20, 20, 20], atol=.01)
+    # At the crown of this fixture the sphere's lower pole touches the actual headband.
+    pole = ball.vertices[ball.vertices[:, 2].argmin()]
+    _, dist, _ = trimesh.proximity.closest_point_naive(band, [pole])
+    assert dist[0] < .01

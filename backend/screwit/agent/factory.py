@@ -13,10 +13,12 @@ Live replies use Screwy's own voice. Offline replies disclose their limited mode
 from __future__ import annotations
 
 import os
+import uuid
 from collections.abc import Iterator
 
 from screwit.agent.loop import LlmChatAgent
 from screwit.agent.offline import OfflineChatAgent
+from screwit.agent.shape_commands import shape_command
 from screwit.app.registry import Registry
 from screwit.contracts import DoneEvent
 from screwit.interfaces import ChatAgent
@@ -52,6 +54,11 @@ class _LlmWithOfflineFallback:
         self._reg = reg
 
     def reply(self, scan_id: str, message: str, image_uris: list[str]) -> Iterator:
+        command = shape_command(self._reg, scan_id, message) if not image_uris else None
+        if command is not None:
+            yield from command
+            yield DoneEvent(message_id="msg_" + uuid.uuid4().hex[:12])
+            return
         # Try the real model. Buffer until the first substantive event so that, if the provider fails
         # before producing anything, we emit ONLY the offline note (no misleading online note).
         try:

@@ -139,8 +139,8 @@ def anthropic_tool_specs() -> list[dict]:
              "Add a NEW component to the object and save it: a simple solid (box, cylinder, sphere) "
              "sized and placed in the scan frame (mm, Z up), or the model of a CAD result placed "
              "where its preview was shown. It is saved as a user-edited part and appears in the "
-             "parts list, hierarchy and 3D viewer. Call it only after the user has confirmed what "
-             "to add, its size and its position. Returns the new part id."),
+             "parts list, hierarchy and 3D viewer. On an explicit build request call it immediately. "
+             "Supply attach_to and surface for automatic mesh placement. Returns the saved part id."),
          "input_schema": input_schema()},
     ]
 

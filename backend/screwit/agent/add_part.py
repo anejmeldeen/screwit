@@ -29,7 +29,7 @@ from screwit.app.store import ScanStore
 from screwit.contracts import Part, Relation, SceneGraph
 from screwit.contracts.models import RelationType
 
-KINDS = ("box", "cylinder", "sphere", "cad")
+KINDS = ("box", "cylinder", "sphere", "cad", "cone", "triangular_prism", "cat_ear")
 RELATION_TYPES: tuple[str, ...] = get_args(RelationType)
 MIN_SIZE_MM = 0.1
 MAX_SIZE_MM = 2000.0
@@ -65,18 +65,23 @@ def input_schema() -> dict:
         "properties": {
             "label": {"type": "string", "description": "Short name for the new part."},
             "kind": {"type": "string", "enum": list(KINDS),
-                     "description": "box, cylinder or sphere for a simple solid; cad for the model "
+                     "description": "box, cylinder, sphere, cone, triangular_prism or cat_ear; cad for the model "
                                     "of a CAD result (needs cad_id)."},
             "size_mm": {**vec3, "description": (
-                "Required for box, cylinder and sphere: the part's size in mm along the scan-frame X, "
+                "Required for all primitives: the part's size in mm along the scan-frame X, "
                 "Y and Z axes (before any rotation_quat). box: edge lengths [x, y, z]. cylinder: two "
                 "equal values are the diameter and the third is the length along the cylinder's "
                 "axis, which runs along that third axis (all three equal: along Z). For example "
                 "[30, 15, 30] is a disc 30 mm across and 15 mm thick whose axis runs along Y. "
                 f"sphere: [d, d, d] (unequal values give an ellipsoid). Each value "
                 f"{MIN_SIZE_MM}-{MAX_SIZE_MM:g} mm.")},
+            "surface": {"type": "string", "enum": list(_FACES),
+                        "description": "Snap onto this scan-axis face of attach_to instead of supplying center_mm."},
+            "offset_uv": {"type": "array", "minItems": 2, "maxItems": 2, "items": {"type": "number"},
+                          "description": "Position across the face, -1 to 1 on each remaining scan axis "
+                                         "in XYZ order. Default [0,0] is the middle."},
             "center_mm": {**vec3, "description": (
-                "Required for box, cylinder and sphere: where the part's centre goes, [x, y, z] in mm "
+                "Without surface placement: where the part's centre goes, [x, y, z] in mm "
                 "in the scan frame (right-handed, Z up, z = 0 on the support surface).")},
             "rotation_quat": {"type": "array", "items": {"type": "number"}, "minItems": 4,
                               "maxItems": 4, "description": (
@@ -93,7 +98,7 @@ def input_schema() -> dict:
             "material": {"type": "string", "description": "Optional; only when the user named the "
                                                           "material, e.g. PLA or steel."},
             "attach_to": {"type": "string", "description": (
-                "Optional id of an existing part the new part touches or mounts on; records a "
+                "Existing part id, required with surface; records a "
                 "relation in the scene graph.")},
             "relation": {"type": "string", "enum": list(RELATION_TYPES), "description": (
                 "Relation from the new part to attach_to; default rests_on. Needs attach_to.")},
@@ -260,15 +265,52 @@ def _primitive(kind: str, size: list[float], axis: int | None = None):
     """A solid centred on the origin whose extents along the scan X, Y, Z axes equal size (mm)."""
     import trimesh
 
+    if kind == "cat_ear":
+        # Rounded triangular shell with a raised rim and recessed front panel.
+        # Rings share vertices at every seam, including the floor of the recess.
+        corners = np.array([[-.5, -.5], [.5, -.5], [0, .5]])
+        outline = []
+        for i, corner in enumerate(corners):
+            start = corner + .08 * (corners[i-1] - corner)
+            end = corner + .08 * (corners[(i+1) % 3] - corner)
+            for t in np.linspace(0, 1, 9):
+                outline.append((1-t)**2 * start + 2*t*(1-t)*corner + t*t*end)
+        x, z = np.asarray(outline).T
+        rings = [(.88, .5), (.98, .4), (1, .25), (1, -.30), (.96, -.49),
+                 (.87, -.50), (.78, -.43), (.69, -.22)]
+        vertices = np.concatenate([np.column_stack((x*k, np.full_like(x, y), z*k)) for k, y in rings])
+        n = len(x)
+        faces = []
+        for k in range(len(rings)-1):
+            for i in range(n):
+                a, b = k*n+i, k*n+(i+1) % n
+                faces.extend([(a, b, b+n), (a, b+n, a+n)])
+        last = (len(rings)-1)*n
+        for i in range(1, n-1):
+            faces.extend([(0, i+1, i), (last, last+i, last+i+1)])
+        mesh = trimesh.Trimesh(vertices=vertices, faces=faces)
+        mesh.fix_normals()
+        mesh.apply_translation(-mesh.bounds.mean(axis=0))
+        mesh.apply_scale(np.asarray(size)/mesh.extents)
+        return mesh
     if kind == "box":
         return trimesh.creation.box(extents=size)
     if kind == "sphere":
-        mesh = trimesh.creation.icosphere(subdivisions=3, radius=0.5)
+        mesh = trimesh.creation.icosphere(subdivisions=4, radius=0.5)
         mesh.apply_scale(size)
+        return mesh
+    if kind in ("cone", "triangular_prism"):
+        if kind == "cone":
+            mesh = trimesh.creation.cone(radius=1, height=1, sections=96)
+        else:
+            vertices = [[x, y, z] for y in (-0.5, 0.5) for x, z in ((-.5, 0), (.5, 0), (0, 1))]
+            mesh = trimesh.convex.convex_hull(vertices)
+        mesh.apply_translation(-mesh.bounds.mean(axis=0))
+        mesh.apply_scale(np.asarray(size) / mesh.extents)
         return mesh
     axis = _cylinder_axis(size) if axis is None else axis
     diameter = size[(axis + 1) % 3]
-    mesh = trimesh.creation.cylinder(radius=diameter / 2.0, height=size[axis], sections=64)  # along Z
+    mesh = trimesh.creation.cylinder(radius=diameter / 2.0, height=size[axis], sections=96)  # along Z
     if axis != 2:
         direction = [0.0, 0.0, 0.0]
         direction[axis] = 1.0
@@ -347,16 +389,91 @@ def _latest_graph_revision(scan_id: str) -> int:
 
 
 # ---------------------------------------------------------------- the tool
+_FACES = {"top": (2, 1), "bottom": (2, -1), "right": (0, 1), "left": (0, -1),
+          "front": (1, -1), "back": (1, 1)}
+
+
+def _surface_point(reg, anchor, face, uv):
+    """Intersect a scan-axis ray with the actual triangles, choosing the outermost hit."""
+    import trimesh
+
+    if not isinstance(face, str) or face not in _FACES:
+        raise AddPartError("unknown surface")
+    uv = np.asarray(_vector(uv, "offset_uv", 2))
+    if np.any(np.abs(uv) > 1):
+        raise AddPartError("offset_uv must lie between -1 and 1")
+    try:
+        scene = trimesh.load(io.BytesIO(reg.storage.get_bytes(anchor.mesh_uri)), file_type="glb", force="scene")
+        mesh = scene.to_geometry()
+        triangles = mesh.triangles
+        lo, hi = mesh.bounds
+    except Exception as exc:
+        raise AddPartError("could not read the attachment mesh") from exc
+    axis, sign = _FACES[face]
+    plane = [i for i in range(3) if i != axis]
+    target = (lo + hi) / 2
+    target[plane] += uv * (hi-lo)[plane] / 2
+    a, b, c = triangles.transpose(1, 0, 2)
+    u, v = (b-a)[:, plane], (c-a)[:, plane]
+    w = target[plane] - a[:, plane]
+
+    def cross(x, y):
+        return x[:, 0] * y[:, 1] - x[:, 1] * y[:, 0]
+
+    det = cross(u, v)
+    valid = np.abs(det) > 1e-12
+    det = np.where(valid, det, 1)
+    i, j = cross(w, v)/det, cross(u, w)/det
+    hit = valid & (i >= -1e-8) & (j >= -1e-8) & (i+j <= 1+1e-8)
+    if np.any(hit):
+        depths = (a[:, axis] + i*(b-a)[:, axis] + j*(c-a)[:, axis])[hit]
+        target[axis] = sign * np.max(sign*depths)
+    else:
+        # A hole or an open outline: use the closest projected triangle edge.
+        ends = np.roll(triangles, -1, axis=1)
+        edges = ends - triangles
+        delta = target[plane] - triangles[:, :, plane]
+        flat = edges[:, :, plane]
+        t = np.clip((delta*flat).sum(2) / np.maximum((flat*flat).sum(2), 1e-20), 0, 1)
+        points = (triangles + t[:, :, None]*edges).reshape(-1, 3)
+        distances = np.linalg.norm(points[:, plane]-target[plane], axis=1)
+        nearest = points[distances <= distances.min()+1e-7]
+        target = nearest[np.argmax(sign*nearest[:, axis])].copy()
+    return target, axis, sign
+
+
 def add_part(reg: Registry, store: ScanStore, scan_id: str, args: dict) -> PartAddedSignal | dict:
     parts = store.list_parts(scan_id)
     part_ids = [p.part_id for p in parts]
     try:
+        args = dict(args) if isinstance(args, dict) else args
+        surface = args.pop("surface", None) if isinstance(args, dict) else None
+        uv = args.pop("offset_uv", None) if isinstance(args, dict) else None
+        if uv is not None and surface is None:
+            raise AddPartError("offset_uv needs a surface")
+        if surface is not None:
+            if not args.get("attach_to"):
+                raise AddPartError("surface needs attach_to")
+            if args.get("center_mm") is not None:
+                raise AddPartError("choose either surface or center_mm")
+            if args.get("kind") != "cad":
+                args["center_mm"] = [0, 0, 0]
         req = _parse(args, set(part_ids))
         if req.kind == "cad":
             mesh, quat, translate, cad_status = _cad_mesh(reg, store, scan_id, req.cad_id)
         else:
             mesh, quat, translate, cad_status = (_primitive(req.kind, req.size, req.axis), req.quat,
                                                  req.center, None)
+        if surface is not None:
+            anchor = next(p for p in parts if p.part_id == req.attach_to)
+            point, axis, sign = _surface_point(reg, anchor, surface, uv if uv is not None else [0, 0])
+            rotated = mesh.vertices @ _matrix(quat, [0, 0, 0])[:3, :3].T
+            depths = sign * rotated[:, axis]
+            support = rotated[np.isclose(depths, depths.min(), rtol=0, atol=1e-7)]
+            contact = (support.min(axis=0) + support.max(axis=0)) / 2
+            translate = point - contact
+            if np.any(np.abs(translate) > MAX_COORD_MM):
+                raise AddPartError("computed placement exceeds the scan coordinate limit")
     except AddPartError as e:
         return {"error": "bad_request", "message": str(e)}
 
@@ -427,8 +544,8 @@ def _shape_words(req: _Request, extent: list[float]) -> str:
     if req.kind == "cad":
         return f"the model of CAD result {req.cad_id}, {' x '.join(fmt_mm(v) for v in extent)} mm"
     size = req.size or extent
-    if req.kind == "box":
-        return f"box {' x '.join(fmt_mm(v) for v in size)} mm"
+    if req.kind in ("cone", "triangular_prism", "cat_ear", "box"):
+        return f"{req.kind} {' x '.join(fmt_mm(v) for v in size)} mm"
     if req.kind == "cylinder":
         axis = req.axis if req.axis is not None else 2
         return (f"cylinder {fmt_mm(size[(axis + 1) % 3])} mm across and {fmt_mm(size[axis])} mm long, "
@@ -443,7 +560,7 @@ def _dimensions(req: _Request) -> list[dict]:
     if req.size is None:
         return []
     x, y, z = req.size
-    if req.kind == "box":
+    if req.kind in ("box", "cone", "triangular_prism", "cat_ear"):
         named = [("size_x", x), ("size_y", y), ("size_z", z)]
     elif req.kind == "cylinder":
         axis = req.axis if req.axis is not None else 2

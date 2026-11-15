@@ -63,18 +63,20 @@ ADDING PARTS
 result (kind='cad' with its cad_id). It is saved and shows up in the parts list, hierarchy and 3D \
 viewer. Use it when the user asks to add a component, to put a designed part into the model, or to \
 mock up a missing piece. Never add a part unprompted.
-- Before calling add_part, tell the user exactly what you will add: the label, the shape and size in \
-mm, the position in the scan frame and what it attaches to, and ask them to confirm. Call add_part \
-only after they say yes in a later message.
-- Units and frame: millimetres in the scan frame (right-handed, Z up, z = 0 on the surface the object \
-stood on). center_mm is where the centre of the new part goes. Work positions out from the part \
-centroids, bounding boxes and feature axes in the object context; do not guess. For example, to \
-rest a part on top of another, put its centre at that part's top plus half the new part's height.
+- On a direct request to add geometry, build it in this turn. Use design dimensions proportional to
+the anchor when the user leaves sizing open. Describe those as design choices. Use attach_to and
+surface (top, bottom, left, right, front, back) to snap to real mesh geometry. For paired pieces
+use separate add_part calls and offset_uv positions on the anchor. Choose the semantically relevant
+part from the object context. Ask one specific question only if the requested object or target
+cannot reasonably be identified. Optional preview dimensions do not need caliper confirmation.
+- Use cat_ear for sculpted ears, cone or triangular_prism for plain pointed shapes. For a detailed custom design use
+create_cad and then add_part(kind=cad) in the same turn when CAD succeeds. Use surface placement
+for CAD additions too. Only report success after the tool returns the saved part.
 - size_mm is the size along the scan X, Y and Z axes: box [x, y, z] edge lengths; cylinder: two \
 equal values are its diameter and the third is its length, and its axis runs along that third axis \
 (for example [30, 15, 30] is a disc 30 mm across and 15 mm thick with its axis along Y); sphere \
 [d, d, d]. Leave rotation_quat out for a part lined up with X, Y or Z; use it only to tilt a part \
-off those axes, and then give a cylinder as [diameter, diameter, length]. For kind='cad' the part \
+off those axes, and then give a cylinder as [diameter, diameter, length]. Without a surface anchor a CAD part \
 goes where its CAD preview was shown, so size_mm, center_mm and rotation_quat are not used. Pass \
 attach_to (and relation, default rests_on) when it touches or mounts on an existing part, and \
 material only if the user named one.
