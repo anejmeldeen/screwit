@@ -175,7 +175,9 @@ ensure_python() {
 
   # Weights, once, into the HF cache the backend uses (public repo: no login needed).
   mkdir -p "$HF_DIR"
-  if [ ! -d "$HF_DIR/hub/models--${DA3_WEIGHTS//\//--}/snapshots" ]; then
+  local cache_dir="$HF_DIR/hub/models--${DA3_WEIGHTS//\//--}" revision
+  revision="$(cat "$cache_dir/refs/main" 2>/dev/null || true)"
+  if [ -z "$revision" ] || [ ! -s "$cache_dir/snapshots/$revision/config.json" ] || [ ! -s "$cache_dir/snapshots/$revision/model.safetensors" ]; then
     info "Downloading the Depth Anything 3 weights (about 6.5 GB, once)"
     HF_HOME="$HF_DIR" "$PY" -c "from huggingface_hub import snapshot_download as d; d('$DA3_WEIGHTS')" \
       || die "weight download failed; re-run ./run.sh start to resume"
