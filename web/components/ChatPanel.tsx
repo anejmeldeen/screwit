@@ -45,6 +45,7 @@ export function ChatPanel({
 }) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
+  const [progress, setProgress] = useState("Screwy is thinking…");
   const [streaming, setStreaming] = useState(false);
   const [images, setImages] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -71,6 +72,7 @@ export function ChatPanel({
       { id: assistantId, role: "assistant", text: "", cards: [] },
     ]);
     setInput("");
+    setProgress("Screwy is thinking…");
     setStreaming(true);
 
     const sentImages = images;
@@ -78,6 +80,7 @@ export function ChatPanel({
 
     // An add_part tool call means the workspace has a new part. Refresh the parts once the reply
     // has finished (on `done`, or when the stream ends some other way), and only once.
+    let fittingEars = false;
     let partsChanged = false;
     let partsRefreshed = false;
     const refreshPartsOnce = () => {
@@ -110,7 +113,7 @@ export function ChatPanel({
           ? text.replace(/\b(?:this part|that part|the selected (?:part|piece)|this piece)\b/gi, () => `[[part:${selectedPartId}]]`)
           : text,
         sentImages,
-        (ev: ChatEvent) => {
+        async (ev: ChatEvent) => {
           switch (ev.event) {
             case "token": {
               if (firstToken) {
@@ -148,7 +151,18 @@ export function ChatPanel({
                 (ev as { message: string }).message);
               break;
             case "tool_call":
-              if ((ev as { name: string }).name === "add_part") partsChanged = true;
+              if (ev.name === "fit_headphone_ears") {
+                fittingEars = true;
+                setProgress("Preparing CAD preview…");
+                break;
+              }
+              if (ev.name === "add_part") partsChanged = true;
+              if (fittingEars) break;
+              if (ev.name === "add_part" || ev.name === "create_cad") {
+                setProgress(ev.name === "create_cad" ? "Generating the CAD model…" : "Generating the fitted model…");
+                // Let the status paint even when a local preset finishes in a single SSE chunk.
+                await new Promise(resolve => setTimeout(resolve, 1000));
+              }
               break;
             default:
               break;
@@ -179,6 +193,7 @@ export function ChatPanel({
           <MessageRow
             key={msg.id}
             msg={msg}
+            progress={progress}
             loading={streaming && msg.id === messages[messages.length - 1]?.id}
             onPartChip={onPartChip}
             onShowCad={onShowCad}
@@ -252,11 +267,13 @@ export function ChatPanel({
 // response streams in (lowers main-thread work per token).
 const MessageRow = memo(function MessageRow({
   msg,
+  progress,
   loading,
   onPartChip,
   onShowCad,
 }: {
   msg: Message;
+  progress: string;
   loading: boolean;
   onPartChip: (id: string) => void;
   onShowCad: (cad: Record<string, unknown>) => void;
@@ -291,7 +308,7 @@ const MessageRow = memo(function MessageRow({
           className="chat-pending-message"
         />
       ) : null}
-      {loading ? <div className="mt-1"><Spinner label="Screwy is thinking…" /></div> : null}
+      {loading ? <div className="mt-1"><Spinner label={progress} /></div> : null}
       {msg.cards.length ? (
         <Suspense fallback={null}>
           <ChatCards cards={msg.cards} onPartChip={onPartChip} onShowCad={onShowCad} />

@@ -401,15 +401,9 @@ _FACES = {"top": (2, 1), "bottom": (2, -1), "right": (0, 1), "left": (0, -1),
           "front": (1, -1), "back": (1, 1)}
 
 
-def _surface_point(reg, anchor, face, uv):
-    """Intersect a scan-axis ray with the actual triangles, choosing the outermost hit."""
+def attachment_mesh(reg, anchor):
     import trimesh
 
-    if not isinstance(face, str) or face not in _FACES:
-        raise AddPartError("unknown surface")
-    uv = np.asarray(_vector(uv, "offset_uv", 2))
-    if np.any(np.abs(uv) > 1):
-        raise AddPartError("offset_uv must lie between -1 and 1")
     try:
         if reg.storage.head(anchor.mesh_uri) is None:
             from screwit.app.registry import fixture_asset
@@ -420,11 +414,21 @@ def _surface_point(reg, anchor, face, uv):
         else:
             data = reg.storage.get_bytes(anchor.mesh_uri)
         scene = trimesh.load(io.BytesIO(data), file_type="glb", force="scene")
-        mesh = scene.to_geometry()
-        triangles = mesh.triangles
-        lo, hi = mesh.bounds
+        return scene.to_geometry()
     except Exception as exc:
         raise AddPartError("could not read the attachment mesh") from exc
+
+
+def _surface_point(reg, anchor, face, uv):
+    """Intersect a scan-axis ray with the actual triangles, choosing the outermost hit."""
+    if not isinstance(face, str) or face not in _FACES:
+        raise AddPartError("unknown surface")
+    uv = np.asarray(_vector(uv, "offset_uv", 2))
+    if np.any(np.abs(uv) > 1):
+        raise AddPartError("offset_uv must lie between -1 and 1")
+    mesh = attachment_mesh(reg, anchor)
+    triangles = mesh.triangles
+    lo, hi = mesh.bounds
     axis, sign = _FACES[face]
     plane = [i for i in range(3) if i != axis]
     target = (lo + hi) / 2
@@ -458,7 +462,8 @@ def _surface_point(reg, anchor, face, uv):
     return target, axis, sign
 
 
-def add_part(reg: Registry, store: ScanStore, scan_id: str, args: dict) -> PartAddedSignal | dict:
+def add_part(reg: Registry, store: ScanStore, scan_id: str, args: dict, *,
+             replace_part: Part | None = None) -> PartAddedSignal | dict:
     parts = store.list_parts(scan_id)
     part_ids = [p.part_id for p in parts]
     try:
@@ -500,15 +505,17 @@ def add_part(reg: Registry, store: ScanStore, scan_id: str, args: dict) -> PartA
     center = (matrix[:3, :3] @ ((lo + hi) / 2.0) + matrix[:3, 3]).tolist()
     extent = np.maximum(hi - lo, 0.001).tolist()
 
-    part_id = _new_part_id(set(part_ids))
-    mesh_key = f"scans/{scan_id}/parts/{part_id}.glb"
-    thumb_key = f"scans/{scan_id}/renders/{part_id}.png"
+    part_id = replace_part.part_id if replace_part else _new_part_id(set(part_ids))
+    version = "_" + uuid.uuid4().hex[:10] if replace_part else ""
+    mesh_key = f"scans/{scan_id}/parts/{part_id}{version}.glb"
+    thumb_key = f"scans/{scan_id}/renders/{part_id}{version}.png"
     scan = store.get_scan(scan_id)
     revision = scan.reconstruction_revision if scan else max(
         (p.reconstruction_revision for p in parts), default=0)
     shape = _shape_words(req, extent)
     part = Part.model_validate({
-        "part_id": part_id, "reconstruction_revision": revision, "measurement_revision": 1,
+        "part_id": part_id, "reconstruction_revision": revision,
+        "measurement_revision": replace_part.measurement_revision + 1 if replace_part else 1,
         "label": req.label, "label_confidence": 1.0,
         "description": req.description or f"Added in chat: {shape}.",
         "mesh_uri": mesh_key, "thumbnail_uri": thumb_key,

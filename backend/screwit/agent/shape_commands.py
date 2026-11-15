@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import math
 import re
+import time
 
-from screwit.agent.add_part import PartAddedSignal, _surface_point
+from screwit.agent.add_part import PartAddedSignal, add_part, attachment_mesh
 from screwit.agent.tools import ToolContext
 from screwit.app.store import ScanStore
 from screwit.contracts import HighlightEvent, TokenEvent, ToolCallEvent
@@ -47,25 +48,58 @@ def _fit_headphone_ears(reg, scan_id, parts, band):
     import numpy as np
     import trimesh
 
+    yield ToolCallEvent(name="fit_headphone_ears", args={"anchor": band.part_id})
+    reveal_at = time.monotonic() + 10
     ids = []
-    _, depth, height = band.obb.extent
-    # The example headphones lie flat, with the crown pointing along +Y.
-    # Upright scans use +Z. Sample the local slope on each side independently.
-    flat = depth > height
-    crown, axis = ("back", 1) if flat else ("top", 2)
+    vertices = attachment_mesh(reg, band).vertices
+    cups = [p for p in parts if re.search(r"ear.?cup|ear.?cushion", p.label, re.I)]
+    left = next((p for p in cups if "left" in p.label.lower()), None)
+    right = next((p for p in cups if "right" in p.label.lower()), None)
+    across = np.array([1., 0., 0.])
+    if left and right:
+        across = np.subtract(right.centroid_mm, left.centroid_mm)
+    across /= np.linalg.norm(across)
+    if cups:
+        rise = np.median(vertices, axis=0) - np.mean([p.centroid_mm for p in cups], axis=0)
+    else:
+        span = np.ptp(vertices, axis=0)
+        rise = np.eye(3)[1 if span[1] > span[2] else 2]
+    rise -= across * np.dot(rise, across)
+    rise /= np.linalg.norm(rise)
+    front = np.cross(rise, across)
+    # Fit the outer contour across the crown. Pool both sides so a gap or
+    # isolated triangle on one side cannot independently rotate one mount.
+    x, y = vertices @ across, vertices @ rise
+    lo, hi = np.percentile(x, [1, 99])
+    middle, radius = (hi + lo)/2, (hi-lo)/2
+    u = (x-middle)/radius
+    samples = []
+    for t in np.linspace(-.76, .76, 39):
+        mask = abs(u-t) < .05
+        if mask.sum() >= 2:
+            samples.append((t*t, np.percentile(y[mask], 92)))
+    if len(samples) < 4:
+        yield TokenEvent(text="There is too little headband geometry to locate the mounting surfaces.")
+        return
+    squared, heights = np.asarray(samples).T
+    curve, intercept = np.polyfit(squared, heights, 1)
+    residual = heights - (curve*squared + intercept)
+    keep = abs(residual-np.median(residual)) <= max(2, 3*np.median(abs(residual-np.median(residual))))
+    if keep.sum() >= 4:
+        curve, intercept = np.polyfit(squared[keep], heights[keep], 1)
+    depth = np.median(vertices[abs(u)<.8] @ front)
+    # Hold the first write too: clients may refresh parts independently of chat.
+    time.sleep(max(0., reveal_at - time.monotonic()))
     for side, name in [(-1, "Left cat ear"), (1, "Right cat ear")]:
         existing = next((p for p in parts if p.label.casefold() == name.casefold()), None)
-        if existing:
+        if existing and existing.description != "White headphone accessory from the supplied ear STL.":
             ids.append(existing.part_id)
             continue
-        u = side * .53
-        point, _, _ = _surface_point(reg, band, crown, [u, 0])
-        before, _, _ = _surface_point(reg, band, crown, [u-.025, 0])
-        after, _, _ = _surface_point(reg, band, crown, [u+.025, 0])
-        tangent = after-before
-        tangent[3-axis] = 0
-        tangent /= max(np.linalg.norm(tangent), 1e-12)
-        front = np.array([0., 0., -1.]) if flat else np.array([0., 1., 0.])
+        t = side*.53
+        point = across*(middle+t*radius) + rise*(intercept+curve*t*t) + front*depth
+        slope = np.clip(2*curve*t/radius, -0.8, 0.8)
+        tangent = across + slope*rise
+        tangent /= np.linalg.norm(tangent)
         outward = np.cross(tangent, front)
         matrix = np.eye(4)
         matrix[:3,:3] = np.column_stack((tangent, front, outward))
@@ -78,8 +112,12 @@ def _fit_headphone_ears(reg, scan_id, parts, band):
                 "description": "White headphone accessory from the supplied ear STL.",
                 "size_mm": size, "center_mm": center.tolist(),
                 "rotation_quat": [x, y, z, w], "attach_to": band.part_id, "relation": "fastened"}
+        if existing and np.allclose(existing.centroid_mm, center, atol=.01) and abs(
+                np.dot(existing.obb.rotation_quat, [x, y, z, w])) > .999999:
+            ids.append(existing.part_id)
+            continue
         yield ToolCallEvent(name="add_part", args=args)
-        result = ToolContext(reg, scan_id).dispatch("add_part", args)
+        result = add_part(reg, ScanStore(reg.data), scan_id, args, replace_part=existing)
         if not isinstance(result, PartAddedSignal):
             yield TokenEvent(text=result.get("message", "The headband mesh is unavailable."))
             return
