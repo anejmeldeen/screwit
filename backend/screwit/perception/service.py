@@ -33,7 +33,7 @@ from screwit.contracts import (
 from screwit.contracts.models import FEATURE_MEASUREMENT_FIELDS
 from screwit.interfaces import FrameSet, PerceptionService, Storage
 from screwit.perception import lifting, measure_fit
-from screwit.perception.labels import Labeller
+from screwit.perception.labels import Labeller, PartLabel
 from screwit.perception.relations import SceneBuilder
 from screwit.perception.render import render_mesh_png
 from screwit.perception.snapping import snap_diameter
@@ -252,24 +252,26 @@ class PerceptionImpl(PerceptionService):
 
     def _build_geometry_parts(self, scan_id, mesh, keyframes, recon_rev, storage):
         """Segment ``mesh`` into parts for any object (see part_atoms): crease-bounded patches,
-        grouped into named, labelled parts by one Claude call that sees each patch highlighted on
-        its own tile. Without a VLM (fake provider, failed call) the geometric merge hierarchy is
-        cut at the proposed part count. Returns (parts, part_points)."""
+        grouped into named, labelled parts by Claude, which sees each patch highlighted in its own
+        image (asked a few times; the most typical grouping is kept). Without a VLM (fake provider,
+        failed calls) the geometric merge hierarchy is cut at the proposed part count. Returns
+        (parts, part_points)."""
         from screwit.perception import part_atoms as pa
 
         patches = pa.over_segment(mesh)
         replies: dict[int, object] = {}
         owner = None
         if patches.n >= 2:
-            grid = pa.render_patch_grid(patches)
-            grouping = self.labeller.group_patches(scan_id, grid, keyframes, patches.n,
-                                                   max_parts=pa.MAX_PARTS)
-            if grouping is not None:
-                patch_lists = pa.regroup_instances(patches, [gp.patches for gp in grouping.parts],
-                                                   [gp.label for gp in grouping.parts])
-                owner = pa.grouping_to_owner(patches, patch_lists)
-                if owner is not None:
-                    replies = dict(enumerate(grouping.parts))
+            tiles = pa.render_patch_tiles(patches)
+            groupings = self.labeller.group_patches(scan_id, tiles, keyframes, patches.n,
+                                                    max_parts=pa.MAX_PARTS)
+            chosen = pa.choose_grouping(patches, groupings)
+            if chosen is not None:
+                patches, owner, kinds = chosen
+                replies = {g: PartLabel(label=k.name, label_confidence=k.label_confidence,
+                                        description=k.description, material=k.material,
+                                        material_confidence=k.material_confidence)
+                           for g, k in enumerate(kinds)}
         if owner is None:
             names = self.labeller.name_parts(scan_id, keyframes).names
             hierarchy = pa.merge_hierarchy(patches)

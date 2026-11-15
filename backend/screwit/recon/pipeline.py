@@ -502,6 +502,13 @@ class ReconPipelineImpl:
                                       keep_largest=False, voxel_length=voxel_m,
                                       sdf_trunc=3.0 * trunc_m)
             mesh = tsdf_mod.repair_mesh(mesh)
+        # Close the walls no camera saw (the far side, the lower walls, crevices) without
+        # contradicting any view; the unmasked depth is the evidence of what is NOT object.
+        from . import completion
+
+        mesh = completion.complete_surface(mesh, depth_scan, masks, result.intrinsics, extr_scan,
+                                           voxel_mm=1000.0 * voxel_m,
+                                           tol_mm=max(6.0, 1500.0 * trunc_m))
         full_path = scratch / "object_full.ply"
         glb_path = scratch / "object.glb"
         tsdf_mod.write_full_ply(mesh, full_path)

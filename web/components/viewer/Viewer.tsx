@@ -9,6 +9,7 @@ import { type FeaturePick, type MeasureMode } from "@/lib/editorGeometry";
 import { scanToWebMatrix } from "@/lib/transform";
 import { PartMeshes } from "./PartMeshes";
 import { MeasureLayer, PickedPoint } from "./MeasureLayer";
+import { PlaneDirections } from "./PlaneDirections";
 
 // Spark (~950 KB) loads ONLY when the splat view is shown; the STL loader loads
 // ONLY when a CAD overlay is requested. Both are React.lazy so their chunks are
@@ -22,6 +23,9 @@ const CadOverlay = lazy(() =>
 const WholeMesh = lazy(() =>
   import("./WholeMesh").then((m) => ({ default: m.WholeMesh })),
 );
+
+// Ground grid edge length (metres), centred on the scan-frame origin.
+const GRID_SIZE_M = 2;
 
 export interface ViewerCadOverlay {
   cad: CadResult;
@@ -219,7 +223,7 @@ export function Viewer(props: ViewerProps) {
 
   const parentMatrix = useMemo(() => scanToWebMatrix(recon), [recon]);
   const gridHelper = useMemo(() => {
-    const g = new GridHelper(2, 40, 0xf1d45d, 0x57564a);
+    const g = new GridHelper(GRID_SIZE_M, 40, 0xf1d45d, 0x57564a);
     return g;
   }, []);
   const { map: centroids, register } = useCentroidRegistry();
@@ -259,6 +263,8 @@ export function Viewer(props: ViewerProps) {
           three GridHelper (no drei shader Grid) to keep the mesh-path bundle
           small; 2 m extent, 40 divisions = 0.05 m cells. */}
       <primitive object={gridHelper} />
+      {/* +X / −X / +Y / −Y of the scan frame at the grid's ends (+X = the board's arrow). */}
+      <PlaneDirections scanToWeb={parentMatrix} halfSize={GRID_SIZE_M / 2} />
 
       {/* ONE parent group applying scan_to_web; every asset is a child. */}
       <group matrix={parentMatrix} matrixAutoUpdate={false}>

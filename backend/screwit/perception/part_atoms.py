@@ -7,14 +7,14 @@ precise boundary on a mesh. So the work is split:
 1. ``over_segment`` cuts the mesh into about 10 patches along its creases and necks: spectral
    clustering of the face graph, with edges across concave creases weighted down (part boundaries
    sit in concave creases, the "minima rule"). Each patch should lie inside one part.
-2. ``render_patch_grid`` draws one tile per patch: the whole object in grey, that patch in red,
-   from the same two sides in every tile. The caller asks the VLM once to group the patch numbers
+2. ``render_patch_tiles`` draws one image per patch: the whole object in grey, that patch in red,
+   from the same two sides in every image. The caller asks the VLM once to group the patch numbers
    into named parts. The VLM is reliable about what kind of part a patch is and how many copies
    exist, not about which copy (it paired two cushion tops as one ear cup), so ``regroup_instances``
    re-splits every repeated kind by location, and ``grouping_to_owner`` completes the map.
-   (Two designs failed on real scans first: one image of numbered colours, which the VLM misread,
-   and choosing among geometric merges, which offered no correct option once a scan hole split the
-   headband.)
+   (Three designs failed on real scans first: one image of numbered colours, which the VLM misread,
+   choosing among geometric merges, which offered no correct option once a scan hole split the
+   headband, and all tiles drawn into one numbered grid, where it mixed up which tile was which.)
 3. Without a VLM (fake provider, failed call) ``merge_hierarchy`` merges the most strongly joined,
    most similarly thick neighbours down to the proposed part count.
 
@@ -52,12 +52,22 @@ class Patches:
 
 def work_mesh(mesh, faces: int = WORK_FACES):
     """Decimated, cleaned working copy (trimesh). Spectral clustering and rendering scale with the
-    face count, and 8k faces resolve parts far below the scan's noise."""
+    face count, and 8k faces resolve parts far below the scan's noise. The cover the mesh stage
+    puts under the object (down-facing faces on the support, recon/completion.py) is left out: no
+    camera saw it, it carries no part boundaries, and its large flat discs pulled the patches
+    around. Its faces still get a part (``full_face_labels`` gives every face the nearest one's)."""
     import open3d as o3d
     import trimesh
 
     v = np.asarray(mesh.vertices, dtype=np.float64)
     f = np.asarray(mesh.faces, dtype=np.int32)
+    if len(f) > 100:
+        tri = v[f]
+        n = np.cross(tri[:, 1] - tri[:, 0], tri[:, 2] - tri[:, 0])
+        nz = n[:, 2] / np.maximum(np.linalg.norm(n, axis=1), 1e-12)
+        cover = (nz < -0.9) & (tri[:, :, 2].max(axis=1) < v[:, 2].min() + 1.5)
+        if 0 < cover.sum() < 0.5 * len(f):
+            f = f[~cover]
     if len(f) > faces:
         om = o3d.geometry.TriangleMesh(o3d.utility.Vector3dVector(v), o3d.utility.Vector3iVector(f))
         om = om.simplify_quadric_decimation(target_number_of_triangles=faces)
@@ -313,12 +323,29 @@ def merge_by_affinity(p: Patches, target: int) -> list[int]:
 
 def full_face_labels(mesh, p: Patches, patch_group: list[int], rounds: int = 2) -> np.ndarray:
     """Group id per face of the full-resolution mesh: nearest working face, then a couple of rounds
-    of neighbour-majority smoothing so the boundaries are clean."""
+    of neighbour-majority smoothing so the boundaries are clean. Faces of the cover under the object
+    (left out of the working mesh, see ``work_mesh``) take the part directly above them instead: the
+    nearest face to a point under a cup's middle can be another part's wall."""
+    import open3d as o3d
     from scipy import sparse
     from scipy.spatial import cKDTree
 
     tri = np.asarray(mesh.triangles_center)
     _, nn = cKDTree(p.work.triangles_center).query(tri, k=1)
+    v = np.asarray(mesh.vertices, dtype=np.float64)
+    fn = np.asarray(mesh.face_normals)
+    cover = (fn[:, 2] < -0.9) & (v[np.asarray(mesh.faces)][:, :, 2].max(axis=1) < v[:, 2].min() + 1.5)
+    if cover.any():
+        scene = o3d.t.geometry.RaycastingScene()
+        scene.add_triangles(o3d.core.Tensor(np.asarray(p.work.vertices, np.float32)),
+                            o3d.core.Tensor(np.asarray(p.work.faces, np.uint32)))
+        start = tri[cover] + [0.0, 0.0, 0.5]
+        rays = np.concatenate([start, np.tile([0.0, 0.0, 1.0], (len(start), 1))], axis=1)
+        hit = scene.cast_rays(o3d.core.Tensor(rays.astype(np.float32)))
+        ids = hit["primitive_ids"].numpy().astype(np.int64)
+        ok = np.isfinite(hit["t_hit"].numpy()) & (ids >= 0) & (ids < len(p.work.faces))
+        sel = np.flatnonzero(cover)[ok]
+        nn[sel] = ids[ok]
     lab = np.asarray(patch_group, dtype=np.int64)[p.labels[nn]]
     adj = np.asarray(mesh.face_adjacency)
     if len(adj) == 0:
@@ -445,91 +472,214 @@ def render_patches(p: Patches, *, size: int = 512) -> bytes:
     return _render(p.work, face_rgb, size=size, numbers=p.labels)
 
 
-def render_patch_grid(p: Patches, *, view: int = 240, cols: int = 2) -> bytes:
-    """PNG grid with one tile per patch: the whole object in grey with that one patch in red, from
-    the SAME two sides in every tile, with the patch number in the corner. Identical viewpoints let
-    a VLM tell which side of the object each patch is on (with a per-tile camera, "the near cup"
-    meant a different cup in different tiles and it paired up the wrong ones)."""
-    from PIL import Image, ImageDraw, ImageFont
-
-    w = p.work
+def render_patch_tiles(p: Patches, *, view: int = 320) -> list[bytes]:
+    """One PNG per patch: the whole object in grey with that one patch in red, from the SAME two
+    sides in every image. Identical viewpoints let a VLM tell which side of the object each patch
+    is on (with a per-patch camera, "the near cup" meant a different cup in different images and it
+    paired up the wrong ones). The caller sends them as separate images, each introduced by its
+    number: drawn into one numbered grid, the VLM misread which tile was which."""
     grey = np.array([150.0, 150.0, 150.0])
     red = np.array([235.0, 45.0, 45.0])
+    return [_render(p.work, np.where((p.labels == pid)[:, None], red, grey), size=view)
+            for pid in range(p.n)]
+
+
+SPLIT_SHARE = 0.25   # a patch with this share of its area in a second copy is cut, not handed whole
+
+
+def _location_clusters(p: Patches, members: list[int], m: int) -> list[list[int]]:
+    """``members`` split into ``m`` groups by where they are (patch-level majority of the
+    area-weighted k-means used by ``regroup_instances``)."""
+    sel = np.flatnonzero(np.isin(p.labels, members))
+    patch_area = np.bincount(p.labels, weights=p.work.area_faces, minlength=p.n)
+    cl = _weighted_kmeans(p.work.triangles_center[sel], p.work.area_faces[sel], m, seed_groups=[
+        [int(q) for q in sorted(members, key=lambda q: -patch_area[q])[:m]]], owners=p.labels[sel])
+    share = np.zeros((p.n, m))
+    np.add.at(share, (p.labels[sel], cl), p.work.area_faces[sel])
+    return [[q for q in members if int(np.argmax(share[q])) == k] for k in range(m)]
+
+
+def kinds_to_groups(p: Patches, kinds: list, notes: list) -> tuple[list[list[int]], list[str], list]:
+    """Turn a VLM reading (``kinds``: objects with ``.name`` and ``.copies``; ``notes``: objects
+    with ``.patch`` and ``.kind``) into one patch list per copy, the kind key of each list, and the
+    kind object behind it. Every patch list of a kind starts as all of its patches; which copy owns
+    which patch is ``regroup_instances``' job.
+
+    A repeated kind is only kept when it can be cut out of every copy. That fails when the kind has
+    fewer patches than copies (one ear cup's pad was its own patch, the other cup's pad was inside
+    a whole-cup patch), or when its copies would not sit on different copies of a larger host with
+    as many copies (a pad's top and a side wall of the same cup, called the two "ear pads"). Two
+    failing kinds with the same number of copies are first tried as one kind named two ways (one
+    cup read as "ear cup", the other as "ear cushion"); otherwise the failing kind's patches join
+    the kind they share the longest boundary with, so identical components always come out the
+    same. Patches with no valid kind are left out (``grouping_to_owner`` gives them to a
+    neighbour)."""
+    by_key = {}
+    for k in kinds:
+        key = (k.name or "").strip().lower()
+        if key and key not in by_key:
+            by_key[key] = k
+    kind_of: dict[int, str] = {}
+    for note in notes:
+        key = (note.kind or "").strip().lower()
+        if isinstance(note.patch, int) and 0 <= note.patch < p.n and note.patch not in kind_of \
+                and key in by_key:
+            kind_of[note.patch] = key
+    shared = patch_adjacency(p)
+
+    def members(key: str) -> list[int]:
+        return sorted(q for q, v in kind_of.items() if v == key)
+
+    def border(qs: list[int], others: list[int] | None = None) -> dict:
+        """Shared boundary length from patches ``qs`` to each other kind (or to ``others``)."""
+        qset = set(qs)
+        out: dict = {}
+        for (a, b), ln in shared.items():
+            for x, y in ((a, b), (b, a)):
+                if x in qset and y not in qset and y in kind_of:
+                    if others is None and kind_of[y] != kind_of[x]:
+                        out[kind_of[y]] = out.get(kind_of[y], 0.0) + ln
+                    elif others is not None and y in others:
+                        out[y] = out.get(y, 0.0) + ln
+        return out
+
+    def cut_out_of_every_copy(key: str) -> bool:
+        mine, m = members(key), int(by_key[key].copies)
+        if m < 2:
+            return True
+        if len(mine) < m:
+            return False
+        # The host is the larger kind it shares the longest boundary with: a pad sits on a cup;
+        # a cup is not checked against a small hinge between the two cups.
+        near = {k: ln for k, ln in border(mine).items() if kind_area(k) > kind_area(key)}
+        if not near:
+            return True
+        host = max(near, key=near.get)
+        host_members, hm = members(host), int(by_key[host].copies)
+        if hm != m or len(host_members) < hm:
+            return True     # only a pairing of copies with copies can be checked
+        host_copies = _location_clusters(p, host_members, hm)
+        seats = set()
+        for copy in _location_clusters(p, mine, m):
+            lens = [sum(border(copy, hc).values()) for hc in host_copies]
+            seats.add(int(np.argmax(lens)) if max(lens) > 0 else -1 - len(seats))
+        return len(seats) == m
+
+    patch_area = np.bincount(p.labels, weights=p.work.area_faces, minlength=p.n)
+
+    def kind_area(key: str) -> float:
+        return float(sum(patch_area[q] for q in members(key)))
+
+    for _ in range(2 * len(by_key)):
+        bad = [k for k in by_key if members(k) and not cut_out_of_every_copy(k)]
+        if not bad:
+            break
+        # Two kinds that each fail with the same number of copies may be one kind named two ways
+        # (one ear cup read as "ear cup", the other as "ear cushion"): unite them if together
+        # they can be cut out of every copy, under the name of the larger.
+        united = False
+        for a in sorted(bad, key=kind_area):
+            for b in bad:
+                if b == a or int(by_key[a].copies) != int(by_key[b].copies):
+                    continue
+                before = dict(kind_of)
+                bigger = by_key[a] if kind_area(a) > kind_area(b) else by_key[b]
+                for q in members(a):
+                    kind_of[q] = b
+                if cut_out_of_every_copy(b):
+                    by_key[b] = bigger
+                    united = True
+                    break
+                kind_of.clear()
+                kind_of.update(before)
+            if united:
+                break
+        if united:
+            continue
+        # Otherwise the smallest failing kind joins the kind it shares the longest boundary with,
+        # and the united kind is named after whichever of the two covers more surface (two ear
+        # cups folded into a small "hinge" kind are still ear cups).
+        key = min(bad, key=kind_area)
+        near = border(members(key))
+        if not near:     # touches no other kind: keep it whole, as one part
+            by_key[key] = _with_copies(by_key[key], 1)
+            continue
+        target = max(near, key=near.get)
+        if kind_area(key) > kind_area(target):
+            by_key[target] = _with_copies(by_key[key], int(by_key[target].copies))
+        for q in members(key):
+            kind_of[q] = target
+    groups, keys, objs = [], [], []
+    for key, kind in by_key.items():
+        mine = members(key)
+        for _ in range(min(max(1, int(kind.copies)), len(mine))):
+            groups.append(list(mine))
+            keys.append(key)
+            objs.append(kind)
+    return groups, keys, objs
+
+
+def _with_copies(kind, copies: int):
     try:
-        font = ImageFont.load_default(size=view // 6)
-    except TypeError:  # older Pillow
-        font = ImageFont.load_default()
-    tiles = []
-    for pid in range(p.n):
-        rgb = np.where((p.labels == pid)[:, None], red, grey)
-        img = Image.open(io.BytesIO(_render(w, rgb, size=view))).convert("RGB")
-        dr = ImageDraw.Draw(img)
-        dr.rectangle([0, 0, img.width - 1, img.height - 1], outline=(90, 90, 100), width=2)
-        dr.text((10, 6), str(pid), fill=(255, 255, 255), font=font, stroke_width=3,
-                stroke_fill=(0, 0, 0))
-        tiles.append(np.asarray(img))
-    rows = (len(tiles) + cols - 1) // cols
-    tiles += [np.full_like(tiles[0], 24)] * (rows * cols - len(tiles))
-    grid = np.concatenate([np.concatenate(tiles[r * cols:(r + 1) * cols], axis=1) for r in range(rows)],
-                          axis=0)
-    buf = io.BytesIO()
-    Image.fromarray(grid).save(buf, format="PNG")
-    return buf.getvalue()
+        return kind.model_copy(update={"copies": copies})
+    except AttributeError:   # a plain object in tests
+        kind.copies = copies
+        return kind
 
 
-_SIDE_WORDS = {"left", "right", "front", "back", "rear", "top", "bottom", "upper", "lower", "inner",
-               "outer", "first", "second", "third", "one", "two", "a", "b", "l", "r"}
+def regroup_instances(p: Patches, groups: list[list[int]],
+                      kinds: list[str]) -> tuple[Patches, list[list[int]]]:
+    """Decide which patches form which copy of a repeated part, from where they are.
 
+    ``groups`` are patch lists and ``kinds`` the kind key of each; the lists of one kind are its
+    copies. A VLM reliably says what kind of part each patch is and how many copies there are (two
+    ear cups), but not which copy a patch belongs to: on a real scan it paired the two cushion tops
+    as one cup and the two side walls as the other. For every kind with m copies, split the surface
+    of all its patches into m regions by location (area-weighted k-means on face centres, seeded at
+    the m largest patches, so a stray sliver cannot become a cluster of its own), give each patch to
+    the region that holds most of its area, then hand each region to the copy whose list it
+    overlaps most. Kinds with one copy are left as they are.
 
-def part_type(label: str) -> str:
-    """The kind of a part, without the words that only tell identical parts apart: "Left Ear Cup",
-    "right ear cups" and "Ear cup 2" are all "ear cup"."""
-    import re
-
-    words = re.findall(r"[a-z]+", (label or "").lower())
-    words = [w for w in words if w not in _SIDE_WORDS]
-    if words and len(words[-1]) > 3 and words[-1].endswith("s"):
-        words[-1] = words[-1][:-1]
-    return " ".join(words) or (label or "").lower()
-
-
-def regroup_instances(p: Patches, groups: list[list[int]], labels: list[str]) -> list[list[int]]:
-    """Re-derive which patches form which copy of a repeated part.
-
-    A VLM reliably says what kind of part each patch is and how many copies there are (two ear
-    cups), but not which copy a patch belongs to: on a real scan it paired the two cushion tops as
-    one cup and the two side walls as the other. Location settles that. For every part kind with m
-    copies, split the surface of all its patches into m regions by where it is (area-weighted
-    k-means on face centres, farthest-point seeded, so a stray sliver cannot become a cluster of its
-    own), give each patch to the region that holds most of its area, then hand each region to the
-    copy whose original patches it overlaps most. Kinds with one copy are left as they are."""
+    A patch with at least SPLIT_SHARE of its area in a second region is cut along the regions
+    instead (its pieces become new patches): a strip along the bases of two touching ear cups went
+    whole to one cup, which then showed a sliver under the other. Returns the (possibly re-cut)
+    patches and the patch lists, one per group."""
     area = p.work.area_faces
     fc = p.work.triangles_center
+    plabels = p.labels.copy()
+    n = p.n
     out = [list(g) for g in groups]
-    by_type: dict[str, list[int]] = {}
-    for gi, lb in enumerate(labels):
-        by_type.setdefault(part_type(lb), []).append(gi)
-    for idxs in by_type.values():
+    by_kind: dict[str, list[int]] = {}
+    for gi, key in enumerate(kinds):
+        by_kind.setdefault(key, []).append(gi)
+    for idxs in by_kind.values():
         m = len(idxs)
         members = sorted({q for gi in idxs for q in groups[gi] if isinstance(q, int) and 0 <= q < p.n})
         if m < 2 or len(members) < m:
             continue
-        sel = np.isin(p.labels, members)
-        pts, wts, owners = fc[sel], area[sel], p.labels[sel]
-        patch_area = np.bincount(p.labels, weights=area, minlength=p.n)
+        sel = np.flatnonzero(np.isin(plabels, members))
+        pts, wts, owners = fc[sel], area[sel], plabels[sel]
+        patch_area = np.bincount(plabels, weights=area, minlength=n)
         cl = _weighted_kmeans(pts, wts, m, seed_groups=[
             [int(q) for q in sorted(members, key=lambda q: -patch_area[q])[:m]]], owners=owners)
-        share = np.zeros((p.n, m))
+        share = np.zeros((n, m))
         np.add.at(share, (owners, cl), wts)
-        clusters = [[q for q in members if int(np.argmax(share[q])) == k] for k in range(m)]
+        main = {q: int(np.argmax(share[q])) for q in members}
+        clusters = [[q for q in members if main[q] == k] for k in range(m)]
         if any(not c for c in clusters):
             continue
+        for q in members:
+            for k in range(m):
+                if k != main[q] and share[q, k] >= SPLIT_SHARE * share[q].sum():
+                    plabels[sel[(owners == q) & (cl == k)]] = n     # this piece becomes patch n
+                    clusters[k].append(n)
+                    n += 1
         free = list(range(m))
         for gi in sorted(idxs, key=lambda g: -len(groups[g])):
             best = max(free, key=lambda k: len(set(clusters[k]) & set(groups[gi])))
             out[gi] = clusters[best]
             free.remove(best)
-    return out
+    return Patches(p.work, plabels, n), out
 
 
 def _weighted_kmeans(pts: np.ndarray, w: np.ndarray, k: int, iters: int = 30, *,
@@ -565,6 +715,42 @@ def _weighted_kmeans(pts: np.ndarray, w: np.ndarray, k: int, iters: int = 30, *,
         if sse < best_sse:
             best_lab, best_sse = lab, sse
     return best_lab
+
+
+def choose_grouping(p: Patches, replies: list) -> tuple[Patches, list[int], list] | None:
+    """Pick the most typical of several VLM readings (objects with ``.kinds`` and
+    ``.patch_notes``, see labels.PatchGrouping) and complete it. Returns (patches, owner, kind per
+    part), where the patches are re-cut by ``regroup_instances``, owner maps each patch to a part
+    index and the list gives each part's kind object; None if no reply gives a valid map.
+
+    Every reply is turned into copies (``kinds_to_groups``) and regrouped by location, then each
+    original patch is related to every other one as different kind of part, same kind but another
+    copy, or same part. The reply whose relations agree with the other replies' over the most
+    surface (pairs weighted by both patches' areas) wins: one stray answer cannot outvote two that
+    agree, whichever way it went wrong."""
+    area = np.bincount(p.labels, weights=p.work.area_faces, minlength=p.n)
+    cands = []
+    for r in replies:
+        groups, keys, objs = kinds_to_groups(p, r.kinds, r.patch_notes)
+        if not groups:
+            continue
+        p2, lists = regroup_instances(p, groups, keys)
+        owner = grouping_to_owner(p2, lists)
+        if owner is None:
+            continue
+        share = np.zeros((p.n, len(lists)))
+        np.add.at(share, (p.labels, np.asarray(owner)[p2.labels]), p.work.area_faces)
+        part = share.argmax(axis=1)                       # each original patch's main part
+        kind = np.array([keys[g] for g in part], dtype=object)
+        rel = np.where(part[:, None] == part[None, :], 2, np.where(kind[:, None] == kind[None, :], 1, 0))
+        cands.append((p2, owner, objs, rel))
+    if not cands:
+        return None
+    w = np.outer(area, area)
+    np.fill_diagonal(w, 0.0)
+    score = [sum(float((w * (a[3] == b[3])).sum()) for b in cands if b is not a) for a in cands]
+    p2, owner, objs, _ = cands[int(np.argmax(score))]
+    return p2, owner, objs
 
 
 def grouping_to_owner(p: Patches, groups: list[list[int]]) -> list[int] | None:

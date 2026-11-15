@@ -31,32 +31,59 @@ class PartLabel(BaseModel):
     material_confidence: float = Field(ge=0, le=1)
 
 
-class GroupedPart(PartLabel):
-    """One physical part in Claude's grouping of the highlighted scan patches."""
+class PartKind(BaseModel):
+    """One kind of physical part in Claude's reading of the scan, with how many copies exist."""
 
-    patches: list[int] = Field(min_length=1)
+    name: str
+    copies: int = Field(ge=1, le=8)
+    label_confidence: float = Field(ge=0, le=1)
+    description: str
+    material: str
+    material_confidence: float = Field(ge=0, le=1)
+
+
+class PatchNote(BaseModel):
+    """What one highlighted patch covers, and the kind of part it lies on (a name from kinds)."""
+
+    patch: int
+    covers: str
+    kind: str
 
 
 class PatchGrouping(BaseModel):
-    """Claude's grouping of the numbered patch tiles into named, labelled parts."""
+    """Claude's reading of the patch images: the object's part kinds, then each patch's kind.
+
+    Kinds come first, settled from the photos, and each patch is then only classified. Grouping
+    patches into named copies directly (the earlier schema) was unstable: the same images gave a
+    cup's pad and its housing back as the "left" and "right" pad. Which copy a patch belongs to is
+    decided from geometry afterwards (part_atoms.regroup_instances)."""
 
     object_name: str
-    parts: list[GroupedPart] = Field(min_length=1, max_length=8)
+    kinds: list[PartKind] = Field(min_length=1, max_length=8)
+    patch_notes: list[PatchNote] = Field(min_length=1)
+
+
+# Independent readings asked for per scan; the most typical one is kept (Claude's answer for the
+# same images varies between calls).
+GROUPING_SAMPLES = 3
 
 
 GROUPING_PROMPT = (
-    "The first {n_photos} images are photos of one object from a phone video. The last image is a "
-    "grid of {n} numbered tiles of that object's 3D scan. Every tile shows the whole scan from the "
-    "same two sides (left and right halves of the tile), grey, with one patch of it in red; the "
-    "tile's number is that patch's number (0 to {last}). Every patch lies inside one physical "
-    "part. Group the patches into the object's physical parts: the components a person "
-    "would name separately, remove, replace or repair, at most {max_parts}. Prefer fewer, larger "
-    "parts when unsure; splitting one piece into chunks is wrong, but two identical separate "
-    "components (for example the two sides of a symmetric object) are separate parts, even when "
-    "they touch. List every patch number in exactly one part. For each part give a short common "
-    "name (distinct names for identical components, such as Left and Right), a one-sentence "
-    "description of what it does in the object, its likely material, and your confidence in the "
-    "name and the material (0 to 1). Ignore the printed checkerboard, the table and the background.")
+    "The first {n_photos} images are photos of one object from a phone video. Then come {n} "
+    "images of that object's 3D scan, one per patch, each introduced by its patch number (0 to "
+    "{last}). Every patch image shows the whole scan from the same two sides (left and right "
+    "halves), grey, with that one patch in red. Every patch lies inside one physical part. "
+    "First, in kinds, list the kinds of physical part the object is made of: the components a "
+    "person would name separately, remove, replace or repair. Give each kind a short common name "
+    "without side words (no left, right, front or back) and the number of identical copies the "
+    "object has (the two sides of a symmetric object are one kind with 2 copies), at most "
+    "{max_parts} parts in all. Prefer fewer, larger parts when unsure; splitting one piece into "
+    "chunks is wrong. For each kind give a one-sentence description of what it does in the "
+    "object, its likely material, and your confidence in the name and the material (0 to 1). "
+    "Then, in patch_notes, for every patch say in a few words what the red region covers and give "
+    "the kind it lies on, written exactly as in kinds. Classify a patch by what it is, not by what "
+    "it touches: a patch on a connecting piece is that piece even where it meets another "
+    "component. Ignore the printed checkerboard, the table and the background.")
 
 
 
@@ -131,25 +158,45 @@ class Labeller:
             return _label_from_name(proposed_name)
         return self._label_part_claude(scan_id, proposed_name, thumbnail_png)
 
-    def group_patches(self, scan_id: str, grid_png: bytes, keyframes, n_patches: int,
-                      max_parts: int = 6) -> PatchGrouping | None:
-        """One Claude call: group the highlighted patch tiles into named, labelled parts. None for
-        the fake provider or on any failure, so the caller falls back."""
-        if self.provider == "fake" or n_patches < 2:
-            return None
+    def group_patches(self, scan_id: str, tiles: list[bytes], keyframes, n_patches: int,
+                      max_parts: int = 6) -> list[PatchGrouping]:
+        """Group the highlighted patch images (``tiles``, one PNG per patch, in patch order) into
+        named, labelled parts. Each image goes in as its own content block, introduced by
+        "Patch i:"; drawn into one numbered grid, Claude misread which tile was which (a headband
+        segment came back as "lower outer section of the right ear cup").
+
+        Claude's grouping of the same images varies from call to call (on the headphones scan: 3
+        parts, then 4 with one hinge, then 5 with a cup called "ear cushions"), so it is asked
+        GROUPING_SAMPLES times in parallel and every valid reply is returned; the caller keeps the
+        most typical one (``part_atoms.choose_grouping``). Empty for the fake provider or when
+        every call fails, so the caller falls back."""
+        if self.provider == "fake" or n_patches < 2 or len(tiles) != n_patches:
+            return []
+        from concurrent.futures import ThreadPoolExecutor
+
         from screwit.perception import claude_vision as cv
 
         photos = cv.evenly_spaced([p for p in (keyframes or []) if p is not None], 3)
         content = [cv.image_block_from_path(p) for p in photos]
-        content.append(cv.image_block_from_png(grid_png))
-        content.append({"type": "text", "text": GROUPING_PROMPT.format(
-            n_photos=len(photos), n=n_patches, last=n_patches - 1, max_parts=max_parts)})
-        try:
-            return cv.ask(PatchGrouping, "You identify the parts of everyday objects from photos "
-                                         "and 3D scans.", content)
-        except cv.VisionCallFailed as e:
-            log.warning("patch grouping via Claude failed for %s: %s", scan_id, e)
-            return None
+        for i, tile in enumerate(tiles):
+            content.append({"type": "text", "text": f"Patch {i}:"})
+            content.append(cv.image_block_from_png(tile))
+        prompt = GROUPING_PROMPT.format(n_photos=len(photos), n=n_patches, last=n_patches - 1,
+                                        max_parts=max_parts)
+
+        def sample(i: int) -> PatchGrouping | None:
+            # Distinct text per sample, so the reply cache keeps every sample apart.
+            text = prompt if i == 0 else f"{prompt} (Independent answer {i + 1}.)"
+            try:
+                return cv.ask(PatchGrouping, "You identify the parts of everyday objects from "
+                                             "photos and 3D scans.",
+                              content + [{"type": "text", "text": text}])
+            except cv.VisionCallFailed as e:
+                log.warning("patch grouping via Claude failed for %s: %s", scan_id, e)
+                return None
+
+        with ThreadPoolExecutor(max_workers=GROUPING_SAMPLES) as pool:
+            return [r for r in pool.map(sample, range(GROUPING_SAMPLES)) if r is not None]
 
     # Real Claude paths. A provider failure or an invalid reply falls back to the generic answer, so
     # a scan never fails because the LLM did; the fallback is logged.
