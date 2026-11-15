@@ -139,7 +139,10 @@ class ReconPipelineImpl:
 
         model = self._geometry()
         device = geom_mod._default_device()
-        est_s = 8.0 * len(model_names) if device == "cpu" else 0.5 * len(model_names)
+        # Seconds per view, measured on an M3 Pro (8 views): CPU ~35, Apple MPS ~2 (plus ~15 s to
+        # load the weights), CUDA well under 1.
+        per_view = {"cpu": 35.0, "mps": 2.0}.get(device, 0.5)
+        est_s = per_view * len(model_names) + (15.0 if device in ("cpu", "mps") else 0.0)
 
         key = None
         if geocache.cache_enabled() and scan.input.type == "video":
@@ -161,8 +164,15 @@ class ReconPipelineImpl:
                 return cached
 
         timer.tick(0.05, f"solving geometry for {len(model_names)} views")
-        with timer.creep(0.05, 0.5, est_s, f"solving geometry for {len(model_names)} views"):
-            result = model.run(frames_dir / "model", model_names)
+        with timer.creep(0.05, 0.9, est_s, f"solving geometry for {len(model_names)} views"):
+            try:
+                result = model.run(frames_dir / "model", model_names)
+            finally:
+                # Free the weights and activations (about 26 GB on a host-memory device) right
+                # away; the result is cached, and a resident copy doubled peak memory.
+                release = getattr(model, "release", None)
+                if callable(release):
+                    release()
         if key is not None:
             geocache.store(key, result)
         return result
@@ -190,7 +200,10 @@ class ReconPipelineImpl:
 
             # ---- geometry ----
             timer.start("geometry")
-            model_names = geom_mod.cap_views(frame_names)  # CPU fallback caps the view count
+            # CPU/MPS view cap, plus the model's own memory limit on this machine.
+            max_views = getattr(self._geometry(), "max_views", None)
+            model_names = geom_mod.cap_views(frame_names,
+                                             limit=max_views() if callable(max_views) else None)
             result = self._geometry_with_cache(scan, storage, frames_dir, model_names, timer)
             self._write_geometry_raw(scan_id, storage, result, timer)
             timer.done("geometry")
@@ -318,6 +331,11 @@ class ReconPipelineImpl:
         frames_dir.mkdir(parents=True, exist_ok=True)
         if self._frames_provider is not None:
             index = self._frames_provider(scan, storage, frames_dir)
+        elif timer is not None:
+            # Decoding (and tone-mapping) the video is one opaque ffmpeg call, about 13 s for a 30 s
+            # 4K HDR clip; creep the bar meanwhile instead of sitting at 0%.
+            with timer.creep(0.0, 0.85, 12.0, "extracting keyframes"):
+                index = self._extract_frames(scan, storage, frames_dir)
         else:
             index = self._extract_frames(scan, storage, frames_dir)
         # Upload full-res, model-grid and frames.json, ticking as each keyframe lands.
@@ -328,7 +346,7 @@ class ReconPipelineImpl:
             storage.put_file(self._key(scan.scan_id, entry.model),
                              frames_dir / "model" / entry.frame, "image/jpeg")
             if timer is not None and n:
-                timer.tick((i + 1) / n, f"{i + 1}/{n} keyframes")
+                timer.tick(0.85 + 0.15 * (i + 1) / n, f"{i + 1}/{n} keyframes")
         storage.put_file(self._key(scan.scan_id, "frames/frames.json"),
                          frames_dir / "frames.json", "application/json")
         return index
@@ -360,9 +378,9 @@ class ReconPipelineImpl:
             storage.put_bytes(self._key(scan_id, f"geometry/conf/{stem}.npz"), buf_c,
                               "application/octet-stream")
             if timer is not None and n:
-                # Inference is done by here; this writes results, so scale the bar over the back
-                # half (0.5 -> 1.0) to reflect that the heavy solve already happened.
-                timer.tick(0.5 + 0.5 * (i + 1) / n, f"geometry {i + 1}/{n} views")
+                # Inference is done by here; this only writes results (well under a second), so it
+                # covers the last 10% of the bar after the creep's 90%.
+                timer.tick(0.9 + 0.1 * (i + 1) / n, f"geometry {i + 1}/{n} views")
 
     # -- stage scale --------------------------------------------------------
 

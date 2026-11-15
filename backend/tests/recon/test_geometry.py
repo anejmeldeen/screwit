@@ -24,8 +24,48 @@ def test_cap_views_only_on_cpu():
     capped = GE.cap_views(names, device="cpu")
     assert len(capped) == GE.CPU_VIEW_CAP
     assert capped[0] == names[0] and capped[-1] == names[-1]
-    # On a GPU device nothing is dropped.
+    # Apple MPS shares host memory, so it is capped too; on a CUDA device nothing is dropped.
+    assert GE.cap_views(names, device="mps") == capped
     assert GE.cap_views(names, device="cuda") == names
+
+
+def test_view_cap_is_clamped_to_ram():
+    # Measured: 8 views of DA3 nested-giant peak at ~29 GB; 16 ran a 36 GiB Mac out of memory.
+    assert GE.max_views_for_memory(38.7) == 8      # 36 GiB
+    assert GE.max_views_for_memory(68.7) == 15     # 64 GiB
+    assert GE.max_views_for_memory(17.2) == 2      # 16 GiB: floor
+    names = [f"{i:04d}.jpg" for i in range(40)]
+    assert len(GE.cap_views(names, device="cpu", limit=8)) == 8
+    assert len(GE.cap_views(names, device="mps", limit=8)) == 8
+    assert len(GE.cap_views(names, device="cpu", limit=None)) == GE.CPU_VIEW_CAP
+    assert len(GE.cap_views(names, device="cuda", limit=None)) == 40
+    # The real adapter reports a limit on host-memory devices only.
+    assert GE.DepthAnything3Adapter(device="cuda").max_views() is None
+    assert GE.DepthAnything3Adapter(device="mps").max_views() == GE.max_views_for_memory()
+
+
+def test_default_device_prefers_cuda_then_mps(monkeypatch):
+    import sys
+    import types
+
+    def fake(cuda, mps):
+        return types.SimpleNamespace(cuda=types.SimpleNamespace(is_available=lambda: cuda),
+                                     backends=types.SimpleNamespace(
+                                         mps=types.SimpleNamespace(is_available=lambda: mps)))
+
+    for env in (None, "auto"):
+        if env is None:
+            monkeypatch.delenv("SCREWIT_DEVICE", raising=False)
+        else:
+            monkeypatch.setenv("SCREWIT_DEVICE", env)
+        monkeypatch.setitem(sys.modules, "torch", fake(True, True))
+        assert GE._default_device() == "cuda"
+        monkeypatch.setitem(sys.modules, "torch", fake(False, True))
+        assert GE._default_device() == "mps"
+        monkeypatch.setitem(sys.modules, "torch", fake(False, False))
+        assert GE._default_device() == "cpu"
+    monkeypatch.setenv("SCREWIT_DEVICE", "cpu")
+    assert GE._default_device() == "cpu"
 
 
 def test_camera_similarity_keeps_rotation_orthonormal():
