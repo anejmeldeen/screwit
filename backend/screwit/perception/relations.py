@@ -56,16 +56,18 @@ def _coaxial(pa: Part, pb: Part) -> bool:
 
 
 def surface_gap_mm(points_a: np.ndarray, points_b: np.ndarray) -> float:
-    """Minimum nearest-neighbour distance between two point sets (mm)."""
+    """Minimum nearest-neighbour distance between two point sets (mm). Exact, via a KD-tree on the
+    larger set: the brute-force pairwise matrix took 9 s for five scanned parts of 4-15k points."""
+    from scipy.spatial import cKDTree
+
     a = np.asarray(points_a, float).reshape(-1, 3)
     b = np.asarray(points_b, float).reshape(-1, 3)
     if len(a) == 0 or len(b) == 0:
         return float("inf")
-    best = float("inf")
-    for chunk in np.array_split(a, max(1, len(a) // 512 + 1)):
-        d = np.linalg.norm(chunk[:, None, :] - b[None, :, :], axis=2)
-        best = min(best, float(d.min()))
-    return best
+    if len(a) > len(b):
+        a, b = b, a
+    d, _ = cKDTree(b).query(a, k=1)
+    return float(d.min())
 
 
 def candidate_pairs(parts: list[Part], part_points: dict[str, np.ndarray]) -> list[PairGeometry]:
