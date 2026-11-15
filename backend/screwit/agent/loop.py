@@ -15,6 +15,7 @@ from screwit.agent.driver import Driver, TextStep, ToolUseStep, steps_to_turn
 from screwit.agent.prompt import SYSTEM_PROMPT
 from screwit.agent.tools import CardSignal, HighlightSignal, ToolContext, anthropic_tool_specs
 from screwit.app.registry import Registry
+from screwit.app.store import ScanStore
 from screwit.contracts import (
     CardEvent,
     DoneEvent,
@@ -38,8 +39,14 @@ class LlmChatAgent:
     def reply(self, scan_id: str, message: str, image_uris: list[str]) -> Iterator:
         ctx = ToolContext(self._reg, scan_id)
         tools = anthropic_tool_specs()
-        messages: list[dict] = [{"role": "user", "content": _user_content(message, image_uris)}]
         try:
+            history = ScanStore(self._reg.data).list_chat(scan_id)
+            # The HTTP handler persists the incoming turn before starting the agent.
+            if history and history[-1].role == "user" and history[-1].text == message:
+                history.pop()
+            messages = [{"role": turn.role, "content": turn.text[-4000:]}
+                        for turn in history[-12:] if turn.text]
+            messages.append({"role": "user", "content": _user_content(message, image_uris)})
             yield from self._run(ctx, tools, messages)
         except Exception as e:  # a tool or driver fault must not kill the stream silently.
             yield ErrorEvent(message=f"agent error: {e}")

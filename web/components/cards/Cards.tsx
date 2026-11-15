@@ -2,6 +2,8 @@
 
 import { useState } from "react";
 import { assetUrl } from "@/lib/storage";
+import { InstructionManual } from "./InstructionManual";
+import type { RepairPlan } from "@/lib/contracts.gen";
 import { Badge } from "@/components/ui";
 import { PartText } from "./PartText";
 
@@ -72,6 +74,7 @@ export function RepairPlanCard({
           </li>
         ))}
       </ol>
+      {steps.length > 0 && <InstructionManual plan={payload as unknown as RepairPlan} />}
     </div>
   );
 }

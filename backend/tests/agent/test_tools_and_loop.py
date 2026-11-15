@@ -180,3 +180,15 @@ def test_tool_schema_exposes_codegen():
     assert "codegen" in spec["description"]
     # template is no longer a required field (codegen omits it)
     assert "required" not in spec["input_schema"] or "template" not in spec["input_schema"]["required"]
+
+
+def test_sink_manual_targets_named_part(registry):
+    from screwit.agent.offline import OfflineChatAgent
+
+    events = _collect(OfflineChatAgent(registry), "scn_sink", "Give me a repair manual for the P-trap")
+    plan = next(e.card.payload for e in events if isinstance(e, CardEvent) and e.card.type == "repair_plan")
+    assert plan.diagnosis.part_ids == ["p4"]
+    assert any(step.part_ids == ["p4"] for step in plan.steps)
+    assert {"p3", "p4", "p5"} == set(plan.steps[1].part_ids)
+    assert len(plan.bom) == 1
+    assert plan.tools and plan.safety

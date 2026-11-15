@@ -9,6 +9,7 @@ import { ViewerPanel } from "@/components/viewer/ViewerPanel";
 import { PartsPanel } from "@/components/PartsPanel";
 import { ResizeHandle } from "@/components/ResizeHandle";
 import { PartDownloads } from "@/components/PartDownloads";
+import { ManualContext } from "@/components/cards/ManualContext";
 import { ChatPanel } from "@/components/ChatPanel";
 import { ScanProgress } from "@/components/StatusBar";
 import { api } from "@/lib/api";
@@ -253,12 +254,12 @@ export function Workspace({
           {creationForm ? <div className="chat-panel">
             <header className="chat-heading"><span className="chat-mark screwy-avatar"><ScrewyIcon /></span><div><h2>Screwy</h2><p>Let’s build.</p></div></header>
             <div className="chat-messages"><div className="chat-empty"><h3>Start with your object.</h3><p>Name your workspace and add a video or photos. Once your scan starts, we can explore it together.</p></div></div>
-          </div> : <ChatPanel
+          </div> : <ManualContext.Provider value={{ name, parts: parts ?? [] }}><ChatPanel
             scanId={scanId}
             onHighlight={onHighlight}
             onPartChip={onPartChip}
             onShowCad={onShowCad}
-          />}
+          /></ManualContext.Provider>}
           </section>
         </aside>
       </div>

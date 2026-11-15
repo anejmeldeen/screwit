@@ -53,7 +53,7 @@ _INTENT_PATTERNS: list[tuple[str, re.Pattern]] = [
     # fix/diagnose: an explicit repair/diagnosis verb OR a symptom statement (object-agnostic symptoms).
     # No trailing \b, so stems match their inflections ("leak" -> "leaking", "wobbl" -> "wobbling").
     ("fix", re.compile(
-        r"\b(fix|repair|mend|stop|solve|sort out|how do i|how to|plan|wrong|broke|problem|fault|"
+        r"\b(manual|instructions|fix|repair|mend|stop|solve|sort out|how do i|how to|plan|wrong|broke|problem|fault|"
         r"fail|diagnos|leak|drip|wet|water|wobbl|loose|stuck|rattl|won'?t|doesn'?t|not working|"
         r"issue|why)", re.I)),
     ("measure", re.compile(
@@ -152,7 +152,7 @@ class OfflineChatAgent:
         elif intent == "buy":
             yield from self._intent_buy(scan_id, message, parts)
         elif intent == "fix":
-            yield from self._intent_fix(scan_id, parts, graph)
+            yield from self._intent_fix(scan_id, parts, graph, named)
         elif intent == "measure":
             yield from self._intent_measure(parts)
         elif intent == "explain":
@@ -202,12 +202,15 @@ class OfflineChatAgent:
         """Deprecated standalone path; kept so direct callers still work. Delegates to fix."""
         yield from self._intent_fix(scan_id, parts, graph)
 
-    def _intent_fix(self, scan_id: str, parts: list[Part], graph: SceneGraph | None) -> Iterator:
+    def _intent_fix(self, scan_id: str, parts: list[Part], graph: SceneGraph | None,
+                    target: Part | None = None) -> Iterator:
         if graph is None:
             yield TokenEvent(text="I need the scene graph before I can diagnose or plan a repair.")
             return
         ranked = sorted(graph.failure_hypotheses, key=lambda h: h.likelihood, reverse=True)
-        suspects = [h.part_id for h in ranked] or [p.part_id for p in parts[:1]]
+        if target:
+            ranked = [h for h in ranked if h.part_id == target.part_id]
+        suspects = [target.part_id] if target else [h.part_id for h in ranked] or [p.part_id for p in parts[:1]]
         yield HighlightEvent(part_ids=suspects)
 
         # Ranked diagnosis first, grounded in the failure hypotheses.
@@ -225,16 +228,17 @@ class OfflineChatAgent:
         top = ranked[0] if ranked else None
         yield TokenEvent(text="Here is a repair plan. ")
 
-        bom = self._buy_lines_for(parts, suspects)
+        bom = self._buy_lines_for(parts, suspects, best_only=True)
+        subject = target.label if target else graph.object.category
         plan = RepairPlan(
             plan_id="pln_" + uuid.uuid4().hex[:8],
             intent="repair",
-            diagnosis=Diagnosis(summary=(top.mode if top else f"wear on the {graph.object.category}"),
+            diagnosis=Diagnosis(summary=(top.mode if top else f"Inspect the {subject}"),
                                 part_ids=suspects, confidence=(top.likelihood if top else 0.3)),
             safety=["Disconnect power or shut off the supply before working on the object.",
                     "Work gently; do not overtighten plastic fittings."],
             tools=["basic hand tools", "a cloth or bucket to catch spills"],
-            steps=self._repair_steps(parts, suspects),
+            steps=self._repair_steps(parts, suspects, graph),
             bom=bom,
             printable=[],
             followups=["Want me to design a printable replacement for any part?"],
@@ -379,6 +383,27 @@ class OfflineChatAgent:
         if isinstance(result, CardSignal):
             yield TokenEvent(text=f"Here is a {template} with a {feature.type.replace('_', ' ')} fit. ")
             yield CardEvent(card=result.card)
+            cad = result.card.payload
+            if cad.status == "ok":
+                dims = ", ".join(f"{f.replace('_', ' ')} {getattr(feature, f).value_mm:g} mm" for f in fields)
+                plan = RepairPlan(
+                    plan_id="pln_" + uuid.uuid4().hex[:8], intent="fabrication",
+                    diagnosis=Diagnosis(summary=f"Make a {template} to fit the {target.label}.",
+                                        part_ids=[target.part_id], confidence=target.label_confidence),
+                    safety=["Allow the print bed and part to cool before removal."],
+                    tools=["FDM printer", "slicer", "calipers"],
+                    steps=[
+                        Step(n=1, text=f"Check the mating feature on [[part:{target.part_id}]]"
+                             + (f" against the confirmed dimensions ({dims})." if dims else "."),
+                             part_ids=[target.part_id]),
+                        Step(n=2, text=f"Download the STL for {cad.cad_id} from the CAD result. "
+                             "Import it into the slicer in millimetres and check the preview at full scale."),
+                        Step(n=3, text="Slice with the profile for your printer and filament. Print one test piece."),
+                        Step(n=4, text=f"After cooling, check the mating dimensions with calipers. "
+                             f"Test the fit on [[part:{target.part_id}]] by hand. Stop if it binds.",
+                             part_ids=[target.part_id]),
+                    ], bom=[], printable=[cad.cad_id], followups=[])
+                yield CardEvent(card=RepairPlanCard(payload=plan))
         elif isinstance(result, dict) and result.get("error") == "confirm_before_printing":
             offenders = ", ".join(o["field"] for o in result["offenders"])
             yield TokenEvent(text=f"I still need confirmed values for {offenders} before printing. "
@@ -425,7 +450,7 @@ class OfflineChatAgent:
     def _label(self, parts: list[Part], part_id: str) -> str:
         return next((p.label for p in parts if p.part_id == part_id), part_id)
 
-    def _repair_steps(self, parts: list[Part], suspects: list[str]) -> list[Step]:
+    def _repair_steps(self, parts: list[Part], suspects: list[str], graph: SceneGraph) -> list[Step]:
         """Grounded, object-agnostic repair steps: isolate, access the suspect part(s), replace, test."""
         suspect_ids = [pid for pid in suspects if any(p.part_id == pid for p in parts)]
         steps: list[Step] = [
@@ -434,10 +459,18 @@ class OfflineChatAgent:
         ]
         if suspect_ids:
             labels = ", ".join(f"{self._label(parts, pid)} [[part:{pid}]]" for pid in suspect_ids)
-            steps.append(Step(n=2, text=f"Access and remove the suspect part(s): {labels}.",
-                              part_ids=suspect_ids))
-            steps.append(Step(n=3, text="Fit the correct replacement part in the same orientation, "
-                                        "seating it by hand.", part_ids=suspect_ids[:1]))
+            neighbours = {r.b for r in graph.relations if r.a in suspect_ids}
+            neighbours.update(r.a for r in graph.relations if r.b in suspect_ids)
+            adjacent = [p for p in parts if p.part_id in neighbours and p.part_id not in suspect_ids]
+            context = ", ".join(f"[[part:{p.part_id}]]" for p in adjacent)
+            steps.append(Step(n=2, text=f"Locate {labels}."
+                              + (f" Photograph its connections to {context}." if context else
+                                 " Photograph its installed orientation.")
+                              + " Check the existing size and fitting markings against the replacement before removal.",
+                              part_ids=[*suspect_ids, *(p.part_id for p in adjacent)]))
+            steps.append(Step(n=3, text="Remove the worn part. Align the replacement with the original "
+                                        "orientation and secure it following the fitting instructions.",
+                              part_ids=suspect_ids[:1]))
         else:
             steps.append(Step(n=2, text="Inspect the worn or damaged part and remove it."))
             steps.append(Step(n=3, text="Fit the correct replacement part."))
@@ -446,7 +479,7 @@ class OfflineChatAgent:
         return steps
 
     def _buy_lines_for(self, parts: list[Part], part_ids: list[str],
-                       query_hint: str = "") -> list[BomLine]:
+                       query_hint: str = "", *, best_only: bool = False) -> list[BomLine]:
         """Search the catalogue using each suspect part's label and preferred diameter (object-agnostic:
         the query words come from the part labels and the message, never from hard-coded categories)."""
         seen: set[str] = set()
@@ -457,7 +490,8 @@ class OfflineChatAgent:
                 continue
             diameter = self._preferred_diameter(part)
             query = f"{part.label} {query_hint}".strip()
-            for line in catalogue.search(query, measurement_mm=diameter):
+            hits = catalogue.search(query, measurement_mm=diameter)
+            for line in (hits[:1] if best_only else hits):
                 if line.name not in seen:
                     seen.add(line.name)
                     lines.append(line)

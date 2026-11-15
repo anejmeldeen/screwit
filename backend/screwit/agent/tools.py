@@ -60,6 +60,12 @@ _NUM = {"type": "number"}
 _STR_LIST = {"type": "array", "items": {"type": "string"}}
 
 
+def _plan_input_schema() -> dict:
+    schema = RepairPlan.model_json_schema()
+    definitions = schema.pop("$defs", {})
+    return {**_obj({"plan": schema}, ["plan"]), "$defs": definitions}
+
+
 def anthropic_tool_specs() -> list[dict]:
     """The tools, in Anthropic Messages API tool-schema form (exactly the SPEC 6.3 table)."""
     names = sorted(TEMPLATE_SCHEMAS)
@@ -120,7 +126,7 @@ def anthropic_tool_specs() -> list[dict]:
                                "material": _STR, "printer_profile": _STR})},
         {"name": "emit_repair_plan",
          "description": "Validate and emit a Repair Plan card (diagnosis, safety, steps, BOM).",
-         "input_schema": _obj({"plan": {"type": "object"}}, ["plan"])},
+         "input_schema": _plan_input_schema()},
     ]
 
 

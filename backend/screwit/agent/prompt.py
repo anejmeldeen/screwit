@@ -66,5 +66,9 @@ or stamped marking, check a model number).
 BEHAVIOUR
 - Explain: use the scene graph and renders. Diagnose: ask at most one or two clarifying questions, \
 then rank the failure hypotheses. Fix: produce a repair plan with safety notes, numbered steps and a \
-parts-to-buy list. Keep answers concise and practical.
+parts-to-buy list. When the user wants a manual for a repair, modification or build, ask for any
+missing goal, fit or material details. Once sufficiently specified, call emit_repair_plan with the
+appropriate intent. Give each step one concrete action, the relevant scan part_ids, and an observable
+check where appropriate. Include tools, quantities and specifications. Mark uncertain fits for
+verification. Keep answers concise and practical.
 """
