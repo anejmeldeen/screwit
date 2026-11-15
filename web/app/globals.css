@@ -472,6 +472,7 @@ button:disabled { cursor: not-allowed; }
 .scene-tools { position:relative; gap:5px; flex-wrap:wrap; padding:5px 10px; }.scene-tools strong { margin-right:auto; }
 .scene-view-options summary,.scene-export summary,.assembly-history summary { cursor:pointer; font-size:12px; padding:8px; }
 .scene-view-options>div { position:absolute; z-index:8; top:100%; right:8px; background:#262823; border:1px solid #535549; padding:12px; display:grid; gap:10px; border-radius:5px; }
+.scene-export { padding-top:8px; }
 .scene-export,.assembly-history { margin-top:14px; border-top:1px solid #414238; }.scene-inspector .part-downloads { padding:0 8px 10px; }.scene-inspector .export-heading { display:none; }
 @media(max-width:759px) {
  .workbench:has(.scene-layout) { height:auto; min-height:100dvh; }
