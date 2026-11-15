@@ -4,19 +4,23 @@ Each tool is dispatched against P3/P5 through the registry and the ScanStore, so
 mock mode (fakes), tests (fake LLM) and live. Tools that need parts return a "not ready yet" marker
 before the parts stage finishes (SPEC 6.3 before-parts mode).
 
-The tool set is exactly the SPEC 6.3 table:
+The tool set is the SPEC 6.3 table:
   get_scene_graph, get_part, list_parts, measure, render_view, get_keyframes, highlight,
-  set_measurement, search_parts, create_cad, emit_repair_plan.
+  set_measurement, search_parts, create_cad, emit_repair_plan,
+plus add_part (agent/add_part.py), which adds a new component to the object.
 """
 
 from __future__ import annotations
 
 import base64
+import uuid
 from dataclasses import dataclass
 from typing import Any
 
 from screwit.agent import catalogue
+from screwit.agent.add_part import add_part, input_schema
 from screwit.agent.cad import TEMPLATE_SCHEMAS, ConfirmBeforePrinting, check_confirm_before_printing
+from screwit.agent.context import part_summary
 from screwit.app.registry import Registry
 from screwit.app.store import ScanStore
 from screwit.contracts import (
@@ -31,7 +35,8 @@ from screwit.contracts.models import FEATURE_MEASUREMENT_FIELDS, MeasurementEdit
 NOT_READY = {"status": "not_ready", "message": "parts are still being computed; try again shortly"}
 
 # Tools that need the parts stage to have finished.
-_NEEDS_PARTS = frozenset({"get_part", "list_parts", "render_view", "set_measurement", "create_cad"})
+_NEEDS_PARTS = frozenset({"get_part", "list_parts", "render_view", "set_measurement", "create_cad",
+                          "add_part"})
 
 
 @dataclass
@@ -67,7 +72,7 @@ def _plan_input_schema() -> dict:
 
 
 def anthropic_tool_specs() -> list[dict]:
-    """The tools, in Anthropic Messages API tool-schema form (exactly the SPEC 6.3 table)."""
+    """The tools, in Anthropic Messages API tool-schema form (the SPEC 6.3 table plus add_part)."""
     names = sorted(TEMPLATE_SCHEMAS)
     create_desc = (
         "Start a CAD job and return the checks. Two modes:\n"
@@ -88,7 +93,9 @@ def anthropic_tool_specs() -> list[dict]:
          "description": "Full record for one part, with features and measured dimensions.",
          "input_schema": _obj({"part_id": _STR}, ["part_id"])},
         {"name": "list_parts",
-         "description": "Short list of detected parts (id, label, confidence).",
+         "description": "Every part with id, label, confidence, description, source, centroid and "
+                        "bounding-box size in mm, material guess, dimensions with their source, and "
+                        "feature ids. Use get_part for the full feature geometry.",
          "input_schema": _obj()},
         {"name": "measure",
          "description": "Distance in mm between two points ([x,y,z] mm) or two part ids.",
@@ -127,6 +134,14 @@ def anthropic_tool_specs() -> list[dict]:
         {"name": "emit_repair_plan",
          "description": "Validate and emit a Repair Plan card (diagnosis, safety, steps, BOM).",
          "input_schema": _plan_input_schema()},
+        {"name": "add_part",
+         "description": (
+             "Add a NEW component to the object and save it: a simple solid (box, cylinder, sphere) "
+             "sized and placed in the scan frame (mm, Z up), or the model of a CAD result placed "
+             "where its preview was shown. It is saved as a user-edited part and appears in the "
+             "parts list, hierarchy and 3D viewer. Call it only after the user has confirmed what "
+             "to add, its size and its position. Returns the new part id."),
+         "input_schema": input_schema()},
     ]
 
 
@@ -161,8 +176,7 @@ class ToolContext:
         return part.model_dump(mode="json") if part else {"error": "unknown part"}
 
     def _tool_list_parts(self, args: dict) -> Any:
-        return [{"part_id": p.part_id, "label": p.label, "label_confidence": p.label_confidence}
-                for p in self._store.list_parts(self._scan_id)]
+        return [part_summary(p) for p in self._store.list_parts(self._scan_id)]
 
     def _tool_measure(self, args: dict) -> Any:
         req = MeasureRequest(a=_coerce_point(args["a"]), b=_coerce_point(args["b"]))
@@ -260,13 +274,18 @@ class ToolContext:
 
         return CardSignal(card=RepairPlanCard(payload=plan))
 
+    def _tool_add_part(self, args: dict) -> Any:
+        return add_part(self._reg, self._store, self._scan_id, args)
+
     # -------------------------------------------------------------- helpers
     def _build_cad_request(self, args: dict, parts: dict, mates: list[dict], mode: str) -> CadRequest:
         from screwit.contracts import Mate, Placement
 
         scan = self._store.get_scan(self._scan_id)
         self._cad_seq += 1
-        cad_id = f"cad_{self._scan_id}_{self._cad_seq:03d}"
+        # The sequence restarts with every reply (one ToolContext per reply) and save_cad_job upserts
+        # by id, so a random suffix keeps a later job from overwriting an earlier one.
+        cad_id = f"cad_{self._scan_id}_{self._cad_seq:03d}_{uuid.uuid4().hex[:6]}"
         params = {k: float(v) for k, v in (args.get("params") or {}).items()}
         param_sources = {k: "user_confirmed" for k in params}  # confirm-guard already passed.
         mate_models = [Mate(part_id=m["part_id"], feature_id=m["feature_id"],

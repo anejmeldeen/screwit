@@ -30,6 +30,7 @@
 #   SCREWIT_PORT (8000)  WEB_PORT (3000)  SCREWIT_CPU_VIEW_CAP (8; also capped to what RAM can hold)
 #   SCREWIT_DEVICE (auto: an NVIDIA GPU, else the Apple GPU (about 10x faster than the CPU), else cpu)
 #   SCREWIT_INFER_GS (0)  SCREWIT_MODEL (anthropic/claude-sonnet-4.5)  SCREWIT_DATA_DIR (<repo>/data-live)
+#   SCREWIT_CHAT_MODEL (Screwy chat only; anthropic/claude-haiku-4.5 with openrouter, else SCREWIT_MODEL)
 #   SCREWIT_LLM (openrouter; also bedrock, anthropic, fake)  SCREWIT_LLM_CACHE (1)  SCREWIT_RELOAD (0)
 #   Scan quality (usually leave at defaults):
 #   SCREWIT_DEPTH_CLEAN (1)  SCREWIT_MIN_VIEWS (1 = off; 2 peels single-view rim flaps but eats lower walls)
@@ -286,6 +287,9 @@ start() {
     export SCREWIT_DATA_DIR="$DATA_DIR"
     export SCREWIT_LLM="${SCREWIT_LLM:-openrouter}"
     export SCREWIT_MODEL="${SCREWIT_MODEL:-anthropic/claude-sonnet-4.5}"
+    if [ "$SCREWIT_LLM" = "openrouter" ]; then
+      export SCREWIT_CHAT_MODEL="${SCREWIT_CHAT_MODEL:-anthropic/claude-haiku-4.5}"
+    fi
     export HF_HOME="$HF_DIR"
     export HF_HUB_OFFLINE="${HF_HUB_OFFLINE:-1}"   # weights are already local; never phone home
     export SCREWIT_RELOAD="${SCREWIT_RELOAD:-0}"
