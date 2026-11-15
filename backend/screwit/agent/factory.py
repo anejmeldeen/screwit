@@ -7,8 +7,7 @@ Routing (the brief):
   credentials, network down), it falls back to the offline agent, which says it is offline.
 - SCREWIT_LLM unset/fake -> the deterministic offline agent.
 
-Every path emits a short leading token saying which mode answered, so a viewer can see whether the
-real model or the offline router produced the reply.
+Live replies use Screwy's own voice. Offline replies disclose their limited mode.
 """
 
 from __future__ import annotations
@@ -19,11 +18,10 @@ from collections.abc import Iterator
 from screwit.agent.loop import LlmChatAgent
 from screwit.agent.offline import OfflineChatAgent
 from screwit.app.registry import Registry
-from screwit.contracts import DoneEvent, TokenEvent
+from screwit.contracts import DoneEvent
 from screwit.interfaces import ChatAgent
 from screwit.llm import REAL_PROVIDERS, config
 
-_ONLINE_NOTE = "[online: Claude]"
 _OFFLINE_NOTE = "[offline agent]"
 _OFFLINE_AFTER_FAILURE_NOTE = "[offline agent: the language model was unavailable, answering from the scan data]"
 
@@ -48,7 +46,7 @@ def build_chat_agent(reg: Registry) -> ChatAgent:
 
 class _LlmWithOfflineFallback:
     """Runs the real Claude loop; on any provider/driver failure before the first real event, falls
-    back to the offline agent so chat always answers. Emits a leading mode token either way."""
+    back to the offline agent so chat always answers and discloses the fallback."""
 
     def __init__(self, reg: Registry) -> None:
         self._reg = reg
@@ -64,7 +62,6 @@ class _LlmWithOfflineFallback:
             events = self._online_events(stream)
             first = next(events, None)  # may raise _ProviderFailed if nothing usable came back
             if first is not None:
-                yield TokenEvent(text=_ONLINE_NOTE + " ")
                 yield first
                 yield from events
                 return

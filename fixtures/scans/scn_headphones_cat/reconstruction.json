@@ -1,0 +1,61 @@
+{
+  "scan_id": "scn_headphones_cat",
+  "reconstruction_revision": 1,
+  "splat_uri": null,
+  "mesh_uri": "scans/scn_headphones_cat/mesh/object.glb",
+  "cameras_uri": "scans/scn_headphones_cat/geometry/cameras.json",
+  "keyframes": [],
+  "scale": {
+    "method": "manual"
+  },
+  "frame_origin": "object_bottom_center",
+  "scan_to_web": {
+    "matrix": [
+      [
+        1,
+        0,
+        0,
+        0
+      ],
+      [
+        0,
+        0,
+        1,
+        0
+      ],
+      [
+        0,
+        -1,
+        0,
+        0
+      ],
+      [
+        0,
+        0,
+        0,
+        1
+      ]
+    ],
+    "unit_scale": 0.001
+  },
+  "object_bbox_mm": {
+    "min": [
+      -126.5,
+      -28.0,
+      5.0
+    ],
+    "max": [
+      126.5,
+      190.0,
+      49.0
+    ]
+  },
+  "quality": {
+    "frames_used": 0,
+    "total_frames": 0,
+    "mean_depth_confidence": 1,
+    "gaussians": 0
+  },
+  "mesh_mobile_uri": null,
+  "splat_mobile_uri": null
+}

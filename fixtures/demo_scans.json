@@ -1,5 +1,17 @@
 [
   {
+    "scan_id": "scn_headphones_cat",
+    "title": "Crusher Evo-inspired \u00b7 Cat ears",
+    "scenario": "A",
+    "thumbnail_uri": "scans/scn_headphones_cat/renders/thumbnail.png"
+  },
+  {
+    "scan_id": "scn_headphones",
+    "title": "Crusher Evo-inspired \u00b7 Headphones",
+    "scenario": "A",
+    "thumbnail_uri": "scans/scn_headphones/renders/thumbnail.png"
+  },
+  {
     "scan_id": "scn_sink",
     "title": "Kitchen sink \u00b7 5-piece assembly",
     "scenario": "A",

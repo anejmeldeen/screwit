@@ -1,11 +1,12 @@
 """The signed-in account's saved builds, including admin's existing examples."""
 
+import hashlib
 import io
 import json
 from datetime import UTC, datetime
 from typing import Annotated
 
-from fastapi import APIRouter, HTTPException, Response
+from fastapi import APIRouter, HTTPException, Request, Response
 from pydantic import BaseModel, StringConstraints
 from sqlmodel import select
 
@@ -59,7 +60,7 @@ def list_builds(reg: RegistryDep, user: UserDep) -> list[BuildSummary]:
         scan = store.get_scan(owner.scan_id)
         if scan is None:
             continue
-        default_title = f"{scan.input.type.capitalize()} build · {scan.scan_id.removeprefix('scn_')[:6]}"
+        default_title = f"{scan.input.type.capitalize()} build"
         builds.append(BuildSummary(
             scan_id=scan.scan_id,
             title=saved_titles.get(scan.scan_id, titles.get(scan.scan_id, default_title)),
@@ -108,32 +109,59 @@ def delete_build(scan_id: str, user: UserDep) -> Response:
     return Response(status_code=204)
 
 
+def _etag_matches(header: str | None, etag: str) -> bool:
+    """If-None-Match (RFC 9110 13.1.2): a list of entity tags, weak ones prefixed ``W/``, or ``*``."""
+    if not header:
+        return False
+    tags = [tag.strip() for tag in header.split(",")]
+    return "*" in tags or any(tag.removeprefix("W/") == etag for tag in tags)
+
+
 @router.get("/builds/{scan_id}/preview.png")
-def build_preview(scan_id: str, reg: RegistryDep) -> Response:
+def build_preview(scan_id: str, reg: RegistryDep, request: Request) -> Response:
     recon = ScanStore(reg.data).get_reconstruction(scan_id)
     if recon is None:
         raise HTTPException(404, "Model preview is not available yet.")
-    key = f"scans/{scan_id}/renders/workspace-{recon.reconstruction_revision}.png"
+    import numpy as np
+    import trimesh
+
+    from screwit.app.preview_renderer import render_mesh_png
+    from screwit.app.settings import _REPO_ROOT
+
+    parts = ScanStore(reg.data).list_parts(scan_id)
+    signature = hashlib.sha256("".join(p.model_dump_json() for p in parts).encode()).hexdigest()[:16]
+    key = f"scans/{scan_id}/renders/workspace-palette-v2-{recon.reconstruction_revision}-{signature}.png"
+    # The storage key names exactly what the picture shows (palette version, reconstruction revision
+    # and parts), so it is also the ETag. "no-cache" lets the browser keep the image but makes it ask
+    # again on every view, so the router's owner check still runs each time; an unchanged preview then
+    # costs a 304 instead of a download or, in mock mode, a fresh render.
+    etag = f'"{hashlib.sha256(key.encode()).hexdigest()[:20]}"'
+    headers = {"Cache-Control": "private, no-cache", "ETag": etag}
+    if _etag_matches(request.headers.get("if-none-match"), etag):
+        return Response(status_code=304, headers=headers)
     if reg.storage.head(key):
         png = reg.storage.get_bytes(key)
     else:
-        import trimesh
-
-        from screwit.perception.render import render_mesh_png
-
-        raw = reg.storage.get_bytes(recon.mesh_uri)
-        mesh = trimesh.load(io.BytesIO(raw), file_type="glb", force="mesh")
+        palette = json.loads((_REPO_ROOT / "web/lib/partPalette.json").read_text())
+        meshes = []
+        for i, part in enumerate(parts):
+            raw = reg.storage.get_bytes(part.mesh_uri)
+            mesh = trimesh.load(io.BytesIO(raw), file_type="glb", force="scene").to_geometry()
+            color_id = part.color_source_id or part.part_id
+            slot = int(color_id[1:]) - 1 if color_id.startswith("p") and color_id[1:].isdigit() else i
+            color = [*bytes.fromhex(palette[slot % len(palette)][1:]), 255]
+            mesh.visual.vertex_colors = np.tile(color, (len(mesh.vertices), 1))
+            meshes.append(mesh)
+        if meshes:
+            mesh = trimesh.util.concatenate(meshes)
+        else:
+            raw = reg.storage.get_bytes(recon.mesh_uri)
+            mesh = trimesh.load(io.BytesIO(raw), file_type="glb", force="scene").to_geometry()
+            mesh.visual.vertex_colors = [*bytes.fromhex(palette[0][1:]), 255]
         if not len(mesh.faces):
             raise HTTPException(404, "Model has no visible faces.")
-        # The CPU rasterizer projects camera-up toward increasing image rows.
-        from PIL import Image
-
-        rendered = render_mesh_png(mesh.vertices, mesh.faces, getattr(mesh.visual, "vertex_colors", None),
-                                   width=480, height=288)
-        with Image.open(io.BytesIO(rendered)) as image:
-            output = io.BytesIO()
-            image.transpose(Image.Transpose.FLIP_TOP_BOTTOM).save(output, format="PNG")
-        png = output.getvalue()
+        png = render_mesh_png(mesh.vertices, mesh.faces, mesh.visual.vertex_colors,
+                              angle_deg=-45, width=960, height=576)
         if reg.settings.mode != "mock":
             reg.storage.put_bytes(key, png, "image/png")
-    return Response(png, media_type="image/png", headers={"Cache-Control": "private, no-cache"})
+    return Response(png, media_type="image/png", headers=headers)

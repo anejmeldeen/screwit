@@ -1,0 +1,62 @@
+{
+  "scan_id": "scn_headphones_cat",
+  "object": {
+    "category": "over-ear headphones",
+    "summary": "Synthetic Crusher Evo-inspired headphones with cat ears"
+  },
+  "parts": [
+    "p1",
+    "p2",
+    "p3",
+    "p4",
+    "p5",
+    "p6",
+    "p7"
+  ],
+  "relations": [
+    {
+      "a": "p2",
+      "b": "p1",
+      "type": "fastened",
+      "confidence": 1.0,
+      "note": null
+    },
+    {
+      "a": "p3",
+      "b": "p1",
+      "type": "fastened",
+      "confidence": 1.0,
+      "note": null
+    },
+    {
+      "a": "p4",
+      "b": "p2",
+      "type": "fastened",
+      "confidence": 1.0,
+      "note": null
+    },
+    {
+      "a": "p5",
+      "b": "p3",
+      "type": "fastened",
+      "confidence": 1.0,
+      "note": null
+    },
+    {
+      "a": "p6",
+      "b": "p1",
+      "type": "fastened",
+      "confidence": 1.0,
+      "note": null
+    },
+    {
+      "a": "p7",
+      "b": "p1",
+      "type": "fastened",
+      "confidence": 1.0,
+      "note": null
+    }
+  ],
+  "function": "The headband supports two over-ear driver housings and removable cushions. Illustrative geometry, not manufacturer CAD or measured replacement dimensions.",
+  "failure_hypotheses": []
+}

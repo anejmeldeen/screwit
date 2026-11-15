@@ -60,7 +60,8 @@ function PartMesh({
       // Own the display material: glTF defaults to metalness=1, and baked
       // vertex colors otherwise multiply (darken) the part palette.
       object.material = new MeshStandardMaterial({
-        color: partColor(index, part.color_source_id ?? part.part_id), metalness: 0, roughness: 1,
+        color: partColor(index, part.color_source_id ?? part.part_id),
+        metalness: 0, roughness: 1,
       });
     });
     return clone;

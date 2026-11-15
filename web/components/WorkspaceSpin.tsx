@@ -52,21 +52,37 @@ class PreviewBoundary extends Component<{ children: ReactNode }, { failed: boole
   render() { return this.state.failed ? null : this.props.children; }
 }
 
-export default function WorkspaceSpin({ id }: { id: string }) {
-  const [assets, setAssets] = useState<Asset[]>([]);
+// Each hover used to fetch the parts again, and every fetch signs the mesh URLs afresh, so the loader
+// (which caches by URL) downloaded and parsed every mesh again. Keeping the list per workspace lets a
+// second hover reuse the parsed meshes at once. ``version`` (the workspace's updated_at) retires an
+// entry when the workspace changes; signed URLs live 15 minutes, so entries are renewed after 10.
+const SPIN_TTL_MS = 10 * 60 * 1000;
+const spinAssets = new Map<string, { version: string; at: number; assets: Asset[] }>();
+
+function freshAssets(id: string, version: string) {
+  const hit = spinAssets.get(id);
+  return hit && hit.version === version && Date.now() - hit.at < SPIN_TTL_MS ? hit.assets : null;
+}
+
+export default function WorkspaceSpin({ id, version }: { id: string; version: string }) {
+  const [assets, setAssets] = useState<Asset[]>(() => freshAssets(id, version) ?? []);
   const [ready, setReady] = useState(false);
   useEffect(() => {
+    if (freshAssets(id, version)) return;
     let active = true;
     async function load() {
       const parts = await api.getParts(id);
       const items = parts.length ? parts.map((part, index) => ({
         url: assetUrl(part.mesh_uri), color: partColor(index, part.color_source_id ?? part.part_id),
       })) : [{ url: assetUrl((await api.getReconstruction(id)).mesh_uri) }];
+      const stale = spinAssets.get(id);
+      if (stale) useLoader.clear(GLTFLoader, stale.assets.map(asset => asset.url));   // free the old meshes
+      spinAssets.set(id, { version, at: Date.now(), assets: items });
       if (active) setAssets(items);
     }
     load().catch(() => {});
     return () => { active = false; };
-  }, [id]);
+  }, [id, version]);
   const show = useMemo(() => () => setReady(true), []);
   if (!assets.length) return null;
   return <PreviewBoundary><div className="workspace-spin" aria-hidden="true" style={{ opacity: ready ? 1 : 0 }}>

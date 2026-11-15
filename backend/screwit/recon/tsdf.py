@@ -144,6 +144,63 @@ def _remove_support_slab(mesh: MeshResult) -> MeshResult:
         return mesh
 
 
+SKIRT_HEIGHT_MM = 8.0   # the residue sits 1-7 mm above the support on the headphones scan
+SKIRT_WIDTH_MM = 8.0    # up-facing strips narrower than about twice this are residue
+
+
+def _drop_support_skirt(mesh: MeshResult, height_mm: float = SKIRT_HEIGHT_MM,
+                        width_mm: float = SKIRT_WIDTH_MM) -> MeshResult:
+    """Cut the thin rim of table that hugs the object's base.
+
+    The object mask keeps the table pixels right next to the object (it has to, or it loses the
+    lowest few millimetres of every wall), and fusion turns them into a narrow, flat, up-facing
+    strip around the footprint: 35 cm2 on the headphones scan. The strip joined the bottoms of the
+    two ear cups into one band, which part segmentation then handed to one cup. It is too small
+    for ``_remove_support_slab`` (not a dominant plane), so it is found by shape: faces facing up
+    within ``height_mm`` of the lowest surface, minus every flat region wide enough to survive a
+    morphological opening of ``width_mm`` (an object's own flat top, a lying phone's face, is
+    wide; a residue rim is not). Best-effort; disabled with the table cut (SCREWIT_REMOVE_TABLE=0).
+    """
+    import os
+
+    if os.environ.get("SCREWIT_REMOVE_TABLE", "1").strip().lower() in ("0", "false", "off", "no"):
+        return mesh
+    if mesh.triangles.shape[0] < 500:
+        return mesh
+    try:
+        import trimesh
+        from scipy.sparse import coo_matrix
+
+        tm = trimesh.Trimesh(mesh.vertices_mm.astype(np.float64), mesh.triangles.astype(np.int64),
+                             process=False)
+        z0 = float(np.percentile(mesh.vertices_mm[:, 2], 0.5))
+        flat = (tm.face_normals[:, 2] > 0.85) & (tm.triangles_center[:, 2] < z0 + height_mm)
+        if not flat.any():
+            return mesh
+        adj = tm.face_adjacency
+        nf = len(tm.faces)
+        a = coo_matrix((np.ones(2 * len(adj)), (np.r_[adj[:, 0], adj[:, 1]], np.r_[adj[:, 1], adj[:, 0]])),
+                       shape=(nf, nf)).tocsr()
+        ev = tm.edges_unique
+        edge = float(np.median(np.linalg.norm(tm.vertices[ev[:, 0]] - tm.vertices[ev[:, 1]], axis=1)))
+        rings = max(1, int(round(width_mm / max(edge, 1e-6))))
+        # Erode inside the flat set, from non-flat neighbours and from open edges alike (the rim's
+        # outer edge is open), then grow back inside it.
+        open_edge = np.asarray(a.sum(axis=1)).ravel() < 3
+        core = flat & ~open_edge
+        for _ in range(rings):
+            core &= ~(a @ (~core).astype(np.float64) > 0)
+        wide = core
+        for _ in range(rings + 1):
+            wide = wide | ((a @ wide.astype(np.float64) > 0) & flat)
+        drop = flat & ~wide
+        if not drop.any() or tm.area_faces[drop].sum() > 0.25 * tm.area:
+            return mesh
+        return _compact(mesh, ~drop, min_component_frac=0.01)
+    except Exception:  # noqa: BLE001 - residue removal is cosmetic; keep the mesh on any error
+        return mesh
+
+
 def _denoise_mesh(mesh):
     """Drop stray floaters and TSDF speckle before smoothing. Two cheap passes:
     1. Remove tiny disconnected triangle clusters (specks under ~0.5% of the largest cluster) that
@@ -389,6 +446,7 @@ def _cleanup_surface(mesh: MeshResult) -> MeshResult:
     if mesh.triangles.shape[0] < 100:
         return mesh
     mesh = _remove_support_slab(mesh)
+    mesh = _drop_support_skirt(mesh)
     try:
         import open3d as o3d
 

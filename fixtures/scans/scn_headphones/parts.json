@@ -1,0 +1,377 @@
+[
+  {
+    "part_id": "p1",
+    "color_source_id": null,
+    "reconstruction_revision": 1,
+    "measurement_revision": 1,
+    "label": "Headband",
+    "label_confidence": 1.0,
+    "description": "Broad curved matte headband with padded liner and sliding adjustment seams.",
+    "mesh_uri": "scans/scn_headphones/parts/p1.glb",
+    "thumbnail_uri": "scans/scn_headphones/renders/p1.png",
+    "centroid_mm": [
+      0.0,
+      106.23562466753775,
+      25.0
+    ],
+    "obb": {
+      "center": [
+        0.0,
+        106.23562466753775,
+        25.0
+      ],
+      "extent": [
+        185.0,
+        92.4712493350755,
+        33.0
+      ],
+      "rotation_quat": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ]
+    },
+    "dimensions": [
+      {
+        "name": "width",
+        "value": {
+          "scan_mm": 185.0,
+          "snapped_mm": null,
+          "snap_rule": null,
+          "caliper_mm": null,
+          "user_confirmed": false,
+          "preferred": "scan"
+        }
+      },
+      {
+        "name": "depth",
+        "value": {
+          "scan_mm": 92.4712493350755,
+          "snapped_mm": null,
+          "snap_rule": null,
+          "caliper_mm": null,
+          "user_confirmed": false,
+          "preferred": "scan"
+        }
+      },
+      {
+        "name": "height",
+        "value": {
+          "scan_mm": 33.0,
+          "snapped_mm": null,
+          "snap_rule": null,
+          "caliper_mm": null,
+          "user_confirmed": false,
+          "preferred": "scan"
+        }
+      }
+    ],
+    "features": [],
+    "material_guess": {
+      "value": "Illustrative material",
+      "confidence": 1.0
+    },
+    "source": "user_edited"
+  },
+  {
+    "part_id": "p2",
+    "color_source_id": null,
+    "reconstruction_revision": 1,
+    "measurement_revision": 1,
+    "label": "Left earcup",
+    "label_confidence": 1.0,
+    "description": "Flat oval driver housing, swivel yoke, control buttons and housing seam.",
+    "mesh_uri": "scans/scn_headphones/parts/p2.glb",
+    "thumbnail_uri": "scans/scn_headphones/renders/p2.png",
+    "centroid_mm": [
+      -89.75,
+      23.5,
+      21.0
+    ],
+    "obb": {
+      "center": [
+        -89.75,
+        23.5,
+        21.0
+      ],
+      "extent": [
+        73.5,
+        103.0,
+        32.0
+      ],
+      "rotation_quat": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ]
+    },
+    "dimensions": [
+      {
+        "name": "width",
+        "value": {
+          "scan_mm": 73.5,
+          "snapped_mm": null,
+          "snap_rule": null,
+          "caliper_mm": null,
+          "user_confirmed": false,
+          "preferred": "scan"
+        }
+      },
+      {
+        "name": "depth",
+        "value": {
+          "scan_mm": 103.0,
+          "snapped_mm": null,
+          "snap_rule": null,
+          "caliper_mm": null,
+          "user_confirmed": false,
+          "preferred": "scan"
+        }
+      },
+      {
+        "name": "height",
+        "value": {
+          "scan_mm": 32.0,
+          "snapped_mm": null,
+          "snap_rule": null,
+          "caliper_mm": null,
+          "user_confirmed": false,
+          "preferred": "scan"
+        }
+      }
+    ],
+    "features": [],
+    "material_guess": {
+      "value": "Illustrative material",
+      "confidence": 1.0
+    },
+    "source": "user_edited"
+  },
+  {
+    "part_id": "p3",
+    "color_source_id": null,
+    "reconstruction_revision": 1,
+    "measurement_revision": 1,
+    "label": "Right earcup",
+    "label_confidence": 1.0,
+    "description": "Flat oval driver housing, swivel yoke, control buttons and housing seam.",
+    "mesh_uri": "scans/scn_headphones/parts/p3.glb",
+    "thumbnail_uri": "scans/scn_headphones/renders/p3.png",
+    "centroid_mm": [
+      89.75,
+      23.5,
+      21.0
+    ],
+    "obb": {
+      "center": [
+        89.75,
+        23.5,
+        21.0
+      ],
+      "extent": [
+        73.5,
+        103.0,
+        32.0
+      ],
+      "rotation_quat": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ]
+    },
+    "dimensions": [
+      {
+        "name": "width",
+        "value": {
+          "scan_mm": 73.5,
+          "snapped_mm": null,
+          "snap_rule": null,
+          "caliper_mm": null,
+          "user_confirmed": false,
+          "preferred": "scan"
+        }
+      },
+      {
+        "name": "depth",
+        "value": {
+          "scan_mm": 103.0,
+          "snapped_mm": null,
+          "snap_rule": null,
+          "caliper_mm": null,
+          "user_confirmed": false,
+          "preferred": "scan"
+        }
+      },
+      {
+        "name": "height",
+        "value": {
+          "scan_mm": 32.0,
+          "snapped_mm": null,
+          "snap_rule": null,
+          "caliper_mm": null,
+          "user_confirmed": false,
+          "preferred": "scan"
+        }
+      }
+    ],
+    "features": [],
+    "material_guess": {
+      "value": "Illustrative material",
+      "confidence": 1.0
+    },
+    "source": "user_edited"
+  },
+  {
+    "part_id": "p4",
+    "color_source_id": null,
+    "reconstruction_revision": 1,
+    "measurement_revision": 1,
+    "label": "Left ear cushion",
+    "label_confidence": 1.0,
+    "description": "Thick removable padded oval earmuff facing upward, with recessed speaker cloth.",
+    "mesh_uri": "scans/scn_headphones/parts/p4.glb",
+    "thumbnail_uri": "scans/scn_headphones/renders/p4.png",
+    "centroid_mm": [
+      -89.0,
+      18.0,
+      38.0
+    ],
+    "obb": {
+      "center": [
+        -89.0,
+        18.0,
+        38.0
+      ],
+      "extent": [
+        72.0,
+        90.0,
+        22.0
+      ],
+      "rotation_quat": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ]
+    },
+    "dimensions": [
+      {
+        "name": "width",
+        "value": {
+          "scan_mm": 72.0,
+          "snapped_mm": null,
+          "snap_rule": null,
+          "caliper_mm": null,
+          "user_confirmed": false,
+          "preferred": "scan"
+        }
+      },
+      {
+        "name": "depth",
+        "value": {
+          "scan_mm": 90.0,
+          "snapped_mm": null,
+          "snap_rule": null,
+          "caliper_mm": null,
+          "user_confirmed": false,
+          "preferred": "scan"
+        }
+      },
+      {
+        "name": "height",
+        "value": {
+          "scan_mm": 22.0,
+          "snapped_mm": null,
+          "snap_rule": null,
+          "caliper_mm": null,
+          "user_confirmed": false,
+          "preferred": "scan"
+        }
+      }
+    ],
+    "features": [],
+    "material_guess": {
+      "value": "Illustrative material",
+      "confidence": 1.0
+    },
+    "source": "user_edited"
+  },
+  {
+    "part_id": "p5",
+    "color_source_id": null,
+    "reconstruction_revision": 1,
+    "measurement_revision": 1,
+    "label": "Right ear cushion",
+    "label_confidence": 1.0,
+    "description": "Thick removable padded oval earmuff facing upward, with recessed speaker cloth.",
+    "mesh_uri": "scans/scn_headphones/parts/p5.glb",
+    "thumbnail_uri": "scans/scn_headphones/renders/p5.png",
+    "centroid_mm": [
+      89.0,
+      18.0,
+      38.0
+    ],
+    "obb": {
+      "center": [
+        89.0,
+        18.0,
+        38.0
+      ],
+      "extent": [
+        72.0,
+        90.0,
+        22.0
+      ],
+      "rotation_quat": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ]
+    },
+    "dimensions": [
+      {
+        "name": "width",
+        "value": {
+          "scan_mm": 72.0,
+          "snapped_mm": null,
+          "snap_rule": null,
+          "caliper_mm": null,
+          "user_confirmed": false,
+          "preferred": "scan"
+        }
+      },
+      {
+        "name": "depth",
+        "value": {
+          "scan_mm": 90.0,
+          "snapped_mm": null,
+          "snap_rule": null,
+          "caliper_mm": null,
+          "user_confirmed": false,
+          "preferred": "scan"
+        }
+      },
+      {
+        "name": "height",
+        "value": {
+          "scan_mm": 22.0,
+          "snapped_mm": null,
+          "snap_rule": null,
+          "caliper_mm": null,
+          "user_confirmed": false,
+          "preferred": "scan"
+        }
+      }
+    ],
+    "features": [],
+    "material_guess": {
+      "value": "Illustrative material",
+      "confidence": 1.0
+    },
+    "source": "user_edited"
+  }
+]

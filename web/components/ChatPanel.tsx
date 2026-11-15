@@ -124,8 +124,12 @@ export function ChatPanel({
             case "done":
               flush();
               break;
-            case "tool_call":
             case "error":
+              flush();
+              setError("Screwy couldn’t finish that reply. Please try again. " +
+                (ev as { message: string }).message);
+              break;
+            case "tool_call":
             default:
               break;
           }
@@ -154,15 +158,11 @@ export function ChatPanel({
           <MessageRow
             key={msg.id}
             msg={msg}
+            loading={streaming && msg.id === messages[messages.length - 1]?.id}
             onPartChip={onPartChip}
             onShowCad={onShowCad}
           />
         ))}
-        {streaming ? (
-          <div className="pl-1">
-            <Spinner label="Screwy is thinking…" />
-          </div>
-        ) : null}
         {error ? <p className="text-sm text-rose-800">{error}</p> : null}
       </div>
 
@@ -231,28 +231,35 @@ export function ChatPanel({
 // response streams in (lowers main-thread work per token).
 const MessageRow = memo(function MessageRow({
   msg,
+  loading,
   onPartChip,
   onShowCad,
 }: {
   msg: Message;
+  loading: boolean;
   onPartChip: (id: string) => void;
   onShowCad: (cad: Record<string, unknown>) => void;
 }) {
+  // Older running backends may still stream the retired provider prefix.
+  // Strip it from the accumulated text, including while the prefix is incomplete.
+  const text = msg.role === "assistant"
+    ? msg.text.replace(/^\s*\[online:(?:[^\]]*\]\s*|[^\]]*$)/i, "")
+    : msg.text;
   return (
     <div className={`chat-message ${msg.role === "user" ? "from-user" : "from-assistant"}`}><span className="chat-author">{msg.role === "assistant" ? <span className="screwy-message-avatar"><ScrewyIcon /></span> : null}{msg.role === "user" ? "You" : "Screwy"}</span>
-      {msg.text ? (
+      {text ? (
         <div
           data-testid={msg.role === "assistant" ? "assistant-message" : undefined}
           className="chat-bubble"
         >
           {msg.role === "assistant" ? (
             <Suspense
-              fallback={<span className="whitespace-pre-wrap">{msg.text}</span>}
+              fallback={<span className="whitespace-pre-wrap">{text}</span>}
             >
-              <Markdown text={msg.text} onPartChip={onPartChip} />
+              <Markdown text={text} onPartChip={onPartChip} />
             </Suspense>
           ) : (
-            msg.text
+            text
           )}
         </div>
       ) : msg.role === "assistant" ? (
@@ -260,9 +267,10 @@ const MessageRow = memo(function MessageRow({
         // but let the perf suite see text appear once streaming starts.
         <div
           data-testid="assistant-message"
-          className="inline-block max-w-[90%] rounded-lg px-3 py-2 text-sm text-muted"
+          className="chat-pending-message"
         />
       ) : null}
+      {loading ? <div className="mt-1"><Spinner label="Screwy is thinking…" /></div> : null}
       {msg.cards.length ? (
         <Suspense fallback={null}>
           <ChatCards cards={msg.cards} onPartChip={onPartChip} onShowCad={onShowCad} />

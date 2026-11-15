@@ -68,14 +68,8 @@ describe("scaleWarnings", () => {
     expect(scaleWarnings(scale({ board_tilt_deg: 10 }))).toEqual([]);
   });
 
-  it("corner_views < 8 -> too-few-views warning", () => {
-    const w = scaleWarnings(scale({ corner_views: 5 }));
-    expect(w).toEqual([
-      { id: "corner_views", level: "warning", message: "Board seen in too few views" },
-    ]);
-  });
-
-  it("corner_views exactly 8 does NOT warn", () => {
+  it("few board views do NOT warn (the view count is not a rule)", () => {
+    expect(scaleWarnings(scale({ corner_views: 2 }))).toEqual([]);
     expect(scaleWarnings(scale({ corner_views: 8 }))).toEqual([]);
   });
 
@@ -83,7 +77,7 @@ describe("scaleWarnings", () => {
     const w = scaleWarnings(
       scale({ method: "aruco", residual_mm: 45.6, board_tilt_deg: 11, corner_views: 6 }),
     );
-    expect(w.map((x) => x.id)).toEqual(["residual", "tilt", "corner_views"]);
+    expect(w.map((x) => x.id)).toEqual(["residual", "tilt"]);
   });
 
   it("learned plus a bad fit shows the method chip first", () => {

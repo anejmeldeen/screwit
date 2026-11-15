@@ -67,18 +67,26 @@ class LlmChatAgent:
                     yield ToolCallEvent(name=step.name, args=step.input)
                     assistant_content.append(
                         {"type": "tool_use", "id": step.id, "name": step.name, "input": step.input})
-                    result = ctx.dispatch(step.name, step.input)
-                    event, payload = _handle_result(result)
+                    try:
+                        result = ctx.dispatch(step.name, step.input)
+                        event, payload = _handle_result(result)
+                        failed = False
+                    except Exception:
+                        event = None
+                        payload = ("This tool failed. Explain the limitation and use other available data "
+                                   "or ask a question.")
+                        failed = True
                     if event is not None:
                         yield event
                     tool_results.append(
-                        {"type": "tool_result", "tool_use_id": step.id, "content": payload})
+                        {"type": "tool_result", "tool_use_id": step.id, "content": payload, "is_error": failed})
 
             if turn.stop_reason != "tool_use":
                 return
             messages.append({"role": "assistant", "content": assistant_content})
             messages.append({"role": "user", "content": tool_results})
 
+        yield ErrorEvent(message="Screwy reached the tool-call limit. Please narrow down the request.")
 
 def _handle_result(result):
     """Map a tool result to (ChatEvent-or-None, JSON string for the model)."""
@@ -89,6 +97,9 @@ def _handle_result(result):
     if isinstance(result, CardSignal):
         card = result.card
         return CardEvent(card=card), json.dumps(card.model_dump(mode="json"))
+    if isinstance(result, dict) and "image_base64" in result:
+        return None, [{"type": "image", "source": {"type": "base64",
+                      "media_type": result["media_type"], "data": result["image_base64"]}}]
     return None, json.dumps(result)
 
 

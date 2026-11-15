@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 
-export type DashboardIconName = "dashboard" | "box" | "settings" | "plus" | "search" | "arrow" | "logout" | "menu" | "camera";
+export type DashboardIconName = "dashboard" | "box" | "settings" | "plus" | "search" | "arrow" | "logout" | "menu" | "camera" | "pencil" | "trash" | "sort" | "check";
 
 const shapes: Record<DashboardIconName, ReactNode> = {
   dashboard: <><rect x="3" y="3" width="7" height="7" rx="1.5" /><rect x="14" y="3" width="7" height="7" rx="1.5" /><rect x="3" y="14" width="7" height="7" rx="1.5" /><rect x="14" y="14" width="7" height="7" rx="1.5" /></>,
@@ -12,6 +12,10 @@ const shapes: Record<DashboardIconName, ReactNode> = {
   logout: <path d="M9 4H4v16h5m6-13 5 5-5 5m-6-5h11" />,
   menu: <path d="M4 6h16M4 12h16M4 18h16" />,
   camera: <><rect x="3" y="5" width="13" height="14" rx="2" /><path d="m16 10 5-3v10l-5-3" /></>,
+  pencil: <><path d="M4 20h4L19 9a2.83 2.83 0 0 0-4-4L4 16v4Z" /><path d="m13.5 6.5 4 4" /></>,
+  trash: <><path d="M4 7h16M10 11v6M14 11v6" /><path d="m6 7 1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12M9 7V4h6v3" /></>,
+  sort: <path d="M7 4v16m-4-4 4 4 4-4M17 20V4m-4 4 4-4 4 4" />,
+  check: <path d="m5 12.5 4.5 4.5L19 7.5" />,
 };
 
 export function DashboardIcon({ name, className = "" }: { name: DashboardIconName; className?: string }) {

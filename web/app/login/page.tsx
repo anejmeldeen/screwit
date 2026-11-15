@@ -3,6 +3,7 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { api } from "@/lib/api";
 import { notifyAccountChange } from "@/components/AccountProvider";
+import { PasswordRequirements, passwordRules } from "@/components/PasswordRequirements";
 
 export default function LoginPage() {
   const [register, setRegister] = useState(false);
@@ -10,6 +11,7 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const rules = passwordRules({ password, username });
 
   useEffect(() => {
     const legacy = new URLSearchParams(window.location.search).get("next");
@@ -21,6 +23,11 @@ export default function LoginPage() {
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    const unmet = register ? rules.find(rule => !rule.met) : undefined;
+    if (unmet) {
+      setError(unmet.problem);
+      return;
+    }
     setBusy(true);
     setError("");
     try {
@@ -55,12 +62,12 @@ export default function LoginPage() {
           <label htmlFor="password">Password</label>
           <input id="password" name="password" type="password" autoComplete={register ? "new-password" : "current-password"}
             required minLength={register ? 8 : undefined} maxLength={128}
-            aria-describedby={register ? "password-hint" : undefined}
+            aria-describedby={register ? "password-rules" : undefined}
             value={password} onChange={(event) => setPassword(event.target.value)} disabled={busy} />
-          {register && <small id="password-hint">At least 8 characters.</small>}
+          {register && <PasswordRequirements id="password-rules" rules={rules} />}
           {error && <p className="login-error" role="alert">{error}</p>}
           <button className="button-primary" type="submit" disabled={busy}>
-            {busy ? "One moment…" : register ? "Create account" : "Log in"}<span aria-hidden="true">↗</span>
+            {busy ? "One moment…" : register ? "Create account" : "Log in"}
           </button>
           <button className="login-switch text-link" type="button" disabled={busy}
             onClick={() => { setRegister(!register); setError(""); setPassword(""); }}>
