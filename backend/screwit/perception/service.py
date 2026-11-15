@@ -277,6 +277,15 @@ class PerceptionImpl(PerceptionService):
             hierarchy = pa.merge_hierarchy(patches)
             pool = pa.candidate_counts(patches, hierarchy) or list(hierarchy)
             owner = hierarchy[min(pool, key=lambda c: abs(c - _target_part_count(names)))]
+        # Fold small connector groups (a hinge wedged between a headband and a cup, a bracket
+        # between two panels) into the neighbour they are attached to. Purely geometric, no label
+        # or category (part_atoms.fold_connectors); carry each surviving group's label from the old
+        # group that dominates it so the VLM's naming is preserved.
+        folded = pa.fold_connectors(patches, owner)
+        if folded != list(owner):
+            if replies:
+                replies = self._remap_replies(patches, owner, folded, replies)
+            owner = folded
         # What the segmentation looked like, for debugging a result.
         storage.put_bytes(f"scans/{scan_id}/renders/segmentation.png",
                           pa.render_partition(patches, owner), "image/png")
@@ -323,6 +332,31 @@ class PerceptionImpl(PerceptionService):
             part = self._build_part(scan_id, pid, label, info, sub_verts, recon_rev, glb_key, png_key)
             parts.append(part.model_copy(update={"label": _titlecase_label(label)}))
         return parts, part_points
+
+    @staticmethod
+    def _remap_replies(patches, old_owner, new_owner, replies):
+        """After folding connectors, map each surviving group's VLM label from the OLD group that
+        covers most of its area (its host), so a kept part keeps its name and a folded connector
+        inherits the host's. ``old_owner``/``new_owner`` are patch->group maps over the same patches.
+        """
+        import numpy as np
+
+        area = patches.work.area_faces
+        patch_area = np.bincount(patches.labels, weights=area, minlength=patches.n)
+        new_ids = sorted(set(new_owner))
+        out: dict[int, object] = {}
+        for ng in new_ids:
+            members = [q for q in range(patches.n) if new_owner[q] == ng]
+            by_old: dict[int, float] = {}
+            for q in members:
+                og = old_owner[q]
+                by_old[og] = by_old.get(og, 0.0) + float(patch_area[q])
+            if not by_old:
+                continue
+            host_old = max(by_old, key=by_old.get)
+            if host_old in replies:
+                out[ng] = replies[host_old]
+        return out
 
     def _build_part(self, scan_id, pid, name, label_info, verts, recon_rev, glb_key,
                     png_key) -> Part:

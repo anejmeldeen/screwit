@@ -397,6 +397,109 @@ def candidate_counts(p: Patches, hierarchy: dict[int, list[int]], max_parts: int
     return out
 
 
+# ------------------------------------------------------------------------------- connector fold
+
+# A connector is a small part wedged against larger parts (a hinge between a headband and an ear
+# cup, a bracket between two panels). The segmenter and the VLM both tend to call it its own part,
+# but it physically belongs to the neighbour it is attached to. These thresholds decide "small and
+# tucked in" from geometry alone -- no object category, no label text (AGENTS.md).
+CONNECTOR_MAX_AREA = 0.15     # a part above 15% of the surface is never treated as a connector
+CONNECTOR_MIN_BURIED = 0.12   # at least this share of its surface sits against other parts
+CONNECTOR_NEAR_FRAC = 0.02    # "against another part" = within 2% of the object diagonal
+
+
+def _group_face_labels(p: Patches, owner: list[int]) -> np.ndarray:
+    """Group id per working face from a patch->group ``owner`` map."""
+    return np.asarray(owner, dtype=np.int64)[p.labels]
+
+
+def _group_buried_fraction(p: Patches, gface: np.ndarray, g: int, diag: float) -> float:
+    """Area-weighted share of group ``g``'s faces that sit within ``CONNECTOR_NEAR_FRAC`` of the
+    object diagonal of some OTHER group's surface. A connector is tucked between parts, so most of
+    it is close to another part; a free-standing small part (a knob on a shaft) is mostly exposed,
+    so this is small. Purely geometric -- it knows nothing about what the part is."""
+    from scipy.spatial import cKDTree
+
+    fc = p.work.triangles_center
+    area = p.work.area_faces
+    mine = gface == g
+    if not mine.any() or mine.all():
+        return 0.0
+    tree = cKDTree(fc[~mine])
+    d, _ = tree.query(fc[mine])
+    near = d < CONNECTOR_NEAR_FRAC * diag
+    my_area = area[mine]
+    denom = float(my_area.sum()) or 1.0
+    return float(my_area[near].sum()) / denom
+
+
+def _group_shared_boundary(p: Patches, owner: list[int]) -> dict:
+    """Inter-group shared-boundary length, keyed (min,max) group id, aggregated from the patch
+    adjacency. The host a connector folds into is the group it shares the longest seam with."""
+    shared = patch_adjacency(p)
+    out: dict[tuple[int, int], float] = {}
+    for (x, y), ln in shared.items():
+        gx, gy = owner[x], owner[y]
+        if gx != gy:
+            out[(min(gx, gy), max(gx, gy))] = out.get((min(gx, gy), max(gx, gy)), 0.0) + ln
+    return out
+
+
+def fold_connectors(p: Patches, owner: list[int], *, min_groups: int = 2) -> list[int]:
+    """Fold small connector groups into the neighbour they are attached to, generically.
+
+    A group is a connector when it is both small (under ``CONNECTOR_MAX_AREA`` of the surface) and
+    substantially buried against other parts (``_group_buried_fraction`` over ``CONNECTOR_MIN_BURIED``).
+    Such a group is not its own part: it belongs to the neighbour it shares the longest boundary
+    with. Folds the smallest connector first and re-evaluates, so a connector that touches another
+    connector resolves once its neighbour has settled. Never drops below ``min_groups`` groups and
+    never folds a group into one that is itself still a connector in the same pass.
+
+    Returns a new patch->group ``owner`` map, relabelled to contiguous ids 0..k-1 with group 0 the
+    largest by area (matching ``merge_hierarchy``/``_by_area``). Pure geometry: no label or category
+    is consulted, so it treats a hinge, a bracket and any other wedged connector the same way.
+    """
+    owner = list(owner)
+    area = p.work.area_faces
+    total = float(area.sum()) or 1.0
+    diag = float(np.linalg.norm(np.ptp(p.work.vertices, axis=0))) or 1.0
+    for _ in range(max(1, len(set(owner)))):
+        groups = sorted(set(owner))
+        if len(groups) <= min_groups:
+            break
+        gface = _group_face_labels(p, owner)
+        garea = {g: float(area[gface == g].sum()) for g in groups}
+        conn = {}
+        for g in groups:
+            if garea[g] >= CONNECTOR_MAX_AREA * total:
+                continue
+            buried = _group_buried_fraction(p, gface, g, diag)
+            if buried >= CONNECTOR_MIN_BURIED:
+                conn[g] = buried
+        if not conn:
+            break
+        # Smallest connector first.
+        g = min(conn, key=lambda k: garea[k])
+        shared = _group_shared_boundary(p, owner)
+        seams = {}
+        for (a, b), ln in shared.items():
+            if a == g:
+                seams[b] = seams.get(b, 0.0) + ln
+            elif b == g:
+                seams[a] = seams.get(a, 0.0) + ln
+        # Prefer a host that is not itself a connector; among those, the longest seam.
+        hosts = {h: ln for h, ln in seams.items() if h not in conn} or seams
+        if not hosts:
+            break
+        host = max(hosts, key=hosts.get)
+        owner = [host if o == g else o for o in owner]
+    # Relabel contiguous, largest group first (group 0), like merge_hierarchy's partitions.
+    gface = _group_face_labels(p, owner)
+    live = sorted(set(owner), key=lambda g: -float(area[gface == g].sum()))
+    remap = {g: i for i, g in enumerate(live)}
+    return [remap[o] for o in owner]
+
+
 # ------------------------------------------------------------------------------- rendering
 
 # Region colours for the candidate renders, in group order (group 0 is the largest), with the names

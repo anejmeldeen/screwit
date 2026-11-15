@@ -144,7 +144,9 @@ def _part_lines(part: Part, *, compact: bool) -> list[str]:
     if compact:
         dims = "; ".join(f"{name} {fmt_mm(m.value_mm * factor)} mm ({measurement_source(m)})"
                          for name, m, factor in part_dimensions(part)[:4])
-        line = (f"{head}: centroid {fmt_vec(part.centroid_mm)}, box {_extent(part)} mm"
+        thin = obb_axes(part)[2]
+        line = (f"{head}: centroid {fmt_vec(part.centroid_mm)}, box {_extent(part)} mm centred at "
+                f"{fmt_vec(part.obb.center)}, thin axis {_fmt_dir(round(c, 2) for c in thin[1])}"
                 + (f"; {dims}" if dims else ""))
         return [line]
     rotated = tuple(round(c, 4) for c in part.obb.rotation_quat) != (0.0, 0.0, 0.0, 1.0)
@@ -155,6 +157,7 @@ def _part_lines(part: Part, *, compact: bool) -> list[str]:
         f"{' (rotated, quat ' + _fmt_dir(part.obb.rotation_quat) + ')' if rotated else ''}"
         f" centred at {fmt_vec(part.obb.center)}; material guess "
         f"{clean_text(part.material_guess.value, 40)} ({part.material_guess.confidence:.2f})",
+        f"  box axes in the scan frame: {_axes_text(part)}",
     ]
     dims = part_dimensions(part)
     if dims:
@@ -167,6 +170,33 @@ def _part_lines(part: Part, *, compact: bool) -> list[str]:
 
 def _extent(part: Part) -> str:
     return " x ".join(fmt_mm(float(v)) for v in part.obb.extent)
+
+
+def obb_axes(part: Part) -> list[tuple[str, list[float], float]]:
+    """The part's bounding-box axes as scan-frame directions with their lengths, longest first:
+    [("long", dir, mm), ("mid", dir, mm), ("thin", dir, mm)]. Each direction is flipped so its largest
+    component is positive, which makes them easy to read; the box is symmetric either way."""
+    x, y, z, w = (float(c) for c in part.obb.rotation_quat)
+    norm = math.sqrt(x * x + y * y + z * z + w * w) or 1.0
+    x, y, z, w = x / norm, y / norm, z / norm, w / norm
+    columns = [
+        [1 - 2 * (y * y + z * z), 2 * (x * y + z * w), 2 * (x * z - y * w)],
+        [2 * (x * y - z * w), 1 - 2 * (x * x + z * z), 2 * (y * z + x * w)],
+        [2 * (x * z + y * w), 2 * (y * z - x * w), 1 - 2 * (x * x + y * y)],
+    ]
+    axes = []
+    for direction, length in zip(columns, part.obb.extent, strict=True):
+        big = max(direction, key=abs)
+        if big < 0:
+            direction = [-c for c in direction]
+        axes.append((direction, float(length)))
+    axes.sort(key=lambda a: a[1], reverse=True)
+    return [(name, d, length) for name, (d, length) in zip(("long", "mid", "thin"), axes, strict=True)]
+
+
+def _axes_text(part: Part) -> str:
+    return ", ".join(f"{name} {_fmt_dir(round(c, 2) for c in d)} {fmt_mm(length)} mm"
+                     for name, d, length in obb_axes(part))
 
 
 def _graph_lines(graph: SceneGraph | None, known: set[str], labels: dict[str, str]) -> list[str]:
@@ -214,7 +244,9 @@ def object_context(store: ScanStore, scan_id: str, max_chars: int = CONTEXT_MAX_
         bbox = recon.object_bbox_mm
         scale = recon.scale
         residual = f", residual {fmt_mm(scale.residual_mm)} mm" if scale.residual_mm is not None else ""
-        head.append(f"Whole object bounding box: min {fmt_vec(bbox.min)} max {fmt_vec(bbox.max)}; "
+        size = [hi - lo for lo, hi in zip(bbox.min, bbox.max, strict=True)]
+        head.append(f"Whole object bounding box: min {fmt_vec(bbox.min)} max {fmt_vec(bbox.max)} "
+                    f"(size along X, Y, Z: {' x '.join(fmt_mm(v) for v in size)} mm); "
                     f"scale from {scale.method}{residual}.")
     if scan is None:
         head.append("No scan record exists for this workspace.")

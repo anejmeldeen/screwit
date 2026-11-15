@@ -20,6 +20,9 @@ const ChatCards = lazy(() =>
 
 type Card = { type: string; payload: unknown };
 
+// Screwy tools that add or delete parts: after a reply that used one, the parts list is refreshed.
+const PARTS_TOOLS = new Set(["add_part", "remove_part"]);
+
 interface Message {
   id: string;
   role: "user" | "assistant";
@@ -38,7 +41,7 @@ export function ChatPanel({
   onHighlight: (ids: string[]) => void;
   onPartChip: (id: string) => void;
   onShowCad: (cad: Record<string, unknown>) => void;
-  // Called once after a reply in which Screwy changed the workspace's parts (the add_part tool).
+  // Called once after a reply in which Screwy changed the workspace's parts (add_part, remove_part).
   onPartsChanged?: () => void;
 }) {
   const [messages, setMessages] = useState<Message[]>([]);
@@ -74,8 +77,8 @@ export function ChatPanel({
     const sentImages = images;
     setImages([]);
 
-    // An add_part tool call means the workspace has a new part. Refresh the parts once the reply
-    // has finished (on `done`, or when the stream ends some other way), and only once.
+    // An add_part or remove_part tool call means the workspace's parts changed. Refresh the parts
+    // once the reply has finished (on `done`, or when the stream ends some other way), and only once.
     let partsChanged = false;
     let partsRefreshed = false;
     const refreshPartsOnce = () => {
@@ -144,7 +147,7 @@ export function ChatPanel({
                 (ev as { message: string }).message);
               break;
             case "tool_call":
-              if ((ev as { name: string }).name === "add_part") partsChanged = true;
+              if (PARTS_TOOLS.has((ev as { name: string }).name)) partsChanged = true;
               break;
             default:
               break;

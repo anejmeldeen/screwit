@@ -98,7 +98,7 @@ def test_add_part_box_is_saved_listed_meshed_and_in_scene_graph(registry):
     assert part.thumbnail_uri == f"scans/scn_knob/renders/{pid}.png"
     assert tuple(part.obb.extent) == (40.0, 20.0, 10.0)
     assert tuple(part.centroid_mm) == (0.0, 30.0, 5.0)
-    assert {d.name: d.value.value_mm for d in part.dimensions} == {"size_x": 40, "size_y": 20, "size_z": 10}
+    assert {d.name: d.value.value_mm for d in part.dimensions} == {"width": 40, "depth": 20, "height": 10}
 
     listed = {p["part_id"]: p for p in ctx.dispatch("list_parts", {})}
     assert set(listed) == before | {pid}
@@ -120,18 +120,19 @@ def test_add_part_box_is_saved_listed_meshed_and_in_scene_graph(registry):
     assert graph.failure_hypotheses
 
 
-def test_add_part_rotated_cylinder_and_sphere(registry):
+def test_add_part_up_axis_turns_a_cylinder_and_sphere_stays_put(registry):
     ctx = ToolContext(registry, "scn_trap")
-    # [0.7071, 0, 0, 0.7071] turns the cylinder's Z axis onto Y: 30 mm across, 80 mm long along Y.
+    # up along +Y: a 30 mm rod, 80 mm long along Y, centred where asked.
     cyl = ctx.dispatch("add_part", {"label": "Rod", "kind": "cylinder", "size_mm": [30, 30, 80],
-                                    "center_mm": [10, 20, 30], "rotation_quat": [0.7071, 0, 0, 0.7071]})
+                                    "center_mm": [10, 20, 30], "up": [0, 1, 0]})
     assert isinstance(cyl, PartAddedSignal)
     part = ScanStore(registry.data).get_part("scn_trap", cyl.part_id)
     mesh = _glb_mesh(registry, part.mesh_uri)
     assert np.allclose(mesh.extents, [30, 80, 30], atol=0.2)
     assert np.allclose(mesh.bounds.mean(axis=0), [10, 20, 30], atol=0.2)
-    assert {d.name for d in part.dimensions} == {"diameter", "length"}
     assert math.isclose(math.sqrt(sum(c * c for c in part.obb.rotation_quat)), 1.0, abs_tol=1e-9)
+    # The saved OBB is the placed solid: its height axis (local Z) points along +Y.
+    assert np.allclose(_quat_matrix(part.obb.rotation_quat)[:, 2], [0, 1, 0], atol=1e-6)
 
     ball = ctx.dispatch("add_part", {"label": "Ball", "kind": "sphere", "size_mm": [25, 25, 25],
                                      "center_mm": [0, 0, 400]})
@@ -139,39 +140,114 @@ def test_add_part_rotated_cylinder_and_sphere(registry):
     assert np.allclose(mesh.extents, [25, 25, 25], atol=0.2)
 
 
-@pytest.mark.parametrize("size, length", [
-    ([30, 15, 30], 15),   # a disc whose axis runs along Y
-    ([12, 30, 30], 12),   # axis along X
-    ([20, 20, 50], 50),   # axis along Z
+@pytest.mark.parametrize("up, extents", [
+    ([0, 0, 1], [20, 20, 50]),
+    ([1, 0, 0], [50, 20, 20]),
+    ([0, -1, 0], [20, 50, 20]),
 ])
-def test_add_part_cylinder_axis_follows_size(registry, size, length):
-    """size_mm is along the scan axes: the equal pair is the diameter, the odd one is the axis."""
+def test_add_part_height_follows_up(registry, up, extents):
+    """size_mm is in the part's own frame; `up` decides where its height points in the scan frame."""
     ctx = ToolContext(registry, "scn_knob")
-    signal = ctx.dispatch("add_part", {"label": "Knob", "kind": "cylinder", "size_mm": size,
-                                       "center_mm": [0, -27.5, 60]})
+    signal = ctx.dispatch("add_part", {"label": "Peg", "kind": "cylinder", "size_mm": [20, 20, 50],
+                                       "center_mm": [0, -27.5, 60], "up": up})
     part = ScanStore(registry.data).get_part("scn_knob", signal.part_id)
     mesh = _glb_mesh(registry, part.mesh_uri)
-    assert np.allclose(mesh.extents, size, atol=0.05)
+    assert np.allclose(mesh.extents, extents, atol=0.05)
     assert np.allclose(mesh.bounds.mean(axis=0), [0, -27.5, 60], atol=0.05)
-    assert tuple(part.obb.extent) == tuple(float(v) for v in size)
-    assert tuple(part.obb.rotation_quat) == (0.0, 0.0, 0.0, 1.0)
-    assert {d.name: d.value.value_mm for d in part.dimensions}["length"] == length
 
 
-def test_add_part_cylinder_needs_a_diameter_pair(registry):
+def test_add_part_base_mm_stands_the_part_on_that_point(registry):
+    signal = ToolContext(registry, "scn_knob").dispatch(
+        "add_part", {"label": "Spike", "kind": "cone", "size_mm": [12, 12, 30], "base_mm": [5, 5, 100]})
+    mesh = _glb_mesh(registry, ScanStore(registry.data).get_part("scn_knob", signal.part_id).mesh_uri)
+    assert np.allclose(mesh.bounds[0][2], 100, atol=1e-3) and np.allclose(mesh.bounds[1][2], 130, atol=1e-3)
+    assert np.allclose(mesh.bounds.mean(axis=0)[:2], [5, 5], atol=0.05)
+
+
+@pytest.mark.parametrize("extra, extents, faces_min", [
+    ({"kind": "box", "size_mm": [10, 6, 20]}, [10, 6, 20], 12),
+    ({"kind": "cylinder", "size_mm": [10, 20, 30]}, [10, 20, 30], 64),        # elliptical
+    ({"kind": "cone", "size_mm": [30, 12, 35]}, [30, 12, 35], 64),
+    ({"kind": "cone", "size_mm": [30, 12, 35], "tip_radius_mm": 3}, [30, 12, 35], 64),
+    ({"kind": "cone", "size_mm": [30, 30, 35], "top_scale": 0.4}, [30, 30, 35], 64),  # frustum
+    ({"kind": "pyramid", "size_mm": [30, 12, 35], "sides": 3}, [30, 12, 35], 4),
+    ({"kind": "pyramid", "size_mm": [30, 30, 35]}, [30, 30, 35], 6),
+    ({"kind": "sphere", "size_mm": [10, 20, 30]}, [10, 20, 30], 100),       # ellipsoid
+    ({"kind": "torus", "size_mm": [40, 40, 6]}, [40, 40, 6], 100),
+    ({"kind": "capsule", "size_mm": [8, 8, 40]}, [8, 8, 40], 100),
+    # A concave silhouette (an arrow head with a notch), extruded 6 mm thick along the depth.
+    ({"kind": "profile", "outline_mm": [[-15, 0], [0, 8], [15, 0], [0, 36]], "thickness_mm": 6},
+     [30, 6, 36], 8),
+])
+def test_add_part_every_kind_is_a_closed_solid_of_the_asked_size(registry, extra, extents, faces_min):
+    signal = ToolContext(registry, "scn_knob").dispatch(
+        "add_part", {"label": "Shape", "center_mm": [0, 0, 100], **extra})
+    assert isinstance(signal, PartAddedSignal), signal
+    mesh = _glb_mesh(registry, ScanStore(registry.data).get_part("scn_knob", signal.part_id).mesh_uri)
+    assert len(mesh.faces) >= faces_min
+    assert np.allclose(mesh.extents, extents, atol=0.3)
+    assert mesh.is_watertight
+
+
+def test_add_part_rejects_a_self_intersecting_profile(registry):
+    bowtie = [[-10, 0], [10, 20], [10, 0], [-10, 20]]
     result = ToolContext(registry, "scn_knob").dispatch(
-        "add_part", {"label": "Rod", "kind": "cylinder", "size_mm": [10, 20, 30], "center_mm": [0, 0, 0]})
-    assert result["error"] == "bad_request" and "two size_mm values must be equal" in result["message"]
+        "add_part", {"label": "Bad", "kind": "profile", "outline_mm": bowtie, "thickness_mm": 4,
+                     "center_mm": [0, 0, 0]})
+    assert result["error"] == "bad_request" and "cross" in result["message"]
 
 
-def test_add_part_refuses_a_cylinder_turned_twice(registry):
-    """The live Haiku trial sent scan-axis sizes plus a rotation; that must not silently turn the
-    part a second time. The identity rotation is harmless and accepted."""
+def _arc_part(registry, scan_id: str = "scn_knob"):
+    """A half ring lying flat on the table (like a strap joining two parts), saved as part p_arc:
+    centre at the origin, bulging toward +Y, 120 mm across, 20 mm tall, 8 mm thick."""
+    from screwit.agent.add_part import _put_asset
+    from screwit.contracts import Part
+
+    ring = trimesh.creation.annulus(r_min=52, r_max=60, height=20, sections=96)
+    keep = ring.vertices[ring.faces].mean(axis=1)[:, 1] > 0
+    arc = trimesh.Trimesh(ring.vertices, ring.faces[keep], process=True)
+    arc.apply_translation([0, 0, 10])
+    key = f"scans/{scan_id}/parts/p_arc.glb"
+    _put_asset(registry, key, arc.export(file_type="glb"), "model/gltf-binary")
+    store = ScanStore(registry.data)
+    template = store.list_parts(scan_id)[0].model_dump(mode="json")
+    lo, hi = arc.bounds
+    center = ((lo + hi) / 2).tolist()
+    template.update(part_id="p_arc", label="Strap", mesh_uri=key, centroid_mm=center, features=[],
+                    dimensions=[], obb={"center": center, "extent": (hi - lo).tolist(),
+                                        "rotation_quat": [0, 0, 0, 1]})
+    store.save_part(scan_id, Part.model_validate(template))
+    return arc
+
+
+def test_on_part_stands_a_part_on_the_outer_surface_along_the_normal(registry):
+    _arc_part(registry)
     ctx = ToolContext(registry, "scn_knob")
-    knob = {"label": "Knob", "kind": "cylinder", "size_mm": [30, 15, 30], "center_mm": [0, -27.5, 60]}
-    turned = ctx.dispatch("add_part", {**knob, "rotation_quat": [0.7071, 0, 0, 0.7071]})
-    assert turned["error"] == "bad_request" and "already puts the cylinder's axis along Y" in turned["message"]
-    assert isinstance(ctx.dispatch("add_part", {**knob, "rotation_quat": [0, 0, 0, 1]}), PartAddedSignal)
+    probe = ctx.dispatch("probe_surface", {"part_id": "p_arc", "direction": [0, 1, 0]})
+    assert probe["point_mm"][1] == pytest.approx(60, abs=1.5)        # the outer edge, not the inner
+    assert probe["normal"][1] > 0.9
+
+    signal = ctx.dispatch("add_part", {"label": "Fin", "kind": "cone", "size_mm": [20, 6, 25],
+                                       "on_part": "p_arc", "direction": [-0.5, 0.866, 0]})
+    assert isinstance(signal, PartAddedSignal), signal
+    placed = signal.result["placement"]
+    up = np.asarray(placed["up"])
+    assert np.dot(up, [-0.5, 0.866, 0]) > 0.95                        # stands out of the arc
+    assert abs(np.dot(np.asarray(placed["width_axis"]), up)) < 1e-6
+    contact = signal.result["contact"]
+    assert contact["touching"] and not contact["inside"]
+    mesh = _glb_mesh(registry, ScanStore(registry.data).get_part("scn_knob", signal.part_id).mesh_uri)
+    tip = mesh.vertices[np.argmax(mesh.vertices @ up)]
+    assert np.linalg.norm(tip[:2]) > 75                                # the tip points away from the arc
+    graph = ScanStore(registry.data).get_scene_graph("scn_knob")
+    assert any(r.a == signal.part_id and r.b == "p_arc" and r.type == "fastened" for r in graph.relations)
+
+
+def test_probe_surface_rejects_bad_input(registry):
+    ctx = ToolContext(registry, "scn_knob")
+    assert ctx.dispatch("probe_surface", {"part_id": "p99", "direction": [0, 1, 0]})["error"] == "bad_request"
+    assert ctx.dispatch("probe_surface", {"part_id": "p1"})["error"] == "bad_request"
+    assert ctx.dispatch("probe_surface", {"part_id": "p1", "direction": [0, 0, 0]})["error"] == "bad_request"
 
 
 def test_add_part_clamps_oversized_and_notes_it(registry):
@@ -186,7 +262,7 @@ def test_add_part_clamps_oversized_and_notes_it(registry):
 @pytest.mark.parametrize("args, fragment", [
     ({"kind": "box", "size_mm": [1, 1, 1], "center_mm": [0, 0, 0]}, "label"),
     ({**BOX, "label": "   "}, "label"),
-    ({**BOX, "kind": "pyramid"}, "kind"),
+    ({**BOX, "kind": "hexagon"}, "kind"),
     ({**BOX, "size_mm": [10, 10]}, "size_mm"),
     ({**BOX, "size_mm": [10, float("nan"), 10]}, "finite"),
     ({**BOX, "size_mm": [10, float("inf"), 10]}, "finite"),
@@ -196,7 +272,15 @@ def test_add_part_clamps_oversized_and_notes_it(registry):
     ({**BOX, "size_mm": [True, 10, 10]}, "number"),
     ({**BOX, "center_mm": [0, 0, 1e9]}, "center_mm"),
     ({**BOX, "center_mm": None}, "center_mm"),
-    ({**BOX, "rotation_quat": [0, 0, 1, 1]}, "unit quaternion"),
+    ({**BOX, "rotation_quat": [0, 0, 1, 1]}, "no longer accepted"),
+    ({**BOX, "up": [0, 0, 0]}, "up"),
+    ({**BOX, "center_mm": None, "base_mm": [0, 0, 0], "on_part": "p1", "direction": [0, 1, 0]},
+     "exactly one placement"),
+    ({**BOX, "center_mm": None, "on_part": "p1"}, "direction"),
+    ({"label": "Fin", "kind": "profile", "outline_mm": [[0, 0], [1, 1]], "thickness_mm": 2,
+      "center_mm": [0, 0, 0]}, "outline_mm"),
+    ({"label": "Fin", "kind": "profile", "outline_mm": [[0, 0], [10, 0], [5, 9]], "center_mm": [0, 0, 0]},
+     "thickness_mm"),
     ({**BOX, "rotation_quat": [0, 0, 0]}, "rotation_quat"),
     ({**BOX, "position": [0, 0, 0]}, "unknown argument"),
     ({**BOX, "cad_id": "cad_07"}, "kind=cad"),
@@ -341,13 +425,23 @@ def test_loop_add_part_emits_tool_call_highlight_and_result(registry):
     assert pid not in driver.calls[0]["system"] and pid in driver.calls[1]["system"]
 
 
-def test_tool_specs_include_add_part():
-    spec = next(t for t in anthropic_tool_specs() if t["name"] == "add_part")
-    schema = spec["input_schema"]
+def test_tool_specs_include_add_part_probe_surface_and_remove_part():
+    specs = {t["name"]: t for t in anthropic_tool_specs()}
+    schema = specs["add_part"]["input_schema"]
     assert schema["required"] == ["label", "kind"]
-    assert schema["properties"]["kind"]["enum"] == ["box", "cylinder", "sphere", "cad"]
-    assert {"size_mm", "center_mm", "rotation_quat", "cad_id", "attach_to", "relation"} <= set(
-        schema["properties"])
+    assert schema["properties"]["kind"]["enum"] == ["box", "cylinder", "cone", "pyramid", "sphere",
+                                                     "torus", "capsule", "profile", "cad"]
+    assert {"size_mm", "center_mm", "base_mm", "on_part", "direction", "up", "width_axis",
+            "outline_mm", "thickness_mm", "cad_id", "attach_to", "relation"} <= set(schema["properties"])
+    assert "rotation_quat" not in schema["properties"]
+    assert specs["probe_surface"]["input_schema"]["required"] == ["part_id", "direction"]
+    assert specs["remove_part"]["input_schema"]["required"] == ["part_id"]
+
+
+def test_prompt_teaches_shapes_placement_checking_and_removal():
+    for word in ("cone", "pyramid", "profile", "on_part", "direction", "probe_surface", "render_view",
+                 "remove_part"):
+        assert word in SYSTEM_PROMPT, word
 
 
 # ---------------------------------------------------------------- object context

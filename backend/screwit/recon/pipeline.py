@@ -38,6 +38,7 @@ from screwit.interfaces import (
     Storage,
 )
 
+from . import depthclean
 from . import frames as frames_mod
 from . import gaussians as gauss_mod
 from . import geometry as geom_mod
@@ -119,6 +120,10 @@ class ReconPipelineImpl:
         self._geometry_model = geometry_model
         self.opacity_min = opacity_min
         self.gaussian_cap = gaussian_cap
+        # Points within this band ON or BELOW the support plane are treated as the
+        # support surface (table/floor) and dropped from the object, so a table top
+        # caught in the mask is not meshed. Covers depth noise on a flat surface.
+        self.support_band_mm = 5.0
         # Optional hook used by the end-to-end CPU test: a callable (scan, storage, frames_dir) ->
         # FramesIndex that renders a synthetic scene instead of decoding a video with ffmpeg.
         self._frames_provider = frames_provider
@@ -234,6 +239,24 @@ class ReconPipelineImpl:
                 clean_note = "; " + clean_info.note()
             timer.done("scale", f"{scale_res.info.method}, {scale_res.info.corner_views} views"
                                 f"{clean_note}")
+
+            # ---- re-level to the support plane ----
+            # SPEC 3.1: rotation ALWAYS comes from the support plane. When the board rotation was
+            # not trusted (high tilt/residual -> frame_origin fell back to object_bottom_center, or
+            # the learned fallback with no board), the scan can still be tilted and floating. Fit
+            # the support plane in the current scan frame and, if one is found, apply one rigid
+            # correction to the gaussians and the cameras so the object sits flat on z = 0. Trusted
+            # board scans (frame_origin == "board") are left untouched. Object-agnostic: it only
+            # aligns the support surface, no category knowledge.
+            if scale_res.frame_origin != "board":
+                relevel = self._support_plane_safe(depth_scan, result.intrinsics, extr_scan)
+                if relevel is not None:
+                    rn, rd = relevel
+                    r_fix, t_fix = scale_mod.level_to_plane(rn, rd)
+                    # Depth is camera-relative (z along each view's ray), so a world rotation leaves
+                    # the depth values unchanged; only the cameras and the cloud move.
+                    cloud_scan = gauss_mod.apply_similarity(cloud_scan, r_fix, t_fix, 1.0)
+                    extr_scan = geom_mod.apply_similarity_to_cameras(extr_scan, r_fix, t_fix, 1.0)
 
             # ---- object mask ----
             timer.start("object_mask")
@@ -438,28 +461,84 @@ class ReconPipelineImpl:
 
     # -- object bbox / origin ----------------------------------------------
 
+    @staticmethod
+    def _support_plane_safe(depth_scan, intrinsics, extrinsics):
+        """``depthclean.support_plane`` or None, never raising (a missing plane is normal)."""
+        try:
+            return depthclean.support_plane(depth_scan, intrinsics, extrinsics)
+        except Exception:  # noqa: BLE001
+            return None
+
+    def _strip_support_surface(self, points_mm, plane):
+        """Drop the support surface (a table/floor) that the object mask let through, keeping the
+        object -- including the part of it that rests on the surface.
+
+        A table extends laterally FAR beyond the object; the object's own base is a compact
+        footprint directly under its body. So: take the points clearly above the support band as the
+        object core, measure how far they reach from their own centre in the plane, and within the
+        support band drop only the points that lie outside that reach. The object's base (inside the
+        reach) is kept; the table ring (outside it) is removed. No category or object knowledge --
+        purely the geometry of "surface that sticks out past the thing standing on it". If there is
+        no clear object core above the band, nothing is stripped (there was no table to remove).
+        """
+        n, d = plane
+        n = np.asarray(n, float)
+        nn = float(np.linalg.norm(n)) or 1.0
+        height = (points_mm @ n + float(d)) / nn          # height above the plane
+        band = self.support_band_mm
+        core = points_mm[height > band]
+        if len(core) < max(50, int(0.05 * len(points_mm))):
+            return points_mm                              # no solid body above the surface
+        # In-plane coordinates: project onto two axes spanning the plane.
+        up = n / nn
+        ref = np.array([1.0, 0.0, 0.0]) if abs(up[0]) < 0.9 else np.array([0.0, 1.0, 0.0])
+        e1 = ref - up * (ref @ up)
+        e1 /= np.linalg.norm(e1) or 1.0
+        e2 = np.cross(up, e1)
+        core_uv = np.stack([core @ e1, core @ e2], axis=1)
+        centre_uv = np.median(core_uv, axis=0)
+        reach = float(np.quantile(np.linalg.norm(core_uv - centre_uv, axis=1), 0.98))
+        reach *= 1.25                                     # a little slack around the footprint
+        uv = np.stack([points_mm @ e1, points_mm @ e2], axis=1)
+        far = np.linalg.norm(uv - centre_uv, axis=1) > reach
+        drop = (height <= band) & far                     # support surface outside the footprint
+        return points_mm[~drop]
+
     def _object_bbox(self, depth_scan, masks, result, extr_scan, scale_res):
         """Back-project masked depth to a scan-frame point cloud and take its axis-aligned bbox.
         Returns (min, max, origin_shift) where origin_shift moves object_bottom_center to the
-        scan-frame origin (used only in the no-board case)."""
-        pts = []
-        for i, (depth, mask) in enumerate(zip(depth_scan, masks, strict=False)):
-            k = result.intrinsics[i]
-            w2c = extr_scan[i]
-            ys, xs = np.nonzero(mask & (depth > 0))
+        scan-frame origin (used only in the no-board case).
+
+        The support surface is removed first: points that sit ON or BELOW the scene's support plane
+        (a table, the floor) are dropped before the bbox, so a round table top caught in the mask
+        when the scan was recorded from an elevation does not become part of the object. The plane
+        is fitted from every view's depth (the table/background is strong evidence), and the cut is
+        geometric -- it removes whatever lies in the support surface, not any named category."""
+        def _backproject(depth, k, w2c, select):
+            ys, xs = np.nonzero(select)
             if xs.size == 0:
-                continue
+                return None
             z = depth[ys, xs]
             x = (xs - k[0, 2]) / k[0, 0] * z
             y = (ys - k[1, 2]) / k[1, 1] * z
             cam = np.stack([x, y, z], axis=1)
             r = w2c[:3, :3]
             t = w2c[:3, 3]
-            world = (cam - t) @ r  # inverse of R x + t (R orthonormal): x = R^T (p - t)
-            pts.append(world)
+            return (cam - t) @ r  # inverse of R x + t (R orthonormal): x = R^T (p - t)
+
+        # Support plane of the whole scene (object + table + background), in the current scan frame.
+        plane = self._support_plane_safe(depth_scan, result.intrinsics, extr_scan)
+
+        pts = []
+        for i, (depth, mask) in enumerate(zip(depth_scan, masks, strict=False)):
+            world = _backproject(depth, result.intrinsics[i], extr_scan[i], mask & (depth > 0))
+            if world is not None and len(world):
+                pts.append(world)
         if not pts:
             return np.array([-50, -50, 0.0]), np.array([50, 50, 100.0]), np.zeros(3)
         allp = np.concatenate(pts, axis=0)
+        if plane is not None:
+            allp = self._strip_support_surface(allp, plane)
         bmin = allp.min(axis=0)
         bmax = allp.max(axis=0)
         centre = (bmin + bmax) / 2.0

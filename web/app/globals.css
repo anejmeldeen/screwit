@@ -660,6 +660,11 @@ button:disabled { cursor: not-allowed; }
 .component-actions,.scene-inspector .part-history,.scene-inspector .part-downloads>div { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,90px),1fr)); gap:6px; margin-top:10px; }
 .component-actions>span,.rename-controls { grid-column:1 / -1; }
 .rename-controls { display:flex; gap:4px; flex-wrap:wrap; }
+/* Delete part: a full-width row under the other part actions. The first click arms it: a red
+   "Are you sure?" (the dashboard's #b3261e on #fff0ec, as a dark-theme red); the second deletes. */
+.component-actions>.part-delete { grid-column:1 / -1; }
+.workbench .scene-layout button.part-delete.is-confirming { border-color:#e5675e; background:#4b1f1b; color:#ffb4ab; font-weight:700; }
+.workbench .scene-layout button.part-delete.is-confirming:hover:not(:disabled) { background:#5c2520; }
 .scene-inspector .part-downloads { padding:0 0 12px; }
 .scene-display-controls,.measurement-modes { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
 .scene-display-controls:empty { display:none; }

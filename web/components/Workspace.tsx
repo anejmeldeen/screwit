@@ -194,6 +194,17 @@ export function Workspace({
     setSelectedId(id);
     setFocusPartId(null);
   }
+  // A part was deleted (inspector button): drop it at once, forget any state that names it, then
+  // reload the parts from the server.
+  function onPartDeleted(id: string) {
+    setParts(current => current?.filter(p => p.part_id !== id) ?? current);
+    setHiddenPartIds(ids => ids.filter(p => p !== id));
+    setCombineFrom(from => (from === id ? null : from));
+    setSelectedId(current => (current === id ? null : current));
+    setFocusPartId(current => (current === id ? null : current));
+    setHoveredId(current => (current === id ? null : current));
+    refreshParts();
+  }
 
   return (
     <div className="workbench flex flex-col">
@@ -233,7 +244,8 @@ export function Workspace({
             {!creationForm && <PartsPanel hiddenPartIds={hiddenPartIds}
               onToggleHidden={id => setHiddenPartIds(ids => ids.includes(id) ? ids.filter(p => p !== id) : [...ids, id])}
               onIsolate={setIsolatedId} scanId={scanId} parts={parts} partsReady={partsReady}
-              selectedId={selectedId} onCombine={() => { setCombineFrom(selectedId); setCombineError(""); }} onChanged={refreshParts} />}
+              selectedId={selectedId} onCombine={() => { setCombineFrom(selectedId); setCombineError(""); }} onChanged={refreshParts}
+              onDeleted={onPartDeleted} />}
             {partsReady && !!parts?.length && <details name="inspector-section" className="scene-export"><summary>Export {selected ? "component" : "assembly"}</summary>
               <PartDownloads scanId={scanId} part={selected} /></details>}
           </section>

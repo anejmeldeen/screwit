@@ -7,7 +7,9 @@ before the parts stage finishes (SPEC 6.3 before-parts mode).
 The tool set is the SPEC 6.3 table:
   get_scene_graph, get_part, list_parts, measure, render_view, get_keyframes, highlight,
   set_measurement, search_parts, create_cad, emit_repair_plan,
-plus add_part (agent/add_part.py), which adds a new component to the object.
+plus add_part (agent/add_part.py), which adds a new component to the object, probe_surface, which
+finds a part's outer surface in a direction the way add_part's on_part placement does, and remove_part
+(agent/remove_part.py), which deletes a part (undoable from the inspector).
 """
 
 from __future__ import annotations
@@ -18,9 +20,11 @@ from dataclasses import dataclass
 from typing import Any
 
 from screwit.agent import catalogue
-from screwit.agent.add_part import add_part, input_schema
+from screwit.agent.add_part import add_part, input_schema, probe_input_schema, probe_surface
 from screwit.agent.cad import TEMPLATE_SCHEMAS, ConfirmBeforePrinting, check_confirm_before_printing
 from screwit.agent.context import part_summary
+from screwit.agent.remove_part import remove_part
+from screwit.agent.remove_part import tool_spec as remove_part_spec
 from screwit.app.registry import Registry
 from screwit.app.store import ScanStore
 from screwit.contracts import (
@@ -36,7 +40,7 @@ NOT_READY = {"status": "not_ready", "message": "parts are still being computed; 
 
 # Tools that need the parts stage to have finished.
 _NEEDS_PARTS = frozenset({"get_part", "list_parts", "render_view", "set_measurement", "create_cad",
-                          "add_part"})
+                          "add_part", "probe_surface", "remove_part"})
 
 
 @dataclass
@@ -136,12 +140,22 @@ def anthropic_tool_specs() -> list[dict]:
          "input_schema": _plan_input_schema()},
         {"name": "add_part",
          "description": (
-             "Add a NEW component to the object and save it: a simple solid (box, cylinder, sphere) "
-             "sized and placed in the scan frame (mm, Z up), or the model of a CAD result placed "
-             "where its preview was shown. It is saved as a user-edited part and appears in the "
-             "parts list, hierarchy and 3D viewer. Call it only after the user has confirmed what "
-             "to add, its size and its position. Returns the new part id."),
+             "Add a NEW component to the object and save it: a solid (box, cylinder, cone, pyramid, "
+             "sphere, torus, capsule, or a flat profile extruded from an outline) sized in its own "
+             "frame and placed on an existing part's outer surface (on_part + direction) or at a "
+             "point (base_mm or center_mm), or the model of a CAD result placed where its preview was "
+             "shown. Scan frame: mm, Z up from the support surface. It is saved as a user-edited part "
+             "and appears in the parts list, hierarchy and 3D viewer. Call it once the user has agreed "
+             "to the design. Returns the new part id, where it went (base, up, width axis, the surface "
+             "point and normal used) and a contact check against the part it attaches to."),
          "input_schema": input_schema()},
+        {"name": "probe_surface",
+         "description": (
+             "Read-only. Look from a part's centre in a direction and return the outermost surface "
+             "point there and its outward normal, found the same way add_part's on_part placement "
+             "finds it. Use it to see where a new part would stand before adding it."),
+         "input_schema": probe_input_schema()},
+        remove_part_spec(),
     ]
 
 
@@ -276,6 +290,12 @@ class ToolContext:
 
     def _tool_add_part(self, args: dict) -> Any:
         return add_part(self._reg, self._store, self._scan_id, args)
+
+    def _tool_probe_surface(self, args: dict) -> Any:
+        return probe_surface(self._reg, self._store, self._scan_id, args)
+
+    def _tool_remove_part(self, args: dict) -> Any:
+        return remove_part(self._reg, self._store, self._scan_id, args)
 
     # -------------------------------------------------------------- helpers
     def _build_cad_request(self, args: dict, parts: dict, mates: list[dict], mode: str) -> CadRequest:

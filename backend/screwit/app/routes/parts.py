@@ -1,8 +1,9 @@
 """Parts, scene graph and measure routes (SPEC 5; handlers owned by P3, mounted in P4's shell).
 
 PATCH renames/relabels (no revision change) or edits a Measurement (bumps measurement_revision and
-stales CAD referencing the part). Merge retires the sources and creates a new part. Both targeted
-staleness paths touch only CAD results that pinned the affected parts.
+stales CAD referencing the part). Merge retires the sources and creates a new part. DELETE removes one
+part (screwit.app.part_delete). The targeted staleness paths touch only CAD results that pinned the
+affected parts. Merge and delete each record one undo step, and POST /parts/undo reverts the latest.
 """
 
 from __future__ import annotations
@@ -22,6 +23,7 @@ from screwit.app import signing
 from screwit.app.db import MergeHistoryRow, db_session
 from screwit.app.deps import RegistryDep
 from screwit.app.fakes import _apply_patch
+from screwit.app.part_delete import PartDeleteRefused, delete_part, graph_revision, parts_json
 from screwit.app.registry import Registry
 from screwit.app.store import ScanStore
 from screwit.contracts import (
@@ -142,8 +144,8 @@ def merge_parts(scan_id: str, req: MergeRequest, reg: RegistryDep) -> Part:
     retired = _retired_ids(reg, req, before_ids, kept)
     store.mark_cad_stale(scan_id, store.cad_jobs_referencing(scan_id, retired))
     with db_session() as session:
-        session.add(MergeHistoryRow(scan_id=scan_id, before_json=_parts_json(before),
-                                   after_json=_parts_json(kept),
+        session.add(MergeHistoryRow(scan_id=scan_id, before_json=parts_json(before),
+                                   after_json=parts_json(kept),
                                    graph_json=graph.model_dump_json() if graph else None))
         session.commit()
     return signing.part(reg.storage, merged)
@@ -187,10 +189,6 @@ class EditHistory(BaseModel):
     can_restore_example: bool
 
 
-def _parts_json(parts: list[Part]) -> str:
-    return json.dumps([p.model_dump(mode="json") for p in sorted(parts, key=lambda p: p.part_id)], sort_keys=True)
-
-
 def _merge_demo(reg: Registry, before: list[Part], req: MergeRequest, scan_id: str) -> Part:
     import numpy as np
     import trimesh
@@ -231,16 +229,18 @@ def edit_history(scan_id: str, reg: RegistryDep) -> EditHistory:
 
 @router.post("/scans/{scan_id}/parts/undo", response_model=list[Part])
 def undo_merge(scan_id: str, reg: RegistryDep) -> list[Part]:
+    """Revert the latest combine or delete, provided the parts have not changed since."""
     store = _store(reg)
     with db_session() as session:
         row = session.exec(select(MergeHistoryRow).where(
             MergeHistoryRow.scan_id == scan_id, MergeHistoryRow.undone == False  # noqa: E712
         ).order_by(MergeHistoryRow.id.desc())).first()
         if row is None:
-            raise HTTPException(status_code=409, detail="No merge to undo")
+            raise HTTPException(status_code=409, detail="Nothing to undo")
         current = store.list_parts(scan_id)
-        if _parts_json(current) != row.after_json:
-            raise HTTPException(status_code=409, detail="Parts changed after this merge; undo would overwrite edits")
+        if parts_json(current) != row.after_json:
+            raise HTTPException(status_code=409,
+                                detail="The parts changed after that edit; undo would overwrite the newer changes")
         restored = [Part.model_validate(p) for p in json.loads(row.before_json)]
         if not reg.settings.is_mock:
             reg.storage.put_bytes(f"scans/{scan_id}/parts.json", row.before_json.encode(), "application/json")
@@ -249,7 +249,8 @@ def undo_merge(scan_id: str, reg: RegistryDep) -> list[Part]:
         store.save_parts(scan_id, restored)
         if row.graph_json:
             graph = SceneGraph.model_validate_json(row.graph_json)
-            store.save_scene_graph(graph, restored[0].reconstruction_revision)
+            # At or above every stored revision, so the restored graph is the one read back.
+            store.save_scene_graph(graph, graph_revision(store, scan_id, restored))
         store.mark_cad_stale(scan_id, store.cad_jobs_referencing(scan_id, {p.part_id for p in current}))
         row.undone = True
         session.add(row)
@@ -266,9 +267,27 @@ def restore_example(scan_id: str, reg: RegistryDep) -> list[Part]:
     current = store.list_parts(scan_id)
     store.mark_cad_stale(scan_id, store.cad_jobs_referencing(scan_id, {p.part_id for p in current}))
     store.save_parts(scan_id, original)
+    # Deleting or adding a part rewrote the stored scene graph; the example's own graph comes back too.
+    graph = reg.data.scene_graph(scan_id)
+    if graph is not None:
+        store.save_scene_graph(graph, graph_revision(store, scan_id, original))
     with db_session() as session:
         for row in session.exec(select(MergeHistoryRow).where(MergeHistoryRow.scan_id == scan_id)).all():
             row.undone = True
             session.add(row)
         session.commit()
     return signing.parts(reg.storage, original)
+
+
+# Declared after the fixed /parts/... routes. Those use other methods, so a path such as
+# DELETE /parts/merge reaches this handler and gets a 404 for the unknown part "merge".
+@router.delete("/scans/{scan_id}/parts/{part_id}", status_code=204)
+def delete_part_route(scan_id: str, part_id: str, reg: RegistryDep) -> Response:
+    """Delete one part, scanned or added. POST /parts/undo brings it back."""
+    try:
+        delete_part(reg, scan_id, part_id)
+    except KeyError:
+        raise HTTPException(status_code=404, detail="part not found") from None
+    except PartDeleteRefused as e:
+        raise HTTPException(status_code=409, detail=str(e)) from None
+    return Response(status_code=204)

@@ -233,4 +233,5 @@ def test_account_settings_preserve_builds_and_reset_password(client):
     assert client.get("/api/auth/me").status_code == 200
     assert peer.post("/api/auth/login", json=credentials).status_code == 401
     assert peer.post("/api/auth/login", json={"username": "workshop", "password": "password123"}).status_code == 401
-    assert peer.post("/api/auth/login", json={"username": "workshop", "password": "replacement-pass"}).status_code == 200
+    replaced = {"username": "workshop", "password": "replacement-pass"}
+    assert peer.post("/api/auth/login", json=replaced).status_code == 200

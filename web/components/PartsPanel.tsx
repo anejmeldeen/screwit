@@ -45,6 +45,7 @@ function PartCard({
   index,
   selected,
   onChanged,
+  onDeleted,
   scanId,
   onCombine,
   hidden, onToggleHidden, onIsolate,
@@ -56,6 +57,7 @@ function PartCard({
   index: number;
   selected: boolean;
   onChanged: () => void;
+  onDeleted: (id: string) => void;
   scanId: string;
   onCombine: () => void;
 }) {
@@ -65,7 +67,32 @@ function PartCard({
   const [label, setLabel] = useState(part.label);
   const [err, setErr] = useState<string | null>(null);
   const [caliperBusy, setCaliperBusy] = useState(false);
+  // Delete takes two clicks, as deleting a workspace does: the first turns the button into a red
+  // "Are you sure?", the second deletes. It falls back after 4 seconds or on Escape.
+  const [armed, setArmed] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  useEffect(() => {
+    if (!armed) return;
+    const timer = window.setTimeout(() => setArmed(false), 4000);
+    const escape = (event: KeyboardEvent) => { if (event.key === "Escape") setArmed(false); };
+    window.addEventListener("keydown", escape);
+    return () => { window.clearTimeout(timer); window.removeEventListener("keydown", escape); };
+  }, [armed]);
 
+  async function deletePart() {
+    if (!armed) { setArmed(true); return; }
+    setArmed(false);
+    setDeleting(true);
+    setErr(null);
+    try {
+      await api.deletePart(scanId, part.part_id);
+      onDeleted(part.part_id);
+    } catch (e) {
+      setErr(e instanceof ApiError ? `${e.message} (${e.status})` : String(e));
+    } finally {
+      setDeleting(false);
+    }
+  }
 
   async function saveLabel() {
     setErr(null);
@@ -158,6 +185,11 @@ function PartCard({
           </button>
         )}
         <button onClick={onCombine}>Combine</button>
+        <button type="button" disabled={deleting} onClick={deletePart}
+          className={`part-delete${armed ? " is-confirming" : ""}`}
+          aria-label={armed ? `Are you sure? Click again to delete ${part.label}` : `Delete part ${part.label}`}>
+          {armed ? "Are you sure?" : deleting ? "Deleting…" : "Delete part"}
+        </button>
       </div>
 
       </details>
@@ -234,6 +266,7 @@ export function PartsPanel({
   partsReady,
   selectedId, onCombine,
   onChanged,
+  onDeleted = () => {},
 }: {
   hiddenPartIds?: string[];
   onToggleHidden?: (id: string) => void;
@@ -244,10 +277,13 @@ export function PartsPanel({
   selectedId: string | null;
   onCombine: () => void;
   onChanged: () => void;
+  // After a part was deleted on the server; the workspace drops it and clears its selection.
+  onDeleted?: (id: string) => void;
 }) {
   const [history, setHistory] = useState({can_undo: false, can_restore_example: false});
   const [busy, setBusy] = useState(false);
   const [editError, setEditError] = useState("");
+  // Refetched whenever the parts change, so Undo lights up after a combine or a delete.
   useEffect(() => {
     let alive = true;
     api.partHistory(scanId).then((h) => {if (alive) setHistory(h);}).catch(() => {});
@@ -262,6 +298,7 @@ export function PartsPanel({
     } catch (e) { setEditError(e instanceof Error ? e.message : String(e)); }
     finally { setBusy(false); }
   }
+  const historySection = <details name="inspector-section" open className="assembly-history"><summary>Assembly history</summary><div className="part-history"><button disabled={busy || !history.can_undo} onClick={() => recover()} title="Undo the last combine or delete">↶ Undo</button>{history.can_restore_example ? <button disabled={busy} onClick={() => recover(true)}>Restore original example</button> : null}</div></details>;
 
   if (!partsReady) {
     return (
@@ -283,16 +320,19 @@ export function PartsPanel({
     );
   }
   if (parts.length === 0) {
+    // After the last part was deleted, Undo stays reachable here.
     return (
       <div data-testid="parts-panel">
-        <EmptyState title="No parts detected" />
+        <EmptyState title={history.can_undo ? "No parts left" : "No parts detected"} />
+        {history.can_undo || history.can_restore_example ? historySection : null}
+        {editError ? <p role="alert">{editError}</p> : null}
       </div>
     );
   }
 
   return (
     <div data-testid="parts-panel" className="space-y-3">
-      {!selectedId && <details name="inspector-section" open className="assembly-history"><summary>Assembly history</summary><div className="part-history"><button disabled={busy || !history.can_undo} onClick={() => recover()}>↶ Undo combine</button>{history.can_restore_example ? <button disabled={busy} onClick={() => recover(true)}>Restore original example</button> : null}</div></details>}
+      {!selectedId && historySection}
       {editError ? <p role="alert">{editError}</p> : null}
       {parts.map((p, i) => selectedId === p.part_id && (
         <PartCard
@@ -302,6 +342,7 @@ export function PartsPanel({
           index={i}
           selected={selectedId === p.part_id}
           onChanged={onChanged}
+          onDeleted={onDeleted}
           scanId={scanId}
           onCombine={onCombine}
         />

@@ -133,8 +133,11 @@ export const api = {
       method: "POST",
       body: JSON.stringify(body),
     }),
+  deletePart: (scanId: string, partId: string) =>
+    request<void>(`/scans/${scanId}/parts/${encodeURIComponent(partId)}`, { method: "DELETE" }),
 
   partHistory: (scanId: string) => request<{can_undo: boolean; can_restore_example: boolean}>(`/scans/${scanId}/parts/history`),
+  // Undoes the latest combine or delete.
   undoMerge: (scanId: string) => request<Part[]>(`/scans/${scanId}/parts/undo`, {method: "POST"}),
   restoreExample: (scanId: string) => request<Part[]>(`/scans/${scanId}/parts/restore-example`, {method: "POST"}),
 

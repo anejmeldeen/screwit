@@ -181,6 +181,57 @@ def support_plane(points_mm: np.ndarray):
     return n, float(d)
 
 
+# --------------------------------------------------------------------------- levelling & support
+
+def level_to_plane(normal: np.ndarray, d: float) -> tuple[np.ndarray, np.ndarray]:
+    """Rigid transform that makes a support plane exactly Z-up at z = 0 (SPEC 3.1).
+
+    Given a plane ``normal . x + d = 0`` with ``normal`` pointing towards the cameras (the object
+    side), returns ``(R, t)`` such that ``x' = R x + t`` rotates ``normal`` onto +Z and shifts the
+    plane to z = 0. Applying it to the whole scan corrects any residual tilt left by an unreliable
+    board rotation, so the object sits flat on z = 0 instead of slanted and floating. Object-agnostic
+    and category-free: it only aligns the support surface.
+    """
+    n = np.asarray(normal, float)
+    nn = float(np.linalg.norm(n))
+    if nn < 1e-9:
+        return np.eye(3), np.zeros(3)
+    n = n / nn
+    d = float(d) / nn
+    z = np.array([0.0, 0.0, 1.0])
+    v = np.cross(n, z)
+    c = float(np.clip(n @ z, -1.0, 1.0))
+    sv = float(np.linalg.norm(v))
+    if sv < 1e-9:
+        # Already parallel to Z (up) or anti-parallel (flip about X).
+        r = np.eye(3) if c > 0 else np.diag([1.0, -1.0, -1.0])
+    else:
+        vx = np.array([[0.0, -v[2], v[1]], [v[2], 0.0, -v[0]], [-v[1], v[0], 0.0]])
+        r = np.eye(3) + vx + vx @ vx * ((1.0 - c) / (sv * sv))
+    # After rotation the plane normal is +Z; a point on the plane maps to z = d (since R n = z and
+    # the plane passes through -d n, which maps to -d z). Shift by +d so the plane lands on z = 0.
+    t = np.array([0.0, 0.0, d])
+    return r, t
+
+
+def support_band_mask(points_mm: np.ndarray, normal: np.ndarray, d: float,
+                      *, band_mm: float = 5.0) -> np.ndarray:
+    """Boolean mask of points that are ON or BELOW the support plane within ``band_mm``.
+
+    The support surface (a table, the floor, the board's sheet) sits on this plane; a round table
+    top recorded from an elevation lands here too. ``True`` marks points to DROP so only the object
+    above the surface is kept. The plane normal points at the object side. No object knowledge: it
+    removes whatever lies in the support surface, not a named category.
+    """
+    p = np.asarray(points_mm, float)
+    if p.size == 0:
+        return np.zeros(0, dtype=bool)
+    n = np.asarray(normal, float)
+    nn = float(np.linalg.norm(n)) or 1.0
+    signed = (p @ n + float(d)) / nn      # height above the plane (object side positive)
+    return signed <= band_mm
+
+
 # --------------------------------------------------------------------------- scale from board
 
 def scale_from_board(intrinsics: np.ndarray, extrinsics: np.ndarray,
