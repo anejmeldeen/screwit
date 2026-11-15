@@ -197,7 +197,7 @@ export function Workspace({
             {!creationForm && <PartsPanel hiddenPartIds={hiddenPartIds}
               onToggleHidden={id => setHiddenPartIds(ids => ids.includes(id) ? ids.filter(p => p !== id) : [...ids, id])}
               onIsolate={setIsolatedId} scanId={scanId} parts={parts} partsReady={partsReady}
-              selectedId={selectedId} onSelect={select} onChanged={refreshParts} />}
+              selectedId={selectedId} onChanged={refreshParts} />}
             {partsReady && !!parts?.length && <details open className="scene-export"><summary>Export {selected ? "component" : "assembly"}</summary>
               <PartDownloads scanId={scanId} part={selected} /></details>}
           </section>

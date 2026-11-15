@@ -44,7 +44,6 @@ function PartCard({
   part,
   index,
   selected,
-  onSelect,
   onChanged,
   scanId,
   mergeState,
@@ -56,7 +55,6 @@ function PartCard({
   part: Part;
   index: number;
   selected: boolean;
-  onSelect: (id: string) => void;
   onChanged: () => void;
   scanId: string;
   mergeState: {
@@ -125,10 +123,7 @@ function PartCard({
         selected ? "border-accent" : "border-line"
       }`}
     >
-      <button
-        className="part-select flex w-full items-start gap-3 text-left"
-        onClick={() => onSelect(part.part_id)}
-      >
+      <header className="flex items-center gap-3">
         <span
           className="mt-1 h-3 w-3 shrink-0 rounded-sm"
           style={{ backgroundColor: partColor(index, part.part_id) }}
@@ -137,7 +132,7 @@ function PartCard({
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             src={assetUrl(part.thumbnail_uri)}
-            alt={part.label}
+            alt=""
             loading="lazy"
             decoding="async"
             className="h-full w-full object-cover"
@@ -146,18 +141,9 @@ function PartCard({
             }
           />
         </span>
-        <span className="min-w-0 flex-1">
-          <span className="flex items-center gap-2">
-            <span className="truncate font-bold">{part.label}</span>
+        <h3 className="min-w-0 break-words font-bold">{part.label}</h3>
+      </header>
 
-          </span>
-          {part.description ? (
-            <span className="mt-0.5 block truncate text-xs text-muted">
-              {part.description}
-            </span>
-          ) : null}
-        </span>
-      </button>
 
       {/* Actions */}
       <details open className="component-section"><summary>Actions</summary><div className="component-actions">
@@ -167,7 +153,7 @@ function PartCard({
           {hidden ? "Show" : "Hide"}
         </button>
         <button aria-label={`Isolate ${part.label}`} onClick={() => onIsolate(part.part_id)}
-          className="rounded border border-line px-1.5 py-0.5 hover:border-accent">Isolate…</button>
+          className="rounded border border-line px-1.5 py-0.5 hover:border-accent">Isolate</button>
         {renaming ? (
           <span className="rename-controls">
             <input
@@ -195,7 +181,7 @@ function PartCard({
             onClick={() => mergeState.setPick(part.part_id)}
             className="rounded border border-line px-1.5 py-0.5 hover:border-line"
           >
-            Combine…
+            Combine
           </button>
         ) : mergeState.pick === part.part_id ? (
           <span className="text-muted">Select another part in the hierarchy</span>
@@ -283,7 +269,6 @@ export function PartsPanel({
   parts,
   partsReady,
   selectedId,
-  onSelect,
   onChanged,
 }: {
   hiddenPartIds?: string[];
@@ -293,7 +278,6 @@ export function PartsPanel({
   parts: Part[] | null;
   partsReady: boolean;
   selectedId: string | null;
-  onSelect: (id: string) => void;
   onChanged: () => void;
 }) {
   const [mergePick, setMergePick] = useState<string | null>(null);
@@ -354,7 +338,6 @@ export function PartsPanel({
           hidden={hiddenPartIds.includes(p.part_id)} onToggleHidden={onToggleHidden} onIsolate={onIsolate}
           index={i}
           selected={selectedId === p.part_id}
-          onSelect={onSelect}
           onChanged={onChanged}
           scanId={scanId}
           mergeState={{ pick: mergePick, setPick: setMergePick, label: parts.find((p) => p.part_id === mergePick)?.label ?? "selected part" }}
