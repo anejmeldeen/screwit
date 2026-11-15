@@ -61,7 +61,7 @@ function DashboardShell({ children }: { children: React.ReactNode }) {
             <div className="sidebar-mascot"><ScrewMascot /></div>
             <Link href="/settings" className="sidebar-account" onClick={() => setMenuOpen(false)}>
               <span className="account-avatar">{account?.username.slice(0, 1).toUpperCase()}</span>
-              <span><strong>{account?.username}</strong><small>Personal workspace</small></span>
+              <span><strong>{account?.username}</strong></span>
               <DashboardIcon name="settings" />
             </Link>
             <button type="button" className="sidebar-signout" onClick={logout} disabled={busy}><DashboardIcon name="logout" />{busy ? "Signing out…" : "Sign out"}</button>

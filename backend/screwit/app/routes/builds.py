@@ -1,11 +1,12 @@
 """The signed-in account's saved builds, including admin's existing examples."""
 
+import hashlib
 import io
 import json
 from datetime import UTC, datetime
 from typing import Annotated
 
-from fastapi import APIRouter, HTTPException, Response
+from fastapi import APIRouter, HTTPException, Request, Response
 from pydantic import BaseModel, StringConstraints
 from sqlmodel import select
 
@@ -108,13 +109,19 @@ def delete_build(scan_id: str, user: UserDep) -> Response:
     return Response(status_code=204)
 
 
+def _etag_matches(header: str | None, etag: str) -> bool:
+    """If-None-Match (RFC 9110 13.1.2): a list of entity tags, weak ones prefixed ``W/``, or ``*``."""
+    if not header:
+        return False
+    tags = [tag.strip() for tag in header.split(",")]
+    return "*" in tags or any(tag.removeprefix("W/") == etag for tag in tags)
+
+
 @router.get("/builds/{scan_id}/preview.png")
-def build_preview(scan_id: str, reg: RegistryDep) -> Response:
+def build_preview(scan_id: str, reg: RegistryDep, request: Request) -> Response:
     recon = ScanStore(reg.data).get_reconstruction(scan_id)
     if recon is None:
         raise HTTPException(404, "Model preview is not available yet.")
-    import hashlib
-
     import numpy as np
     import trimesh
 
@@ -124,6 +131,14 @@ def build_preview(scan_id: str, reg: RegistryDep) -> Response:
     parts = ScanStore(reg.data).list_parts(scan_id)
     signature = hashlib.sha256("".join(p.model_dump_json() for p in parts).encode()).hexdigest()[:16]
     key = f"scans/{scan_id}/renders/workspace-palette-v2-{recon.reconstruction_revision}-{signature}.png"
+    # The storage key names exactly what the picture shows (palette version, reconstruction revision
+    # and parts), so it is also the ETag. "no-cache" lets the browser keep the image but makes it ask
+    # again on every view, so the router's owner check still runs each time; an unchanged preview then
+    # costs a 304 instead of a download or, in mock mode, a fresh render.
+    etag = f'"{hashlib.sha256(key.encode()).hexdigest()[:20]}"'
+    headers = {"Cache-Control": "private, no-cache", "ETag": etag}
+    if _etag_matches(request.headers.get("if-none-match"), etag):
+        return Response(status_code=304, headers=headers)
     if reg.storage.head(key):
         png = reg.storage.get_bytes(key)
     else:
@@ -149,4 +164,4 @@ def build_preview(scan_id: str, reg: RegistryDep) -> Response:
                               angle_deg=-45, width=960, height=576)
         if reg.settings.mode != "mock":
             reg.storage.put_bytes(key, png, "image/png")
-    return Response(png, media_type="image/png", headers={"Cache-Control": "private, no-cache"})
+    return Response(png, media_type="image/png", headers=headers)

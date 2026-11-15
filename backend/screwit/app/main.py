@@ -22,8 +22,9 @@ def create_app(cfg: Settings | None = None) -> FastAPI:
 
     @app.middleware("http")
     async def private_responses(request: Request, call_next):
+        # Nothing is cached unless its route says otherwise (the workspace preview revalidates by ETag).
         response = await call_next(request)
-        response.headers["Cache-Control"] = "private, no-store"
+        response.headers.setdefault("Cache-Control", "private, no-store")
         return response
 
     app.state.settings = cfg

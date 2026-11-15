@@ -17,7 +17,8 @@ from screwit.contracts.sse import KEEPALIVE
 SSE_MEDIA_TYPE = "text/event-stream"
 KEEPALIVE_INTERVAL_S = 20.0
 
-_SSE_HEADERS = {"Cache-Control": "no-cache", "X-Accel-Buffering": "no", "Connection": "keep-alive"}
+# A stream carries one account's chat and progress, so it is never stored (the app's default policy).
+_SSE_HEADERS = {"Cache-Control": "private, no-store", "X-Accel-Buffering": "no", "Connection": "keep-alive"}
 
 
 def sse_response(frames: Iterator[str]) -> StreamingResponse:

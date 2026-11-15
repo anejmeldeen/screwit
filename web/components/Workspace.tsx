@@ -12,6 +12,8 @@ import { PartDownloads } from "@/components/PartDownloads";
 import { ChatPanel } from "@/components/ChatPanel";
 import { ScanProgress } from "@/components/StatusBar";
 import { api } from "@/lib/api";
+import { markBuildOpened, readCachedBuilds, writeCachedBuilds } from "@/lib/buildsCache";
+import { useAccount } from "@/components/AccountProvider";
 import { ScrewyIcon } from "@/components/ScrewyIcon";
 import { ErrorNote } from "@/components/ui";
 import { markOnce, PERF_MARKS } from "@/lib/perf";
@@ -33,15 +35,22 @@ export function Workspace({
   const { parts, setParts, refresh: refreshParts } = useParts(scanId, scan);
 
   const [savedTitle, setSavedTitle] = useState("");
+  const username = useAccount()?.username ?? "";
   useEffect(() => {
     if (!scanId) return;
     let alive = true;
+    // The dashboard's cached list gives the title at once and learns that this workspace was just
+    // opened; the fresh list then replaces both.
+    setSavedTitle(readCachedBuilds(username)?.find(build => build.scan_id === scanId)?.title ?? "");
+    markBuildOpened(username, scanId);
     api.openBuild(scanId).catch(() => {});
     api.builds().then(builds => {
+      writeCachedBuilds(username, builds);
+      markBuildOpened(username, scanId);
       if (alive) setSavedTitle(builds.find(build => build.scan_id === scanId)?.title ?? "");
     }).catch(() => {});
     return () => { alive = false; };
-  }, [scanId]);
+  }, [scanId, username]);
 
   const gridRef = useRef<HTMLDivElement>(null);
   const dockRef = useRef<HTMLElement>(null);

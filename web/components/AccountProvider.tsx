@@ -3,6 +3,7 @@
 import { createContext, useContext, useEffect, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { api, ApiError, type Account } from "@/lib/api";
+import { clearCachedBuilds } from "@/lib/buildsCache";
 
 const AccountContext = createContext<Account | null>(null);
 export const useAccount = () => useContext(AccountContext);
@@ -22,11 +23,13 @@ export function AccountProvider({ children }: { children: React.ReactNode }) {
         if (alive) { setAccount(user); setError(false); }
       }).catch((err) => {
         if (!alive) return;
+        const signedOut = err instanceof ApiError && err.status === 401;
+        if (signedOut) clearCachedBuilds();
         setAccount(null);
-        setError(!(err instanceof ApiError && err.status === 401));
+        setError(!signedOut);
       }).finally(() => { if (alive) setLoading(false); });
     };
-    const expire = () => { setAccount(null); setError(false); };
+    const expire = () => { clearCachedBuilds(); setAccount(null); setError(false); };
     const sync = (event: StorageEvent) => { if (event.key === "screwit:account-change") check(); };
     check();
     window.addEventListener("focus", check);
@@ -58,6 +61,9 @@ export function AccountProvider({ children }: { children: React.ReactNode }) {
   return <AccountContext.Provider key={account.username} value={account}>{children}</AccountContext.Provider>;
 }
 
+// Called after signing in, signing out or renaming the account: other tabs re-check the account,
+// and this tab drops the cached workspace list so the next account never sees the previous one's.
 export function notifyAccountChange() {
+  clearCachedBuilds();
   try { localStorage.setItem("screwit:account-change", String(Date.now())); } catch { /* Storage is optional. */ }
 }

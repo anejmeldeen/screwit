@@ -5,7 +5,9 @@ import { workspaceSlugs } from "@/lib/workspacePaths";
 import Link from "next/link";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { api, type BuildSummary } from "@/lib/api";
+import { readCachedBuilds, writeCachedBuilds } from "@/lib/buildsCache";
 import { useDashboardPreferences } from "@/lib/dashboardPreferences";
+import { useAccount } from "./AccountProvider";
 import { DashboardIcon } from "./DashboardIcon";
 import { ScrewyIcon } from "./ScrewyIcon";
 import { Skeleton } from "./ui";
@@ -25,12 +27,15 @@ function WorkspacePreview({ build, spinning, children }: { build: BuildSummary; 
     </div>;
   }
   const id = encodeURIComponent(build.scan_id);
-  const src = build.is_example ? `/examples/${id}.webp` : `/api/builds/${id}/preview.png`;
+  // The server answers with an ETag and a 304 when the model is unchanged (routes/builds.py). Within
+  // one page the browser reuses an image by URL without asking, so ``v`` (the workspace's updated_at)
+  // gives a changed workspace a new URL and its new preview.
+  const src = build.is_example ? `/examples/${id}.webp` : `/api/builds/${id}/preview.png?v=${encodeURIComponent(build.updated_at)}`;
   return <div className="workspace-preview-frame">
     {/* eslint-disable-next-line @next/next/no-img-element */}
     <img className="workspace-preview" src={src} alt={`3D preview of ${build.title}`}
-    loading="lazy" width={480} height={288} onError={() => setFailed(true)} />
-    {spinning && <WorkspaceSpin id={build.scan_id} />}
+    loading="lazy" decoding="async" width={480} height={288} onError={() => setFailed(true)} />
+    {spinning && <WorkspaceSpin id={build.scan_id} version={build.updated_at} />}
     {children}
   </div>;
 }
@@ -47,7 +52,10 @@ function openedLabel(value: string) {
 
 export function WorkspaceDashboard({ examplesOnly = false }: { examplesOnly?: boolean }) {
   const { preferences, save, error: preferenceError } = useDashboardPreferences();
-  const [builds, setBuilds] = useState<BuildSummary[] | null>(null);
+  const username = useAccount()?.username ?? "";
+  // The last list this tab loaded is drawn at once; the request below then replaces it.
+  const [builds, setBuilds] = useState<BuildSummary[] | null>(() => readCachedBuilds(username));
+  useEffect(() => { if (builds) writeCachedBuilds(username, builds); }, [builds, username]);
   const [error, setError] = useState(false);
   const [attempt, setAttempt] = useState(0);
   const [sortOpen, setSortOpen] = useState(false);
@@ -119,8 +127,8 @@ export function WorkspaceDashboard({ examplesOnly = false }: { examplesOnly?: bo
       setEditingId(build.scan_id);
       return;
     }
-    // Delete at once, no confirmation: the card goes now, then the server is told; if that fails
-    // the reload below brings the workspace back.
+    // Delete (already confirmed by the second click): the card goes now, then the server is told;
+    // if that fails the reload below brings the workspace back.
     setBuilds(items => items?.filter(item => item.scan_id !== build.scan_id) ?? null);
     try {
       await api.deleteBuild(build.scan_id);
@@ -131,12 +139,36 @@ export function WorkspaceDashboard({ examplesOnly = false }: { examplesOnly?: bo
   }
 
   const actionIcons = { Rename: "pencil", Delete: "trash" } as const;
+  // Delete takes two clicks: the first turns the button into a red "Are you sure?", the second
+  // deletes. It falls back after 4 seconds or on Escape. Keys: "card:<id>", "menu:<id>", "bulk".
+  const [armed, setArmed] = useState<string | null>(null);
+  useEffect(() => {
+    if (!armed) return;
+    const timer = window.setTimeout(() => setArmed(null), 4000);
+    const escape = (event: KeyboardEvent) => { if (event.key === "Escape") setArmed(null); };
+    window.addEventListener("keydown", escape);
+    return () => { window.clearTimeout(timer); window.removeEventListener("keydown", escape); };
+  }, [armed]);
   // Icon buttons on the cards; the right-click menu also shows the words.
-  const buttons = (build: BuildSummary, withLabels = false) => (["Rename", "Delete"] as const).map(action =>
-    <button type="button" key={action} disabled={saving} aria-label={`${action} ${build.title}`} title={action}
-      className={withLabels ? "workspace-menu-button" : "workspace-icon-button"} onClick={() => act(build, action)}>
-      <DashboardIcon name={actionIcons[action]} />{withLabels ? action : null}
-    </button>);
+  const buttons = (build: BuildSummary, withLabels = false) => (["Rename", "Delete"] as const).map(action => {
+    const key = `${withLabels ? "menu" : "card"}:${build.scan_id}`;
+    const confirming = action === "Delete" && armed === key;
+    return <button type="button" key={action} disabled={saving}
+      aria-label={confirming ? `Are you sure? Click again to delete ${build.title}` : `${action} ${build.title}`}
+      title={confirming ? undefined : action}
+      className={`${withLabels ? "workspace-menu-button" : "workspace-icon-button"}${confirming ? " is-confirming" : ""}`}
+      onClick={event => {
+        if (action === "Delete" && !confirming) {
+          event.stopPropagation();   // keep the right-click menu open for the second click
+          setArmed(key);
+          return;
+        }
+        setArmed(null);
+        void act(build, action);
+      }}>
+      {confirming ? "Are you sure?" : <><DashboardIcon name={actionIcons[action]} />{withLabels ? action : null}</>}
+    </button>;
+  });
 
   // Bulk select: "Select" turns every card into a checkbox, and the bar above the cards deletes or
   // renames all the selected workspaces at once (several get the name numbered 1, 2, 3…).
@@ -222,7 +254,9 @@ export function WorkspaceDashboard({ examplesOnly = false }: { examplesOnly?: bo
             if (event.key === "Escape") { setSortOpen(false); sortButton.current?.focus(); }
           }}>
           <button type="button" ref={sortButton} aria-expanded={sortOpen} aria-controls="workspace-sort-options"
-            onClick={() => setSortOpen(open => !open)}>Sort by · {sortLabels[preferences.sort]}</button>
+            aria-label={`Sort by ${sortLabels[preferences.sort]}`}
+            onClick={() => setSortOpen(open => !open)}><DashboardIcon name="sort" className="toolbar-short" />
+            <span><span className="toolbar-long">Sort by · </span>{sortLabels[preferences.sort]}</span></button>
           <div id="workspace-sort-options" className="workspace-sort-options" role="group" aria-label="Workspace order" hidden={!sortOpen}>
             {(Object.keys(sortLabels) as (keyof typeof sortLabels)[]).map(value =>
               <button key={value} type="button" aria-pressed={preferences.sort === value} onClick={() => {
@@ -234,9 +268,11 @@ export function WorkspaceDashboard({ examplesOnly = false }: { examplesOnly?: bo
         <button type="button" className="workspace-select-toggle" aria-pressed={selecting}
           disabled={!selecting && visible.length === 0}
           onClick={() => { if (selecting) stopSelecting(); else { setEditingId(null); setMenu(null); setSelecting(true); } }}>
-          {selecting ? `Select Multiple (${chosen.length})` : "Select Multiple"}
+          {/* Narrow screens drop the words in .toolbar-long: "Select (2)", "+ New". */}
+          Select<span className="toolbar-long"> Multiple</span>{selecting ? ` (${chosen.length})` : ""}
         </button>
-        <Link href="/scan/new" className="button-primary dashboard-new"><DashboardIcon name="plus" />New workspace</Link>
+        <Link href="/scan/new" className="button-primary dashboard-new" aria-label="New workspace"><DashboardIcon name="plus" />
+          <span>New<span className="toolbar-long"> workspace</span></span></Link>
       </div>
       {selecting && <div className="workspace-bulk" role="toolbar" aria-label="Selected workspaces">
         {bulkRenaming ? <form className="workspace-bulk-rename" onSubmit={event => {
@@ -258,17 +294,28 @@ export function WorkspaceDashboard({ examplesOnly = false }: { examplesOnly?: bo
           <button type="button" disabled={!chosen.length || saving} onClick={() => setBulkRenaming(true)}>
             <DashboardIcon name="pencil" />Rename
           </button>
-          <button type="button" disabled={!chosen.length || saving} onClick={() => void bulkDelete()}>
-            <DashboardIcon name="trash" />Delete
+          <button type="button" disabled={!chosen.length || saving} className={armed === "bulk" ? "is-confirming" : undefined}
+            aria-label={armed === "bulk" ? `Are you sure? Click again to delete ${chosen.length} workspaces` : undefined}
+            onClick={() => {
+              if (armed !== "bulk") { setArmed("bulk"); return; }
+              setArmed(null);
+              void bulkDelete();
+            }}>
+            {armed === "bulk" ? "Are you sure?" : <><DashboardIcon name="trash" />Delete</>}
           </button>
         </>}
       </div>}
       {actionError && <p role="alert">{actionError}</p>}
       {menu && <div className="workspace-context" aria-label="Workspace actions" role="group" style={{ left: menu.x, top: menu.y }}>{buttons(menu.build, true)}</div>}
       {preferenceError && <p className="settings-caption" role="status">{preferenceError}</p>}
+      {error && builds !== null && <p className="workspace-stale" role="status">
+        Couldn&apos;t refresh your workspaces, so this list may be out of date.
+        <button type="button" onClick={() => { setError(false); setAttempt((n) => n + 1); }}>Try again</button>
+      </p>}
       <div className={`workspace-list ${preferences.compact ? "is-compact" : ""}`}>
-        {error ? <div className="workspace-empty" role="alert"><span className="workspace-empty-screw"><ScrewyIcon mood="sad" /></span><h3>We couldn&apos;t load your workspaces.</h3><p>Give it another try in a moment.</p><button type="button" className="text-link" onClick={() => { setError(false); setAttempt((n) => n + 1); }}>Try again</button></div>
-          : builds === null ? <div className="workspace-skeletons" role="status" aria-label="Loading workspaces">{[0, 1, 2].map((i) => <Skeleton key={i} className="h-20" />)}</div>
+        {builds === null ? (error
+          ? <div className="workspace-empty" role="alert"><span className="workspace-empty-screw"><ScrewyIcon mood="sad" /></span><h3>We couldn&apos;t load your workspaces.</h3><p>Give it another try in a moment.</p><button type="button" className="text-link" onClick={() => { setError(false); setAttempt((n) => n + 1); }}>Try again</button></div>
+          : <div className="workspace-skeletons" role="status" aria-label="Loading workspaces">{[0, 1, 2].map((i) => <Skeleton key={i} className="h-20" />)}</div>)
           : visible.length === 0 ? <div className="workspace-empty"><DashboardIcon name={search ? "search" : "box"} /><h3>{search ? "No workspaces found." : examplesOnly ? "No examples in this account yet." : "Your next idea starts here."}</h3><p>{search ? "Try a different name or clear your search." : "Scan an object to make your first workspace."}</p>{search && <button className="text-link" onClick={() => setSearch("")}>Clear search</button>}</div>
           : <ul className="workspace-cards" aria-label="Workspaces">{visible.map((build) => <li key={build.scan_id}
             className={`workspace-card${selecting ? " is-selecting" : ""}${selected.has(build.scan_id) ? " is-selected" : ""}`}
