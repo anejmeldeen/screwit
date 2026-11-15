@@ -201,3 +201,14 @@ def test_open_order_ignores_rename_and_delete(client):
     assert [b["scan_id"] for b in after[:2]] == [first, second]
     assert [b["opened_at"] for b in after[:2]] == [b["opened_at"] for b in before[:2]]
     assert all(b["opened_at"] is None for b in after[2:])
+
+
+def test_workspace_preview_is_rendered_and_owner_only(client):
+    path = "/api/builds/scn_knob/preview.png"
+    alice = other_browser(client)
+    register(alice)
+    assert alice.get(path).status_code == 404
+    preview = client.get(path)
+    assert preview.status_code == 200
+    assert preview.headers["content-type"] == "image/png"
+    assert preview.content.startswith(bytes.fromhex("89504e470d0a1a0a"))

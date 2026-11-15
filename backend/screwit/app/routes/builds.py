@@ -1,5 +1,6 @@
 """The signed-in account's saved builds, including admin's existing examples."""
 
+import io
 import json
 from datetime import UTC, datetime
 from typing import Annotated
@@ -105,3 +106,34 @@ def delete_build(scan_id: str, user: UserDep) -> Response:
         session.add(DeletedBuildRow(scan_id=scan_id))
         session.commit()
     return Response(status_code=204)
+
+
+@router.get("/builds/{scan_id}/preview.png")
+def build_preview(scan_id: str, reg: RegistryDep) -> Response:
+    recon = ScanStore(reg.data).get_reconstruction(scan_id)
+    if recon is None:
+        raise HTTPException(404, "Model preview is not available yet.")
+    key = f"scans/{scan_id}/renders/workspace-{recon.reconstruction_revision}.png"
+    if reg.storage.head(key):
+        png = reg.storage.get_bytes(key)
+    else:
+        import trimesh
+
+        from screwit.perception.render import render_mesh_png
+
+        raw = reg.storage.get_bytes(recon.mesh_uri)
+        mesh = trimesh.load(io.BytesIO(raw), file_type="glb", force="mesh")
+        if not len(mesh.faces):
+            raise HTTPException(404, "Model has no visible faces.")
+        # The CPU rasterizer projects camera-up toward increasing image rows.
+        from PIL import Image
+
+        rendered = render_mesh_png(mesh.vertices, mesh.faces, getattr(mesh.visual, "vertex_colors", None),
+                                   width=480, height=288)
+        with Image.open(io.BytesIO(rendered)) as image:
+            output = io.BytesIO()
+            image.transpose(Image.Transpose.FLIP_TOP_BOTTOM).save(output, format="PNG")
+        png = output.getvalue()
+        if reg.settings.mode != "mock":
+            reg.storage.put_bytes(key, png, "image/png")
+    return Response(png, media_type="image/png", headers={"Cache-Control": "private, no-cache"})

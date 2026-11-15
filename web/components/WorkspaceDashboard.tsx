@@ -7,6 +7,16 @@ import { useDashboardPreferences, type WorkspaceSort } from "@/lib/dashboardPref
 import { DashboardIcon } from "./DashboardIcon";
 import { Skeleton } from "./ui";
 
+function WorkspacePreview({ build }: { build: BuildSummary }) {
+  const [failed, setFailed] = useState(false);
+  if (failed || (!build.is_example && build.status !== "ready")) return null;
+  const id = encodeURIComponent(build.scan_id);
+  const src = build.is_example ? `/examples/${id}.webp` : `/api/builds/${id}/preview.png`;
+  // eslint-disable-next-line @next/next/no-img-element
+  return <img className="workspace-preview" src={src} alt={`3D preview of ${build.title}`}
+    loading="lazy" width={480} height={288} onError={() => setFailed(true)} />;
+}
+
 function openedLabel(value: string) {
   const date = new Date(value);
   const minutes = Math.max(0, Math.floor((Date.now() - date.getTime()) / 60000));
@@ -121,8 +131,9 @@ export function WorkspaceDashboard({ examplesOnly = false }: { examplesOnly?: bo
             event.preventDefault();
             setMenu({ build, x: Math.max(0, Math.min(event.clientX, window.innerWidth - 148)), y: Math.max(0, Math.min(event.clientY, window.innerHeight - 96)) });
           }}>
+              <WorkspacePreview build={build} />
               <div><span className="workspace-card-label">Workspace</span>
-              <div className="workspace-identity"><span className={`workspace-icon ${build.is_example ? "is-example" : ""}`}><DashboardIcon name={build.is_example || build.input_type === "mesh" ? "box" : "camera"} /></span><div className="workspace-name">
+              <div className="workspace-identity"><div className="workspace-name">
                 {editingId === build.scan_id ? <form id={`rename-${build.scan_id}`} onSubmit={event => {
                   event.preventDefault();
                   void saveName(build, event.currentTarget);
