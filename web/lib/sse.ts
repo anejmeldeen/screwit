@@ -111,6 +111,7 @@ export async function streamChat(
   if (!res.ok || !res.body) {
     throw new Error(`Chat stream failed (${res.status})`);
   }
+  let completed = false;
   const parser = makeSseParser((name, data) => {
     let payload: unknown;
     try {
@@ -119,11 +120,13 @@ export async function streamChat(
       return;
     }
     const ev = decodeChatEvent(name, payload);
+    if (ev?.event === "done" || ev?.event === "error") completed = true;
     if (ev) onEvent(ev);
   });
   for await (const chunk of readLines(res.body, signal)) {
     parser.feed(chunk);
   }
+  if (!completed) throw new Error("Screwy’s connection ended before the reply finished. Please try again.");
 }
 
 // Subscribe to the progress stream. Emits a full Scan on each `event: scan`.

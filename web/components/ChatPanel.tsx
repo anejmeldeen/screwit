@@ -124,8 +124,12 @@ export function ChatPanel({
             case "done":
               flush();
               break;
-            case "tool_call":
             case "error":
+              flush();
+              setError("Screwy couldn’t finish that reply. Please try again. " +
+                (ev as { message: string }).message);
+              break;
+            case "tool_call":
             default:
               break;
           }

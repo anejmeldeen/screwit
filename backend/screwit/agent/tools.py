@@ -164,8 +164,35 @@ class ToolContext:
         return resp.model_dump(mode="json")
 
     def _tool_render_view(self, args: dict) -> Any:
-        png = self._reg.perception.render_view(self._scan_id, args["part_ids"],
-                                                float(args.get("angle", 0.0)), self._reg.storage)
+        import io
+
+        import numpy as np
+        import trimesh
+
+        from screwit.app.fakes import FixtureStorage
+        from screwit.perception.render import render_mesh_png
+
+        # Use the same saved parts as the editor, including DB edits and examples.
+        # The perception service's parts.json may not exist for a fixture scan.
+        parts = {p.part_id: p for p in self._store.list_parts(self._scan_id)}
+        fixture_uris = {p.mesh_uri for p in self._reg.data.parts(self._scan_id)}
+        meshes = []
+        for pid in args["part_ids"]:
+            part = parts[pid]
+            try:
+                raw = self._reg.storage.get_bytes(part.mesh_uri)
+            except FileNotFoundError:
+                if part.mesh_uri not in fixture_uris:
+                    raise
+                raw = FixtureStorage(self._reg.settings.fixtures_dir).get_bytes(part.mesh_uri)
+            scene = trimesh.load(io.BytesIO(raw), file_type="glb", force="scene")
+            meshes.append(scene.to_geometry())
+        if not meshes:
+            return {"error": "No parts selected for rendering"}
+        merged = trimesh.util.concatenate(meshes) if len(meshes) > 1 else meshes[0]
+        png = render_mesh_png(np.asarray(merged.vertices, float), np.asarray(merged.faces, int),
+                              getattr(merged.visual, "vertex_colors", None),
+                              angle_deg=float(args.get("angle", 0.0)))
         return {"image_base64": base64.b64encode(png).decode(), "media_type": "image/png"}
 
     def _tool_get_keyframes(self, args: dict) -> Any:
