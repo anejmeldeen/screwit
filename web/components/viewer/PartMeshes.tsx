@@ -53,7 +53,6 @@ function PartMesh({
   const { gltf } = usePartGltf(assetUrl(part.mesh_uri));
   const groupRef = useRef<Group>(null);
 
-  const originalColors = /scans\/scn_headphones(?:_cat)?\//.test(part.mesh_uri);
   const scene = useMemo(() => {
     const clone = gltf.scene.clone(true);
     clone.traverse((object) => {
@@ -61,18 +60,18 @@ function PartMesh({
       // Own the display material: glTF defaults to metalness=1, and baked
       // vertex colors otherwise multiply (darken) the part palette.
       object.material = new MeshStandardMaterial({
-        color: originalColors ? "#ffffff" : partColor(index, part.color_source_id ?? part.part_id),
-        vertexColors: originalColors, metalness: 0, roughness: .85,
+        color: partColor(index, part.color_source_id ?? part.part_id),
+        metalness: 0, roughness: 1,
       });
     });
     return clone;
-  }, [gltf, index, part.color_source_id, part.part_id, originalColors]);
+  }, [gltf, index, part.color_source_id, part.part_id]);
   useEffect(() => () => {
     scene.traverse((object) => {
       if (object instanceof Mesh) (object.material as MeshStandardMaterial).dispose();
     });
   }, [scene]);
-  const baseColor = useMemo(() => new Color(originalColors ? "#ffffff" : partColor(index, part.color_source_id ?? part.part_id)), [index, part.color_source_id, part.part_id, originalColors]);
+  const baseColor = useMemo(() => new Color(partColor(index, part.color_source_id ?? part.part_id)), [index, part.color_source_id, part.part_id]);
 
   // The first part mesh to draw marks the viewer's first-mesh timestamp.
   useEffect(() => {

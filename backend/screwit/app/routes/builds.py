@@ -113,27 +113,40 @@ def build_preview(scan_id: str, reg: RegistryDep) -> Response:
     recon = ScanStore(reg.data).get_reconstruction(scan_id)
     if recon is None:
         raise HTTPException(404, "Model preview is not available yet.")
-    key = f"scans/{scan_id}/renders/workspace-{recon.reconstruction_revision}.png"
+    import hashlib
+
+    import numpy as np
+    import trimesh
+
+    from screwit.app.preview_renderer import render_mesh_png
+    from screwit.app.settings import _REPO_ROOT
+
+    parts = ScanStore(reg.data).list_parts(scan_id)
+    signature = hashlib.sha256("".join(p.model_dump_json() for p in parts).encode()).hexdigest()[:16]
+    key = f"scans/{scan_id}/renders/workspace-palette-v2-{recon.reconstruction_revision}-{signature}.png"
     if reg.storage.head(key):
         png = reg.storage.get_bytes(key)
     else:
-        import trimesh
-
-        from screwit.perception.render import render_mesh_png
-
-        raw = reg.storage.get_bytes(recon.mesh_uri)
-        mesh = trimesh.load(io.BytesIO(raw), file_type="glb", force="mesh")
+        palette = json.loads((_REPO_ROOT / "web/lib/partPalette.json").read_text())
+        meshes = []
+        for i, part in enumerate(parts):
+            raw = reg.storage.get_bytes(part.mesh_uri)
+            mesh = trimesh.load(io.BytesIO(raw), file_type="glb", force="scene").to_geometry()
+            color_id = part.color_source_id or part.part_id
+            slot = int(color_id[1:]) - 1 if color_id.startswith("p") and color_id[1:].isdigit() else i
+            color = [*bytes.fromhex(palette[slot % len(palette)][1:]), 255]
+            mesh.visual.vertex_colors = np.tile(color, (len(mesh.vertices), 1))
+            meshes.append(mesh)
+        if meshes:
+            mesh = trimesh.util.concatenate(meshes)
+        else:
+            raw = reg.storage.get_bytes(recon.mesh_uri)
+            mesh = trimesh.load(io.BytesIO(raw), file_type="glb", force="scene").to_geometry()
+            mesh.visual.vertex_colors = [*bytes.fromhex(palette[0][1:]), 255]
         if not len(mesh.faces):
             raise HTTPException(404, "Model has no visible faces.")
-        # The CPU rasterizer projects camera-up toward increasing image rows.
-        from PIL import Image
-
-        rendered = render_mesh_png(mesh.vertices, mesh.faces, getattr(mesh.visual, "vertex_colors", None),
-                                   width=480, height=288)
-        with Image.open(io.BytesIO(rendered)) as image:
-            output = io.BytesIO()
-            image.transpose(Image.Transpose.FLIP_TOP_BOTTOM).save(output, format="PNG")
-        png = output.getvalue()
+        png = render_mesh_png(mesh.vertices, mesh.faces, mesh.visual.vertex_colors,
+                              angle_deg=-45, width=960, height=576)
         if reg.settings.mode != "mock":
             reg.storage.put_bytes(key, png, "image/png")
     return Response(png, media_type="image/png", headers={"Cache-Control": "private, no-cache"})

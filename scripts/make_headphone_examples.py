@@ -116,10 +116,12 @@ def write(cat_ears: bool = False) -> None:
     spec = importlib.util.spec_from_file_location("renderer", ROOT / "scripts/home_preview_renderer.py")
     renderer = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(renderer)
-    renderer.BG_COLOR = (100, 104, 108)
+    renderer.BG_COLOR = (24, 25, 24)
+    palette = json.loads((ROOT / "web/lib/partPalette.json").read_text())
     parts, meshes = [], []
     for i, (label, description, mesh) in enumerate(assembly(cat_ears)):
         pid = f"p{i + 1}"
+        paint(mesh, list(bytes.fromhex(palette[i % len(palette)][1:])))
         mesh.apply_translation([0, 0, 0])
         assert mesh.is_watertight, label
         assert mesh.volume > 0, label
