@@ -18,15 +18,17 @@ def test_existing_examples_have_a_stable_timestamp(client):
     assert client.get("/api/builds").json() == builds
 
 
-def test_editing_a_part_updates_dashboard_and_sort_order(client):
+def test_editing_a_part_updates_timestamp_and_preserves_open_order(client):
+    assert client.post("/api/builds/scn_knob/open").status_code == 204
     old = {b["scan_id"]: b for b in client.get("/api/builds").json()}
     parts = client.get("/api/scans/scn_trap/parts").json()
     response = client.patch(f"/api/scans/scn_trap/parts/{parts[0]['part_id']}", json={"label": "Updated part"})
     assert response.status_code == 200
     builds = client.get("/api/builds").json()
-    assert builds[0]["scan_id"] == "scn_trap"
-    assert datetime.fromisoformat(builds[0]["updated_at"]) > datetime.fromisoformat(old["scn_trap"]["updated_at"])
-    assert builds[0]["created_at"] == old["scn_trap"]["created_at"]
+    assert builds[0]["scan_id"] == "scn_knob"
+    edited = next(b for b in builds if b["scan_id"] == "scn_trap")
+    assert datetime.fromisoformat(edited["updated_at"]) > datetime.fromisoformat(old["scn_trap"]["updated_at"])
+    assert edited["created_at"] == old["scn_trap"]["created_at"]
     assert next(b for b in builds if b["scan_id"] == "scn_knob") == old["scn_knob"]
     assert client.get("/api/builds").json() == builds
 
