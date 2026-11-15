@@ -234,7 +234,7 @@ export function WorkspaceDashboard({ examplesOnly = false }: { examplesOnly?: bo
         <button type="button" className="workspace-select-toggle" aria-pressed={selecting}
           disabled={!selecting && visible.length === 0}
           onClick={() => { if (selecting) stopSelecting(); else { setEditingId(null); setMenu(null); setSelecting(true); } }}>
-          {selecting ? "Done" : "Select"}
+          {selecting ? `Select Multiple (${chosen.length})` : "Select Multiple"}
         </button>
         <Link href="/scan/new" className="button-primary dashboard-new"><DashboardIcon name="plus" />New workspace</Link>
       </div>
@@ -251,7 +251,7 @@ export function WorkspaceDashboard({ examplesOnly = false }: { examplesOnly?: bo
             onKeyDown={event => { if (event.key === "Escape" && !saving) setBulkRenaming(false); }}
             onBlur={() => { if (!saving) setBulkRenaming(false); }} />
         </form> : <>
-          <span className="workspace-bulk-count" aria-live="polite">{chosen.length} selected</span>
+          <span className="sr-only" aria-live="polite">{chosen.length} selected</span>
           <button type="button" onClick={() => setSelected(allChosen ? new Set() : new Set(visible.map(build => build.scan_id)))}>
             {allChosen ? "Clear" : "Select all"}
           </button>
@@ -267,7 +267,7 @@ export function WorkspaceDashboard({ examplesOnly = false }: { examplesOnly?: bo
       {menu && <div className="workspace-context" aria-label="Workspace actions" role="group" style={{ left: menu.x, top: menu.y }}>{buttons(menu.build, true)}</div>}
       {preferenceError && <p className="settings-caption" role="status">{preferenceError}</p>}
       <div className={`workspace-list ${preferences.compact ? "is-compact" : ""}`}>
-        {error ? <div className="workspace-empty" role="alert"><span className="workspace-empty-screw"><ScrewyIcon mood="sad" /></span><h3>We couldn&apos;t load your workspaces.</h3><p>Give it another try in a moment.</p><button type="button" className="text-link" onClick={() => { setError(false); setAttempt((n) => n + 1); }}>Try again ↗</button></div>
+        {error ? <div className="workspace-empty" role="alert"><span className="workspace-empty-screw"><ScrewyIcon mood="sad" /></span><h3>We couldn&apos;t load your workspaces.</h3><p>Give it another try in a moment.</p><button type="button" className="text-link" onClick={() => { setError(false); setAttempt((n) => n + 1); }}>Try again</button></div>
           : builds === null ? <div className="workspace-skeletons" role="status" aria-label="Loading workspaces">{[0, 1, 2].map((i) => <Skeleton key={i} className="h-20" />)}</div>
           : visible.length === 0 ? <div className="workspace-empty"><DashboardIcon name={search ? "search" : "box"} /><h3>{search ? "No workspaces found." : examplesOnly ? "No examples in this account yet." : "Your next idea starts here."}</h3><p>{search ? "Try a different name or clear your search." : "Scan an object to make your first workspace."}</p>{search && <button className="text-link" onClick={() => setSearch("")}>Clear search</button>}</div>
           : <ul className="workspace-cards" aria-label="Workspaces">{visible.map((build) => <li key={build.scan_id}

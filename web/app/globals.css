@@ -234,10 +234,14 @@ button:disabled { cursor: not-allowed; }
 .sidebar-label { font-size:10px; text-transform:uppercase; letter-spacing:1.8px; color:#9b9c89; margin:36px 12px 13px; }
 .sidebar-label:first-child { margin-top:0; }
 .dashboard-sidebar nav { display:flex; flex-direction:column; gap:5px; }
-.dashboard-sidebar nav a { display:flex; align-items:center; gap:12px; padding:13px 12px; border-radius:6px; font-size:14px; color:#c0c1af; }
+.dashboard-sidebar nav a { display:flex; align-items:center; gap:12px; padding:13px 12px; border-radius:6px; font-size:14px; color:#c0c1af; transition:background .15s ease,color .15s ease; }
 .dashboard-sidebar nav a:hover { background:#ffffff08; color:#fff4b1; }
 .dashboard-sidebar nav a[aria-current=page] { background:#f1d45d19; color:var(--paper); }
-.sidebar-active-dot { height:5px; width:5px; border-radius:50%; background:var(--paper); margin-left:auto; }
+/* Tiny hover cues: the icon pops, the settings gear turns, the sign-out arrow steps out. */
+.dashboard-sidebar nav a svg,.sidebar-signout svg { transition:transform .2s ease; }
+.dashboard-sidebar nav a:hover svg { transform:scale(1.12); }
+.dashboard-sidebar nav a.is-settings:hover svg { transform:rotate(60deg); }
+.sidebar-signout:hover:not(:disabled) svg { transform:translateX(3px); }
 .sidebar-bottom { margin-top:auto; padding-top:48px; }
 .sidebar-note { display:flex; align-items:center; gap:12px; padding:0 10px 24px; color:#b3b49f; font-size:11px; line-height:1.8; }
 .sidebar-note>span { width:32px; flex-shrink:0; transform:rotate(-10deg); }
@@ -247,7 +251,7 @@ button:disabled { cursor: not-allowed; }
 .sidebar-account strong { display:block; overflow:hidden; text-overflow:ellipsis; font-size:13px; font-weight:600; }
 .sidebar-account small { display:block; color:#9b9c89; font-size:10px; margin-top:4px; }
 .sidebar-account>svg { width:16px; color:#9b9c89; flex-shrink:0; }
-.sidebar-signout { display:flex; align-items:center; gap:10px; padding:9px 10px; width:100%; color:#b3b49f; font-size:12px; text-align:left; border-radius:5px; }
+.sidebar-signout { display:flex; align-items:center; gap:10px; padding:9px 10px; width:100%; color:#b3b49f; font-size:12px; text-align:left; border-radius:5px; transition:background .15s ease,color .15s ease; }
 .sidebar-signout:hover { background:#ffffff08; color:var(--paper); }
 .sidebar-signout svg { width:16px; }
 .sidebar-error { color:#ffb7a6; font-size:12px; padding:10px; }
@@ -261,19 +265,29 @@ button:disabled { cursor: not-allowed; }
 .dashboard-heading h1 { font-size:clamp(42px,4.7vw,66px); font-weight:750; letter-spacing:-3.5px; line-height:1.05; margin-bottom:18px; }
 .dashboard-heading h1+p { font-size:14px; line-height:1.6; color:var(--muted); }
 .dashboard-new { flex-shrink:0; gap:9px; padding:12px 17px; font-size:13px; }
-.workspace-section { --card-ink:#171612; --button-yellow:#ffe369; width:100%; }
+.workspace-section { --card-ink:#171612; --button-yellow:#ffe369; width:100%; container:workspaces / inline-size; }
 .workspace-section-heading { display:flex; flex-wrap:wrap; justify-content:space-between; align-items:center; gap:16px; margin-bottom:23px; }
 .workspace-section-heading h1 { display:flex; align-items:center; gap:10px; font-size:19px; font-weight:700; letter-spacing:-.5px; }
 .workspace-section-heading h1>span { display:grid; place-items:center; min-width:23px; height:23px; padding:0 6px; border:1px solid #9f8b3f66; background:#fff4b14d; border-radius:6px; font-size:11px; font-weight:500; letter-spacing:0; }
 .workspace-section-note { font-size:11px; color:var(--muted); }
-.workspace-toolbar { display:flex; flex-wrap:wrap; align-items:center; gap:8px; margin-bottom:19px; }
-.workspace-toolbar .dashboard-new { margin-left:auto; height:40px; padding-block:0; }
+.workspace-toolbar { display:flex; align-items:center; gap:8px; margin-bottom:19px; }
+/* The search takes whatever the buttons leave, so the row is always full; when the section is too
+   narrow for one row, the search gets a row of its own and the buttons share the next one. */
+.workspace-toolbar .workspace-search { flex:1 1 auto; width:auto; min-width:120px; }
+.workspace-toolbar>:not(.workspace-search) { flex:none; }
+.workspace-toolbar .dashboard-new { height:40px; padding-block:0; }
 .workspace-toolbar .workspace-select-toggle { height:40px; padding:0 14px; border-radius:6px; font-size:13px; font-weight:650; }
+@container workspaces (max-width:640px) {
+ .workspace-toolbar { flex-wrap:wrap; }
+ .workspace-toolbar .workspace-search { flex-basis:100%; }
+ .workspace-toolbar>:not(.workspace-search) { flex:1 1 0; min-width:0; }
+ .workspace-toolbar :is(.workspace-sort>button,.workspace-select-toggle,.dashboard-new) { width:100%; padding-inline:8px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+}
 .workspace-section .workspace-select-toggle[aria-pressed="true"] { background:var(--button-yellow); color:var(--card-ink); }
+.workspace-section .workspace-select-toggle[aria-pressed="true"]:hover { background:#f5cf3d; color:var(--card-ink); }
 .workspace-bulk { display:flex; flex-wrap:wrap; align-items:center; gap:8px; margin:-7px 0 17px; padding:8px 10px; border:2px solid var(--card-ink); border-radius:7px; background:#fff4c2; box-shadow:2px 1px 0 var(--card-ink); }
 .workspace-bulk button { display:inline-flex; align-items:center; gap:6px; border-radius:5px; padding:7px 12px; font-size:12px; font-weight:650; }
 .workspace-bulk button svg { width:14px; height:14px; }
-.workspace-bulk-count { margin-right:4px; font-size:13px; font-weight:700; }
 .workspace-bulk-rename { display:flex; flex:1; flex-wrap:wrap; align-items:center; gap:8px; }
 .workspace-bulk-rename input { flex:1; min-width:180px; height:32px; padding:0 10px; border:1px solid #ac9749; border-radius:6px; background:#fffbe6; color:var(--card-ink); font-size:13px; }
 .workspace-card.is-selecting { cursor:pointer; user-select:none; }
@@ -416,7 +430,7 @@ button:disabled { cursor: not-allowed; }
 .workspace-menu-button svg { width:14px; height:14px; flex:none; }
 
 .workspace-cards { display:grid; grid-template-columns:repeat(auto-fill,minmax(min(100%,19rem),1fr)); gap:14px; padding:0; margin:0; list-style:none; }
-.workspace-card { position:relative; display:flex; flex-direction:column; gap:16px; padding:18px; min-width:0; text-align:left; border:2px solid var(--card-ink); box-shadow:2px 1px 0 var(--card-ink); transition:transform .15s ease,box-shadow .15s ease,background .15s ease; }
+.workspace-card { position:relative; display:flex; flex-direction:column; gap:16px; padding:18px; min-width:0; text-align:left; border:1.5px solid var(--card-ink); box-shadow:2px 1px 0 var(--card-ink); transition:transform .15s ease,box-shadow .15s ease,background .15s ease; }
 .workspace-card:hover { background:#fff6d4; transform:translateY(-3px); box-shadow:2px 3px 0 var(--card-ink); }
 @media (prefers-reduced-motion: reduce) { .workspace-card { transition:none; } .workspace-card:hover { transform:none; } }
 .workspace-card time { font-size:12px; }
@@ -424,7 +438,10 @@ button:disabled { cursor: not-allowed; }
 .workspace-list.is-compact .workspace-card { padding:12px; gap:8px; }
 
 .workspace-name { flex:1; min-width:0; }
-.workspace-name input { width:100%; background:transparent; color:inherit; font-size:14px; font-weight:750; border:0; }
+/* The rename box keeps the title's size; a light fill and a tight outline mark it, so it never
+   runs into the "last opened" line under it (the site-wide 5px outline offset did). */
+.workspace-name input { display:block; width:calc(100% + 6px); height:1.5em; margin:0 -3px; padding:0 3px; background:#fffbe8; color:inherit; font-size:14px; font-weight:750; line-height:1.5; border:0; border-radius:4px; outline-offset:1px; }
+.workspace-name input:focus-visible { outline:1.5px solid var(--card-ink); }
 
 .workspace-preview { display:block; width:100%; height:auto; aspect-ratio:5/3; object-fit:contain; border-radius:5px; }
 .workspace-preview-frame { position:relative; overflow:hidden; border-radius:5px; pointer-events:none; }

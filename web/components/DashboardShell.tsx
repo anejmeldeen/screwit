@@ -53,8 +53,8 @@ function DashboardShell({ children }: { children: React.ReactNode }) {
         </div>
         <div id="sidebar-navigation" className={`sidebar-content ${menuOpen ? "is-open" : ""}`}>
           <nav aria-label="Main navigation">{sections.map((section) => (
-            <Link key={section.href} href={section.href} aria-current={path === section.href ? "page" : undefined} onClick={() => setMenuOpen(false)}>
-              <DashboardIcon name={section.icon} />{section.title}{path === section.href && <span className="sidebar-active-dot" />}
+            <Link key={section.href} href={section.href} className={`sidebar-link is-${section.icon}`} aria-current={path === section.href ? "page" : undefined} onClick={() => setMenuOpen(false)}>
+              <DashboardIcon name={section.icon} />{section.title}
             </Link>
           ))}</nav>
           <div className="sidebar-bottom">
