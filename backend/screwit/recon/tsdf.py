@@ -303,11 +303,38 @@ def _fill_small_holes(mesh: MeshResult, rel_size: float = 0.05) -> MeshResult:
         f = filled.triangle.indices.numpy().astype(np.int32)
         if len(f) < len(mesh.triangles):
             return mesh
+        f = _orient_new_faces(mesh.vertices_mm, mesh.triangles, v, f)
         colors = (mesh.vertex_colors if len(v) == len(mesh.vertices_mm)
                   else _nearest_colors(mesh.vertices_mm, mesh.vertex_colors, v))
         return MeshResult(vertices_mm=v, triangles=f, vertex_colors=colors)
     except Exception:  # noqa: BLE001 - hole filling is cosmetic
         return mesh
+
+
+def _orient_new_faces(v_old: np.ndarray, f_old: np.ndarray, v: np.ndarray, f: np.ndarray) -> np.ndarray:
+    """Give the triangles the hole filler added the same winding as the surface around them. The
+    viewer draws front faces only, so a fill triangle wound the wrong way is invisible: it looked
+    like the very hole it was meant to close."""
+    if len(v) != len(v_old) or len(f) == len(f_old):
+        return f
+    key = lambda t: np.sort(t, axis=1) @ np.array([1, len(v), len(v) ** 2], dtype=np.int64)  # noqa: E731
+    is_new = ~np.isin(key(f.astype(np.int64)), key(f_old.astype(np.int64)))
+    if not is_new.any():
+        return f
+    # Area-weighted vertex normals of the original surface.
+    tri = v_old[f_old]
+    fn = np.cross(tri[:, 1] - tri[:, 0], tri[:, 2] - tri[:, 0])
+    vn = np.zeros_like(v_old, dtype=np.float64)
+    for k in range(3):
+        np.add.at(vn, f_old[:, k], fn)
+    nf = f[is_new]
+    t = v[nf]
+    n_new = np.cross(t[:, 1] - t[:, 0], t[:, 2] - t[:, 0])
+    flip = np.einsum("ij,ij->i", n_new, vn[nf].sum(axis=1)) < 0
+    out = f.copy()
+    idx = np.flatnonzero(is_new)[flip]
+    out[idx] = out[idx][:, [0, 2, 1]]
+    return out
 
 
 def taubin_smooth(vertices: np.ndarray, triangles: np.ndarray, iterations: int,
@@ -421,17 +448,21 @@ def write_web_glb(mesh: MeshResult, path: Path, triangle_cap: int = WEB_TRIANGLE
 
 
 def drop_unsupported(mesh: MeshResult, depths_mm: list[np.ndarray], intrinsics, extrinsics_mm,
-                     *, tol_mm: float, min_views: int = 2, rim_rings: int = 4,
+                     *, tol_mm: float, min_views: int = 1, rim_rings: int = 4,
                      rounds: int = 3) -> MeshResult:
-    """Peel the ragged single-view flaps off the surface's open edges.
+    """Peel the ragged single-view flaps off the surface's open edges. OFF by default
+    (``SCREWIT_MIN_VIEWS=2`` turns it on).
+
+    Measured on the headphones scan, it removed far more than flaps: a camera orbit looks down at
+    the object, so the lower half of every outer wall is seen by one view or at a grazing angle,
+    and the views disagree there by more than the tolerance. Peeling from the bottom edge upward
+    took the lower walls of both ear cups and the headband with it (see-through share of low side
+    views 16% -> 29%).
 
     A vertex counts as observed by a view when it projects inside that view and the view's depth
-    there is within ``tol_mm`` of the vertex's own depth. TSDF keeps whatever a single view saw at
-    its silhouette: thin flaps that end in a free edge along rims. Only faces within ``rim_rings``
-    edge rings of an open boundary are candidates, peeled for ``rounds`` passes, so a flap is cut
-    back to where two views agree but an interior surface that only one view saw (a thin band's far
-    side) is kept: dropping those too punched holes that broke a headband into pieces and derailed
-    the part segmentation. Specks under 1% of the mesh are removed. Disable with SCREWIT_MIN_VIEWS=1.
+    there is within ``tol_mm`` of the vertex's own depth. Only faces within ``rim_rings`` edge rings
+    of an open boundary are candidates, peeled for ``rounds`` passes. Specks under 1% of the mesh
+    are removed.
     """
     import os
 

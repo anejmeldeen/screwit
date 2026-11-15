@@ -32,8 +32,8 @@
 #   SCREWIT_INFER_GS (0)  SCREWIT_MODEL (anthropic/claude-sonnet-4.5)  SCREWIT_DATA_DIR (<repo>/data-live)
 #   SCREWIT_LLM (openrouter; also bedrock, anthropic, fake)  SCREWIT_LLM_CACHE (1)  SCREWIT_RELOAD (0)
 #   Scan quality (usually leave at defaults):
-#   SCREWIT_DEPTH_CLEAN (1)  SCREWIT_MIN_VIEWS (2)  SCREWIT_SMOOTH_ITERS (80)  SCREWIT_DENOISE (1)
-#   SCREWIT_REMOVE_TABLE (1)
+#   SCREWIT_DEPTH_CLEAN (1)  SCREWIT_MIN_VIEWS (1 = off; 2 peels single-view rim flaps but eats lower walls)
+#   SCREWIT_SMOOTH_ITERS (80)  SCREWIT_DENOISE (1)  SCREWIT_REMOVE_TABLE (1)
 
 set -euo pipefail
 

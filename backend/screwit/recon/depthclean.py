@@ -64,10 +64,11 @@ def smooth(depth: np.ndarray, sigma_space_px: float = 2.0, sigma_rel: float = 0.
     return np.where(valid, out, 0.0).astype(depth.dtype)
 
 
-def flying_pixels(depth: np.ndarray, rel_jump: float = 0.02, dilate_px: int = 1) -> np.ndarray:
+def flying_pixels(depth: np.ndarray, rel_jump: float = 0.03, dilate_px: int = 0) -> np.ndarray:
     """Bool mask of pixels next to a depth discontinuity (a jump larger than ``rel_jump`` of the
     depth to any 4-neighbour), grown by ``dilate_px``. These are the least trustworthy pixels: their
-    depth is a blend of the foreground and the background."""
+    depth is a blend of the foreground and the background. 3% with no growth: 2% grown by a pixel
+    also took the steep lower walls an orbit sees at grazing angles (see-through 16% -> 20%)."""
     from scipy.ndimage import binary_dilation
 
     z = depth.astype(np.float64)
@@ -206,7 +207,7 @@ def flatten_to_plane(depths, intrinsics, extrinsics, plane, *, band_rel: float =
 
 
 def multiview_outliers(depths: list[np.ndarray], intrinsics, extrinsics, tau: float = 0.02,
-                       min_votes: int = 2) -> list[np.ndarray]:
+                       min_votes: int = 3) -> list[np.ndarray]:
     """Bool mask per view of pixels that the other views contradict.
 
     Each pixel's 3D point is projected into every other view and compared with that view's depth:
