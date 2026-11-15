@@ -94,21 +94,19 @@ export function WorkspaceDashboard({ examplesOnly = false }: { examplesOnly?: bo
       {menu && <div className="workspace-context" aria-label="Workspace actions" role="group" style={{ left: menu.x, top: menu.y }}>{buttons(menu.build)}</div>}
       {preferenceError && <p className="settings-caption" role="status">{preferenceError}</p>}
       <div className={`workspace-list ${preferences.compact ? "is-compact" : ""}`}>
-        <div className="workspace-columns" aria-hidden="true"><span>Workspace</span><span>Actions</span><span>Last opened</span><span /></div>
         {error ? <div className="workspace-empty" role="alert"><DashboardIcon name="box" /><h3>We couldn&apos;t load your workspaces.</h3><p>Give it another try in a moment.</p><button type="button" className="text-link" onClick={() => { setError(false); setAttempt((n) => n + 1); }}>Try again ↗</button></div>
           : builds === null ? <div className="workspace-skeletons" role="status" aria-label="Loading workspaces">{[0, 1, 2].map((i) => <Skeleton key={i} className="h-20" />)}</div>
           : visible.length === 0 ? <div className="workspace-empty"><DashboardIcon name={search ? "search" : "box"} /><h3>{search ? "No workspaces found." : examplesOnly ? "No examples in this account yet." : "Your next idea starts here."}</h3><p>{search ? "Try a different name or clear your search." : "Scan an object to make your first workspace."}</p>{search && <button className="text-link" onClick={() => setSearch("")}>Clear search</button>}</div>
-          : <ul aria-label="Workspaces">{visible.map((build) => <li key={build.scan_id} className="workspace-row" onContextMenu={event => {
+          : <ul className="workspace-cards" aria-label="Workspaces">{visible.map((build) => <li key={build.scan_id} className="workspace-card" onContextMenu={event => {
             event.preventDefault();
             setMenu({ build, x: Math.max(0, Math.min(event.clientX, window.innerWidth - 148)), y: Math.max(0, Math.min(event.clientY, window.innerHeight - 96)) });
           }}>
-              <Link href={`/scan/${build.scan_id}`} className="workspace-identity workspace-row-link"><span className={`workspace-icon ${build.is_example ? "is-example" : ""}`}><DashboardIcon name={build.is_example || build.input_type === "mesh" ? "box" : "camera"} /></span><span><strong>{build.title}</strong><small>{build.is_example ? "Example workspace" : `${build.input_type.charAt(0).toUpperCase() + build.input_type.slice(1)} scan`}</small></span></Link>
-              <span className="workspace-actions">{buttons(build)}</span>
-              <time dateTime={build.opened_at ?? undefined} title={build.opened_at ? new Date(build.opened_at).toLocaleString() : undefined}>{build.opened_at ? <><span className="mobile-modified-label">Opened </span>{openedLabel(build.opened_at)}</> : "No recorded open"}</time>
-              <DashboardIcon name="arrow" className="workspace-open" />
+              <div><span className="workspace-card-label">Workspace</span>
+              <Link href={`/scan/${build.scan_id}`} className="workspace-identity workspace-row-link"><span className={`workspace-icon ${build.is_example ? "is-example" : ""}`}><DashboardIcon name={build.is_example || build.input_type === "mesh" ? "box" : "camera"} /></span><span><strong>{build.title}</strong><small>{build.is_example ? "Example workspace" : `${build.input_type.charAt(0).toUpperCase() + build.input_type.slice(1)} scan`}</small></span></Link></div>
+              <div><span className="workspace-card-label">Actions</span><span className="workspace-actions">{buttons(build)}</span></div>
+              <div><span className="workspace-card-label">Last opened</span><time dateTime={build.opened_at ?? undefined} title={build.opened_at ? new Date(build.opened_at).toLocaleString() : undefined}>{build.opened_at ? openedLabel(build.opened_at) : "No recorded open"}</time></div>
           </li>)}</ul>}
       </div>
-      {builds !== null && !error && visible.length > 0 && <p className="workspace-list-footer">{visible.length} workspace{visible.length === 1 ? "" : "s"}{search ? ` matching “${search}”` : ""}</p>}
     </section>
   </>;
 }

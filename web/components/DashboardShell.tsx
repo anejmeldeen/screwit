@@ -67,7 +67,7 @@ function DashboardShell({ children }: { children: React.ReactNode }) {
       <main id="main-content" className="dashboard-main">
         {path !== "/" && <div className="dashboard-topline"><span>YOUR WORKSHOP / {sections.find((section) => section.href === path)?.title.toUpperCase()}</span><span className="workspace-owner">{account?.username}&apos;s workspace</span></div>}
         {children}
-        <footer className="dashboard-footer"><span>Screw It. Let&apos;s build.</span><span>HackUMass 2026</span></footer>
+        {path !== "/" && <footer className="dashboard-footer"><span>Screw It. Let&apos;s build.</span><span>HackUMass 2026</span></footer>}
       </main>
     </div>
   );
