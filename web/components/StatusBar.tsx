@@ -43,27 +43,30 @@ function dotClass(state?: string) {
 }
 
 // Weight each stage by its share of wall time so a single bar moves 0->100 across the whole scan.
-// Measured on the CPU path (headphones clip, 8 views): frames ~12 s, geometry ~240 s uncached and
-// under 1 s from the video cache, scale + depth cleanup ~4 s, mask/splat/mesh ~2 s together, parts
-// ~40 s (one Claude call to choose the segmentation, one for the scene graph). The weights split the
-// difference between a first run and a cached re-run; the client-side creep below covers the rest.
+// Measured on an M3 Pro (headphones clip, 8 views): frames ~13 s, geometry ~30 s on the Apple GPU
+// (about 4 min on the CPU, under 1 s from the video cache), scale + depth cleanup ~4 s,
+// mask/splat/mesh ~2 s together, parts ~38 s (one Claude call to group the parts, one for the
+// scene graph). The client-side creep below covers the variation between runs.
 // Skipped stages are dropped from the denominator so the bar still reaches 100 for mesh input.
 const STAGE_WEIGHT: Record<string, number> = {
-  frames: 0.1,
-  geometry: 0.4,
+  frames: 0.15,
+  geometry: 0.3,
   scale: 0.05,
   object_mask: 0.03,
   splat: 0.02,
   mesh: 0.05,
-  parts: 0.35,
+  parts: 0.4,
 };
 
 // (percent now, percent at the end of the running stage). A running stage contributes its own
-// progress fraction.
+// progress fraction. Before the first stage starts (upload check) and between stages, the ceiling
+// is the end of the next pending stage, so the bar can creep instead of sitting still.
 function progressSpan(scan: Scan): { pct: number; ceiling: number } {
   let total = 0;
   let acc = 0;
   let ceiling = 0;
+  let running = false;
+  let nextPending = 0;
   for (const s of scan.stages) {
     if (s.state === "skipped") continue;
     const w = STAGE_WEIGHT[s.name] ?? 0;
@@ -74,23 +77,34 @@ function progressSpan(scan: Scan): { pct: number; ceiling: number } {
     } else if (s.state === "running") {
       acc += w * (s.progress ?? 0);
       ceiling += w;
+      running = true;
+    } else if (!nextPending) {
+      nextPending = w;
     }
   }
+  if (!running) ceiling += nextPending;
   if (total <= 0) return { pct: 0, ceiling: 0 };
   return { pct: (acc / total) * 100, ceiling: (ceiling / total) * 100 };
 }
 
+function isActive(scan: Scan | null): boolean {
+  return !!scan && ["uploaded", "validating", "processing"].includes(scan.status);
+}
+
 // The value the bar shows: eases toward the server's percent instead of jumping (a cached stage
 // can finish in a fraction of a second), and while a stage runs between server updates it creeps
-// slowly toward, but never reaches, the end of that stage, so the bar never sits frozen. Never moves
-// backwards except when the scan restarts.
+// slowly ahead, never more than 4 points past the server and never past the end of that stage, so
+// the bar neither sits frozen nor has to come back. Never moves backwards unless the server's own
+// percent drops (a restarted scan).
 function useGradualPercent(target: number, ceiling: number, active: boolean): number {
   const [shown, setShown] = useState(target);
-  const live = useRef({ shown: target, target, ceiling, active });
-  live.current.target = target;
-  live.current.ceiling = ceiling;
-  live.current.active = active;
-  if (target < live.current.shown - 5) live.current.shown = target; // a restarted scan
+  const live = useRef({ shown: target, target, ceiling, active, lastTarget: target });
+  const cur = live.current;
+  if (target < cur.lastTarget - 5) cur.shown = target; // the server went backwards: a restart
+  cur.lastTarget = target;
+  cur.target = target;
+  cur.ceiling = ceiling;
+  cur.active = active;
   useEffect(() => {
     let raf = 0;
     let last = performance.now();
@@ -100,11 +114,13 @@ function useGradualPercent(target: number, ceiling: number, active: boolean): nu
       const r = live.current;
       let s = r.shown;
       if (s < r.target) {
-        // Close most of the gap within about a second, never slower than 4% per second.
-        s = Math.min(r.target, s + Math.max(4 * dt, (r.target - s) * (1 - Math.exp(-2.5 * dt))));
-      } else if (r.active && s < r.ceiling - 0.5) {
-        // Asymptotic creep inside the running stage (time constant 20 s).
-        s += (r.ceiling - 0.5 - s) * (1 - Math.exp(-dt / 20));
+        // Close about half the gap per second (finish faster once everything is done), never
+        // slower than 3 points per second.
+        const rate = r.target >= 99.5 ? 2.0 : 1.2;
+        s = Math.min(r.target, s + Math.max(3 * dt, (r.target - s) * (1 - Math.exp(-rate * dt))));
+      } else if (r.active) {
+        const cap = Math.min(r.ceiling - 0.5, r.target + 4);
+        if (s < cap) s += (cap - s) * (1 - Math.exp(-dt / 20)); // asymptotic, time constant 20 s
       }
       if (Math.abs(s - r.shown) > 1e-3) {
         r.shown = s;
@@ -129,7 +145,7 @@ export function ScanProgress({ scan }: { scan: Scan | null }) {
   const span = scan ? progressSpan(scan) : { pct: 0, ceiling: 0 };
   const pct = Math.round(span.pct);
   const running = scan?.stages.find((s) => s.state === "running");
-  const shown = useGradualPercent(span.pct, span.ceiling, !!running);
+  const shown = useGradualPercent(span.pct, span.ceiling, isActive(scan));
   const headline = !scan
     ? "Preparing your object…"
     : running
@@ -163,8 +179,7 @@ export function StatusBar({
 }) {
   const warnings = scaleWarnings(scale);
   const span = scan ? progressSpan(scan) : { pct: 0, ceiling: 0 };
-  const isRunning = !!scan?.stages.some((s) => s.state === "running");
-  const shown = useGradualPercent(span.pct, span.ceiling, isRunning);
+  const shown = useGradualPercent(span.pct, span.ceiling, isActive(scan));
 
   if (!scan) {
     return (

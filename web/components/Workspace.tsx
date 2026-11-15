@@ -81,6 +81,25 @@ export function Workspace({
 
   const partsReady = isStageDone(scan, "parts");
 
+  // When a scan we watched processing turns ready, keep the progress bar up for a moment so it
+  // visibly fills to 100% and says Ready, instead of vanishing mid-way. The bar stays mounted the
+  // whole time (unmounting it reset its animation and made it jump). A scan that was already ready
+  // when opened shows no bar at all.
+  const status = scan?.status;
+  const [watching, setWatching] = useState(false);
+  useEffect(() => {
+    if (!status) return;
+    if (status !== "ready" && status !== "failed") {
+      setWatching(true);
+      return;
+    }
+    if (status === "ready") {
+      const t = setTimeout(() => setWatching(false), 2200);
+      return () => clearTimeout(t);
+    }
+    setWatching(false); // failed: the failure notice replaces the bar
+  }, [status]);
+
   // Mark the shell as painted once the panels, status bar and empty viewer
   // canvas are on screen (before any 3D asset loads). Two rAFs = after the
   // first committed paint.
@@ -125,7 +144,7 @@ export function Workspace({
       <h1 className="sr-only">Workbench</h1>
       {scanError ? <div className="workbench-notice"><ErrorNote message={`Could not load this object: ${scanError}`} /></div> : null}
       {scan?.status === "failed" ? <div className="workbench-notice" role="alert">This scan could not finish. Try another recording.</div> : null}
-      {!scanError && (!scan || (scan.status !== "ready" && scan.status !== "failed")) ? <div className="workbench-notice" role="status"><ScanProgress scan={scan} /></div> : null}
+      {!scanError && (watching || !scan || (scan.status !== "ready" && scan.status !== "failed")) ? <div className="workbench-notice" role="status"><ScanProgress scan={scan} /></div> : null}
       {scaleWarnings(recon?.scale ?? null).map((warning) => <div key={warning.id} className="workbench-notice" role="note">{warning.message}</div>)}
       <div ref={gridRef} className="workbench-grid" style={{
         "--parts-width": `${actualPartsWidth}px`, "--chat-width": `${actualChatWidth}px`,
