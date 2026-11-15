@@ -402,3 +402,5 @@ button:disabled { cursor: not-allowed; }
 .workspace-name input { width:100%; background:transparent; color:inherit; font-size:14px; font-weight:750; border-bottom:1px solid currentColor; }
 
 .workspace-preview { display:block; width:100%; height:auto; aspect-ratio:5/3; object-fit:contain; border-radius:5px; }
+.workspace-preview-frame { position:relative; overflow:hidden; border-radius:5px; pointer-events:none; }
+.workspace-spin { position:absolute; inset:0; transition:opacity .15s; }

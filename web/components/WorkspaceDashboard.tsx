@@ -1,5 +1,6 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { api, type BuildSummary } from "@/lib/api";
@@ -7,14 +8,19 @@ import { useDashboardPreferences, type WorkspaceSort } from "@/lib/dashboardPref
 import { DashboardIcon } from "./DashboardIcon";
 import { Skeleton } from "./ui";
 
-function WorkspacePreview({ build }: { build: BuildSummary }) {
+const WorkspaceSpin = dynamic(() => import("./WorkspaceSpin"), { ssr: false });
+
+function WorkspacePreview({ build, spinning }: { build: BuildSummary; spinning: boolean }) {
   const [failed, setFailed] = useState(false);
   if (failed || (!build.is_example && build.status !== "ready")) return null;
   const id = encodeURIComponent(build.scan_id);
   const src = build.is_example ? `/examples/${id}.webp` : `/api/builds/${id}/preview.png`;
-  // eslint-disable-next-line @next/next/no-img-element
-  return <img className="workspace-preview" src={src} alt={`3D preview of ${build.title}`}
-    loading="lazy" width={480} height={288} onError={() => setFailed(true)} />;
+  return <div className="workspace-preview-frame">
+    {/* eslint-disable-next-line @next/next/no-img-element */}
+    <img className="workspace-preview" src={src} alt={`3D preview of ${build.title}`}
+    loading="lazy" width={480} height={288} onError={() => setFailed(true)} />
+    {spinning && <WorkspaceSpin id={build.scan_id} />}
+  </div>;
 }
 
 function openedLabel(value: string) {
@@ -32,6 +38,7 @@ export function WorkspaceDashboard({ examplesOnly = false }: { examplesOnly?: bo
   const [builds, setBuilds] = useState<BuildSummary[] | null>(null);
   const [error, setError] = useState(false);
   const [attempt, setAttempt] = useState(0);
+  const [hovered, setHovered] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   useEffect(() => {
     let alive = true;
@@ -126,12 +133,14 @@ export function WorkspaceDashboard({ examplesOnly = false }: { examplesOnly?: bo
         {error ? <div className="workspace-empty" role="alert"><DashboardIcon name="box" /><h3>We couldn&apos;t load your workspaces.</h3><p>Give it another try in a moment.</p><button type="button" className="text-link" onClick={() => { setError(false); setAttempt((n) => n + 1); }}>Try again ↗</button></div>
           : builds === null ? <div className="workspace-skeletons" role="status" aria-label="Loading workspaces">{[0, 1, 2].map((i) => <Skeleton key={i} className="h-20" />)}</div>
           : visible.length === 0 ? <div className="workspace-empty"><DashboardIcon name={search ? "search" : "box"} /><h3>{search ? "No workspaces found." : examplesOnly ? "No examples in this account yet." : "Your next idea starts here."}</h3><p>{search ? "Try a different name or clear your search." : "Scan an object to make your first workspace."}</p>{search && <button className="text-link" onClick={() => setSearch("")}>Clear search</button>}</div>
-          : <ul className="workspace-cards" aria-label="Workspaces">{visible.map((build) => <li key={build.scan_id} className="workspace-card" onContextMenu={event => {
+          : <ul className="workspace-cards" aria-label="Workspaces">{visible.map((build) => <li key={build.scan_id} className="workspace-card" onPointerEnter={event => {
+            if (event.pointerType !== "touch" && window.matchMedia("(prefers-reduced-motion: no-preference)").matches) setHovered(build.scan_id);
+          }} onPointerLeave={() => setHovered(null)} onContextMenu={event => {
             if (editingId === build.scan_id) return;
             event.preventDefault();
             setMenu({ build, x: Math.max(0, Math.min(event.clientX, window.innerWidth - 148)), y: Math.max(0, Math.min(event.clientY, window.innerHeight - 96)) });
           }}>
-              <WorkspacePreview build={build} />
+              <WorkspacePreview build={build} spinning={hovered === build.scan_id && editingId !== build.scan_id} />
               <div><span className="workspace-card-label">Workspace</span>
               <div className="workspace-identity"><div className="workspace-name">
                 {editingId === build.scan_id ? <form id={`rename-${build.scan_id}`} onSubmit={event => {
