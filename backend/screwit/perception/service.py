@@ -49,15 +49,6 @@ def _target_part_count(names: list[str]) -> int:
     return max(2, min(6, n or 4))
 
 
-def _geometry_name_hint(names: list[str]) -> str:
-    """A soft naming hint for a geometry part: the VLM names it from the render, but we pass the
-    object's proposed part vocabulary so it picks from the right category set."""
-    cands = [x for x in (names or []) if x and x.strip()]
-    if not cands:
-        return "part"
-    return "one of: " + ", ".join(cands[:8])
-
-
 def _norm_label(label: str) -> str:
     """Normalize a part name for same-name comparison: lowercase, strip, drop a trailing digit
     disambiguator and a trailing plural 's', so 'Ear Pads', 'ear pad', 'Ear Pad 2' all match."""
@@ -76,112 +67,6 @@ def _duplicate_counts(labels: list[str]) -> dict[str, int]:
         k = _norm_label(lb)
         counts[k] = counts.get(k, 0) + 1
     return counts
-
-
-def _split_by_density_valley(verts: np.ndarray, diag: float) -> list[np.ndarray]:
-    """Fallback split for a pool that is one connected lump but is really two lobes joined by a thin
-    neck (two ear pads bridged by the headband, with no clean gap the connectivity test can find).
-
-    Project the points onto their principal horizontal axis and histogram them. Two lobes show two
-    density peaks with a valley between (the neck). If a clear valley exists -- a low-density bin
-    between two substantial peaks -- cut there into two parts. Otherwise keep one part. Conservative:
-    only splits on a pronounced, well-separated valley, so a genuinely single part stays one.
-    """
-    import numpy as np
-
-    if len(verts) < 200:
-        return [verts]
-    c = verts - verts.mean(0)
-    # Principal axis via covariance (the object's longest direction).
-    try:
-        _, _, vt = np.linalg.svd(c, full_matrices=False)
-    except np.linalg.LinAlgError:
-        return [verts]
-    axis = vt[0]
-    t = c @ axis
-    nb = 24
-    hist, edges = np.histogram(t, bins=nb)
-    # Find the two tallest peaks and the lowest bin strictly between them.
-    peak = int(np.argmax(hist))
-    # Look for a second peak well away from the first (>= 1/4 of the span).
-    far = [i for i in range(nb) if abs(i - peak) >= nb // 4 and hist[i] > 0]
-    if not far:
-        return [verts]
-    peak2 = max(far, key=lambda i: hist[i])
-    lo, hi = sorted((peak, peak2))
-    between = hist[lo + 1:hi]
-    if len(between) == 0:
-        return [verts]
-    valley = lo + 1 + int(np.argmin(between))
-    valley_v = hist[valley]
-    peaks_min = min(hist[peak], hist[peak2])
-    # A real neck: the valley is much emptier than both peaks and both peaks are substantial.
-    if peaks_min < 0.15 * len(verts) / 2 or valley_v > 0.35 * peaks_min:
-        return [verts]
-    cut = edges[valley + 1]
-    left = verts[t < cut]
-    right = verts[t >= cut]
-    if min(len(left), len(right)) < 100:
-        return [verts]
-    return [left, right]
-
-
-def _split_pool_into_lobes(verts: np.ndarray, diag: float) -> list[np.ndarray]:
-    """Split one name's pooled vertices into spatially distinct lobes.
-
-    Two physically separate parts that share a name (the two ear pads) are joined in the fused mesh
-    only by a thin bridge (the headband running between them). Voxel-downsample the pool, connect
-    points within a FINE radius (a few voxels), and take connected components: the dense lobes stay
-    connected within themselves, but the thin bridge is too sparse to hold them together at that
-    radius, so the two pads fall into separate components. A single connected part (one arch) stays
-    one. Components below a small fraction of the pool are reattached to their nearest big lobe so
-    stray voxels do not become spurious parts. Returns one vertex array per lobe (>=1).
-    """
-    import numpy as np
-    from scipy.sparse import csr_matrix
-    from scipy.sparse.csgraph import connected_components
-    from scipy.spatial import cKDTree
-
-    if len(verts) < 50:
-        return [verts]
-    voxel = max(1.5, 0.01 * diag)            # downsample resolution ~1% of object size
-    keys = np.floor(verts / voxel).astype(np.int64)
-    _, uniq_idx, inverse = np.unique(keys, axis=0, return_index=True, return_inverse=True)
-    pts = verts[uniq_idx]                     # one representative point per voxel
-    if len(pts) < 8:
-        return [verts]
-    radius = 2.2 * voxel                      # connect neighbours within ~2 voxels
-    tree = cKDTree(pts)
-    pairs = tree.query_pairs(r=radius, output_type="ndarray")
-    if len(pairs) == 0:
-        return [verts]
-    g = csr_matrix((np.ones(len(pairs) * 2),
-                    (np.r_[pairs[:, 0], pairs[:, 1]], np.r_[pairs[:, 1], pairs[:, 0]])),
-                   shape=(len(pts), len(pts)))
-    ncomp, comp = connected_components(g, directed=False)
-    if ncomp == 1:
-        return _split_by_density_valley(verts, diag)
-    sizes = np.bincount(comp)
-    big = np.where(sizes >= max(8, int(0.15 * sizes.max())))[0]  # keep only sizeable lobes
-    if len(big) <= 1:
-        return [verts]
-    # Map each ORIGINAL vertex to its voxel's component, then to the nearest BIG lobe.
-    vox_comp = comp                                   # component per voxel-point
-    big_centroids = {c: pts[comp == c].mean(0) for c in big}
-    big_ids = list(big_centroids)
-    bc = np.array([big_centroids[c] for c in big_ids])
-    # For voxels whose component is not big, snap to nearest big lobe centroid.
-    comp_to_big = {}
-    for c in range(ncomp):
-        if c in big_centroids:
-            comp_to_big[c] = c
-        else:
-            cen = pts[comp == c].mean(0)
-            comp_to_big[c] = big_ids[int(np.argmin(np.linalg.norm(bc - cen, axis=1)))]
-    orig_comp = vox_comp[inverse]
-    orig_big = np.array([comp_to_big[c] for c in orig_comp])
-    lobes = [verts[orig_big == c] for c in big_ids]
-    return [lb for lb in lobes if len(lb) >= 50] or [verts]
 
 
 def _titlecase_label(label: str) -> str:
@@ -304,8 +189,6 @@ class PerceptionImpl(PerceptionService):
               reconstruction_revision: int, storage: Storage) -> tuple[list[Part], SceneGraph]:
         import trimesh
 
-        names = self.labeller.name_parts(scan_id, frames.full_res_paths).names
-
         mesh = trimesh.load(mesh_path, force="mesh")
         verts = np.asarray(mesh.vertices, dtype=float)
         faces = np.asarray(mesh.faces, dtype=int)
@@ -328,23 +211,18 @@ class PerceptionImpl(PerceptionService):
         if label_images is not None:
             # Hero-fixture path: precomputed per-frame label images lifted onto the mesh.
             label_images = [np.asarray(li, dtype=np.int32) for li in label_images]
-            part_names = names
+            part_names = self.labeller.name_parts(scan_id, frames.full_res_paths).names
             labels = lifting.vote_labels(verts, label_images, frames.depth_mm, frames.cameras)
             labels = lifting.smooth_labels(labels, faces)
             submeshes = lifting.split_mesh_by_label(mesh, labels)
             parts, part_points = self._build_parts_named_by_order(
                 scan_id, submeshes, part_names, reconstruction_revision, storage)
         else:
-            # Live geometry path: segment by thickness+connectivity, name each region from its
-            # render, then collapse over-splits -- merge regions the VLM gave the SAME name that are
-            # also spatially adjacent (the 4 slices of one ear cushion become one), while keeping
-            # same-named but SEPARATE regions distinct (the two ear cushions stay two). This yields
-            # the natural "Ear Pad 1 / Ear Pad 2 / Headband" instead of five look-alike "Ear Pads".
-            from screwit.perception import geo_segment
-
-            submeshes = geo_segment.segment_mesh(mesh, target_parts=_target_part_count(names))
+            # Live path for any object: cut the mesh into crease-bounded patches, let Claude group
+            # the numbered patches into named parts in one call, and fall back to a geometry-only
+            # grouping when there is no VLM (fake provider) or the call fails. See part_atoms.py.
             parts, part_points = self._build_geometry_parts(
-                scan_id, mesh, submeshes, names, reconstruction_revision, storage)
+                scan_id, mesh, frames.full_res_paths, reconstruction_revision, storage)
 
         graph = self.scene_builder.build(scan_id, parts, part_points)
         self._save_parts(scan_id, parts, storage)
@@ -372,90 +250,76 @@ class PerceptionImpl(PerceptionService):
                                           recon_rev, glb_key, png_key))
         return parts, part_points
 
-    def _build_geometry_parts(self, scan_id, mesh, submeshes, names, recon_rev, storage):
-        """Geometry build: name each segmented region from its render, pool regions by name, split
-        each name's pool into spatially-separated lobes (so the two ear pads become two parts even
-        though the thickness segmentation mixed them), then emit one Part per lobe.
+    def _build_geometry_parts(self, scan_id, mesh, keyframes, recon_rev, storage):
+        """Segment ``mesh`` into parts for any object (see part_atoms): crease-bounded patches,
+        grouped into named, labelled parts by one Claude call that sees each patch highlighted on
+        its own tile. Without a VLM (fake provider, failed call) the geometric merge hierarchy is
+        cut at the proposed part count. Returns (parts, part_points)."""
+        from screwit.perception import part_atoms as pa
 
-        Object-agnostic: only VLM names and spatial separation; no object category is hard-coded.
-        """
-        import numpy as np
-        import trimesh
+        patches = pa.over_segment(mesh)
+        replies: dict[int, object] = {}
+        owner = None
+        if patches.n >= 2:
+            grid = pa.render_patch_grid(patches)
+            grouping = self.labeller.group_patches(scan_id, grid, keyframes, patches.n,
+                                                   max_parts=pa.MAX_PARTS)
+            if grouping is not None:
+                patch_lists = pa.regroup_instances(patches, [gp.patches for gp in grouping.parts],
+                                                   [gp.label for gp in grouping.parts])
+                owner = pa.grouping_to_owner(patches, patch_lists)
+                if owner is not None:
+                    replies = dict(enumerate(grouping.parts))
+        if owner is None:
+            names = self.labeller.name_parts(scan_id, keyframes).names
+            hierarchy = pa.merge_hierarchy(patches)
+            pool = pa.candidate_counts(patches, hierarchy) or list(hierarchy)
+            owner = hierarchy[min(pool, key=lambda c: abs(c - _target_part_count(names)))]
+        # What the segmentation looked like, for debugging a result.
+        storage.put_bytes(f"scans/{scan_id}/renders/segmentation.png",
+                          pa.render_partition(patches, owner), "image/png")
 
-        V = np.asarray(mesh.vertices, dtype=float)
-        F = np.asarray(mesh.faces, dtype=np.int64)
-        diag = float(np.linalg.norm(V.max(0) - V.min(0))) if len(V) else 1.0
-        vcol = getattr(mesh.visual, "vertex_colors", None)
-        vcol = np.asarray(vcol) if vcol is not None else None
+        face_labels = pa.full_face_labels(mesh, patches, owner)
+        groups = pa.submeshes(mesh, face_labels)
+        order = sorted(groups, key=lambda g: -len(groups[g].faces))   # largest part is p1
 
-        # 1. Name each raw region from its render, and record which mesh vertices it covers (nearest-
-        #    vertex of the region's own vertices back onto the full mesh).
-        from scipy.spatial import cKDTree
-
-        full_tree = cKDTree(V)
-        pooled: dict[str, dict] = {}   # norm-name -> {label, info, vidx:set}
-        for label in sorted(submeshes):
-            sub = submeshes[label]
-            sv = np.asarray(sub.vertices, dtype=float)
-            if len(sv) == 0:
-                continue
-            thumb = render_mesh_png(sv, np.asarray(sub.faces, dtype=int),
+        proposals: list[str] | None = None
+        infos, thumbs = [], []
+        for i, g in enumerate(order):
+            sub = groups[g]
+            thumb = render_mesh_png(np.asarray(sub.vertices, dtype=float),
+                                    np.asarray(sub.faces, dtype=int),
                                     getattr(sub.visual, "vertex_colors", None))
-            info = self.labeller.label_part(scan_id, _geometry_name_hint(names), thumb)
-            key = _norm_label(info.label)
-            _, idx = full_tree.query(sv, k=1)
-            slot = pooled.setdefault(key, {"label": info.label, "info": info, "vidx": set()})
-            slot["vidx"].update(int(i) for i in np.unique(idx))
+            thumbs.append(thumb)
+            if g in replies:
+                infos.append(replies[g])
+                continue
+            if proposals is None:
+                proposals = [n for n in self.labeller.name_parts(scan_id, keyframes).names
+                             if n and n.strip()]
+            proposal = proposals[i] if i < len(proposals) else f"part {i + 1}"
+            infos.append(self.labeller.label_part(scan_id, proposal, thumb))
 
-        # 2. For each name pool, split its vertices into spatially-separated lobes.
-        lobes: list[dict] = []  # {info, label, verts_idx (np array of mesh vertex indices)}
-        for _key, slot in pooled.items():
-            vidx = np.array(sorted(slot["vidx"]), dtype=np.int64)
-            for lobe_v in _split_pool_into_lobes(V[vidx], diag):
-                # Map the lobe's points back to mesh vertex indices.
-                _, li = full_tree.query(lobe_v, k=1)
-                lobes.append({"info": slot["info"], "label": slot["label"],
-                              "vidx": np.unique(li).astype(np.int64)})
-
-        # 3. Disambiguate duplicate display names (Ear Pad 1 / Ear Pad 2), then build a Part per lobe
-        #    by extracting the full-mesh faces whose vertices fall in the lobe.
-        name_counts = _duplicate_counts([lb["label"] for lb in lobes])
+        counts_by_name = _duplicate_counts([info.label for info in infos])
         seen: dict[str, int] = {}
-        # Largest lobes first for stable part ids.
-        lobes.sort(key=lambda lb: -len(lb["vidx"]))
-
         parts: list[Part] = []
         part_points: dict[str, np.ndarray] = {}
-        for gi, lb in enumerate(lobes):
-            pid = f"p{gi + 1}"
-            keep_v = np.zeros(len(V), bool)
-            keep_v[lb["vidx"]] = True
-            face_mask = keep_v[F].all(axis=1)
-            used = np.unique(F[face_mask]) if face_mask.any() else lb["vidx"]
-            remap = -np.ones(len(V), np.int64)
-            remap[used] = np.arange(len(used))
-            sub_faces = remap[F[face_mask]] if face_mask.any() else np.empty((0, 3), np.int64)
-            sub_verts = V[used]
+        for i, (g, info, thumb) in enumerate(zip(order, infos, thumbs, strict=True)):
+            sub = groups[g]
+            pid = f"p{i + 1}"
+            key = _norm_label(info.label)
+            label = info.label
+            if counts_by_name.get(key, 0) > 1:
+                seen[key] = seen.get(key, 0) + 1
+                label = f"{info.label} {seen[key]}"
+            sub_verts = np.asarray(sub.vertices, dtype=float)
             part_points[pid] = sub_verts
-            sub_kwargs = {"vertices": sub_verts, "faces": sub_faces, "process": False}
-            if vcol is not None:
-                sub_kwargs["vertex_colors"] = vcol[used]
-            merged = trimesh.Trimesh(**sub_kwargs)
-            info = lb["info"]
-            base = lb["label"]
-            if name_counts.get(_norm_label(base), 0) > 1:
-                seen[_norm_label(base)] = seen.get(_norm_label(base), 0) + 1
-                disp = f"{base} {seen[_norm_label(base)]}"
-            else:
-                disp = base
-            thumb = render_mesh_png(sub_verts, sub_faces, vcol[used] if vcol is not None else None)
             glb_key = f"scans/{scan_id}/parts/{pid}.glb"
             png_key = f"scans/{scan_id}/renders/{pid}.png"
-            storage.put_bytes(glb_key, merged.export(file_type="glb"), "model/gltf-binary")
+            storage.put_bytes(glb_key, sub.export(file_type="glb"), "model/gltf-binary")
             storage.put_bytes(png_key, thumb, "image/png")
-            part = self._build_part(scan_id, pid, disp, info, sub_verts, recon_rev, glb_key, png_key)
-            part = part.model_copy(update={"label": _titlecase_label(disp)})
-            parts.append(part)
+            part = self._build_part(scan_id, pid, label, info, sub_verts, recon_rev, glb_key, png_key)
+            parts.append(part.model_copy(update={"label": _titlecase_label(label)}))
         return parts, part_points
 
     def _build_part(self, scan_id, pid, name, label_info, verts, recon_rev, glb_key,

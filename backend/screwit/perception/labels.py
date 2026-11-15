@@ -31,6 +31,36 @@ class PartLabel(BaseModel):
     material_confidence: float = Field(ge=0, le=1)
 
 
+class GroupedPart(PartLabel):
+    """One physical part in Claude's grouping of the highlighted scan patches."""
+
+    patches: list[int] = Field(min_length=1)
+
+
+class PatchGrouping(BaseModel):
+    """Claude's grouping of the numbered patch tiles into named, labelled parts."""
+
+    object_name: str
+    parts: list[GroupedPart] = Field(min_length=1, max_length=8)
+
+
+GROUPING_PROMPT = (
+    "The first {n_photos} images are photos of one object from a phone video. The last image is a "
+    "grid of {n} numbered tiles of that object's 3D scan. Every tile shows the whole scan from the "
+    "same two sides (left and right halves of the tile), grey, with one patch of it in red; the "
+    "tile's number is that patch's number (0 to {last}). Every patch lies inside one physical "
+    "part. Group the patches into the object's physical parts: the components a person "
+    "would name separately, remove, replace or repair, at most {max_parts}. Prefer fewer, larger "
+    "parts when unsure; splitting one piece into chunks is wrong, but two identical separate "
+    "components (for example the two sides of a symmetric object) are separate parts, even when "
+    "they touch. List every patch number in exactly one part. For each part give a short common "
+    "name (distinct names for identical components, such as Left and Right), a one-sentence "
+    "description of what it does in the object, its likely material, and your confidence in the "
+    "name and the material (0 to 1). Ignore the printed checkerboard, the table and the background.")
+
+
+
+
 # Deterministic fake answers keyed by scan id, matching the committed hero fixtures.
 _FAKE_NAMES: dict[str, list[str]] = {
     "scn_trap": ["tailpiece", "J-bend", "slip nut", "slip-joint washer"],
@@ -100,6 +130,26 @@ class Labeller:
                 return table[proposed_name]
             return _label_from_name(proposed_name)
         return self._label_part_claude(scan_id, proposed_name, thumbnail_png)
+
+    def group_patches(self, scan_id: str, grid_png: bytes, keyframes, n_patches: int,
+                      max_parts: int = 6) -> PatchGrouping | None:
+        """One Claude call: group the highlighted patch tiles into named, labelled parts. None for
+        the fake provider or on any failure, so the caller falls back."""
+        if self.provider == "fake" or n_patches < 2:
+            return None
+        from screwit.perception import claude_vision as cv
+
+        photos = cv.evenly_spaced([p for p in (keyframes or []) if p is not None], 3)
+        content = [cv.image_block_from_path(p) for p in photos]
+        content.append(cv.image_block_from_png(grid_png))
+        content.append({"type": "text", "text": GROUPING_PROMPT.format(
+            n_photos=len(photos), n=n_patches, last=n_patches - 1, max_parts=max_parts)})
+        try:
+            return cv.ask(PatchGrouping, "You identify the parts of everyday objects from photos "
+                                         "and 3D scans.", content)
+        except cv.VisionCallFailed as e:
+            log.warning("patch grouping via Claude failed for %s: %s", scan_id, e)
+            return None
 
     # Real Claude paths. A provider failure or an invalid reply falls back to the generic answer, so
     # a scan never fails because the LLM did; the fallback is logged.

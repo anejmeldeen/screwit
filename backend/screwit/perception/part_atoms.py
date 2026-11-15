@@ -1,19 +1,22 @@
-"""Part segmentation for any object: geometric candidates, chosen and named by the VLM (P3, 6.2).
+"""Part segmentation for any object: geometric patches, grouped and named by the VLM (P3, 6.2).
 
 Geometry alone cannot decide what a "part" is (two touching ear cups have the same thickness; a
 pizza-box lid and base meet in a seam that looks like any other edge), and a VLM cannot draw a
-precise boundary on a mesh or reliably read numbered patches (on the headphones it grouped the two
-cups into one part). So the work is split:
+precise boundary on a mesh. So the work is split:
 
 1. ``over_segment`` cuts the mesh into about 10 patches along its creases and necks: spectral
    clustering of the face graph, with edges across concave creases weighted down (part boundaries
    sit in concave creases, the "minima rule"). Each patch should lie inside one part.
-2. ``merge_hierarchy`` merges the most strongly joined neighbours one pair at a time, giving one
-   candidate partition per part count (on the headphones, 3 regions is exactly cup, cup, band).
-3. ``render_partition`` draws candidates with 2-6 regions in named colours; the caller asks the VLM
-   once to pick the candidate that matches the object's real parts and to name each region by
-   colour. Choosing between pictures and naming colours is the part a VLM is good at.
-4. Without a VLM (fake provider, failed call) the caller takes the candidate nearest a target count.
+2. ``render_patch_grid`` draws one tile per patch: the whole object in grey, that patch in red,
+   from the same two sides in every tile. The caller asks the VLM once to group the patch numbers
+   into named parts. The VLM is reliable about what kind of part a patch is and how many copies
+   exist, not about which copy (it paired two cushion tops as one ear cup), so ``regroup_instances``
+   re-splits every repeated kind by location, and ``grouping_to_owner`` completes the map.
+   (Two designs failed on real scans first: one image of numbered colours, which the VLM misread,
+   and choosing among geometric merges, which offered no correct option once a scan hole split the
+   headband.)
+3. Without a VLM (fake provider, failed call) ``merge_hierarchy`` merges the most strongly joined,
+   most similarly thick neighbours down to the proposed part count.
 
 Nothing here knows any object category. Everything runs on a ~8k-face working copy of the mesh, and
 labels are carried back to the full mesh by nearest face.
@@ -80,14 +83,36 @@ def _edges(w):
 
 
 def _affinity(w, delta: float = 0.3):
-    """Face-graph edge weights: high inside smooth surface, low across concave creases."""
+    """Face-graph edge weights: high inside smooth surface, low across concave creases.
+
+    Scans come in pieces (a hole where no two views agreed splits a band in two). Separate pieces
+    are disconnected in the mesh graph, and spectral clustering then cuts along the gaps instead of
+    along real part boundaries. So faces of different pieces that lie within a small distance
+    (3% of the object's size) are bridged with weak edges (a quarter of the median weight): pieces of
+    one part are glued, while a real crease still costs more to cross than a bridge is worth."""
+    from scipy import sparse
+    from scipy.sparse.csgraph import connected_components
+    from scipy.spatial import cKDTree
+
     adj, ang, convex, _ = _edges(w)
     d_ang = np.where(convex, CONVEX_WEIGHT, 1.0) * (1.0 - np.cos(ang))
     fc = w.triangles_center
     d_geo = np.linalg.norm(fc[adj[:, 0]] - fc[adj[:, 1]], axis=1)
     d = (delta * d_geo / max(float(d_geo.mean()), 1e-12)
          + (1 - delta) * d_ang / max(float(d_ang.mean()), 1e-12))
-    return adj, np.exp(-d / max(float(d.mean()), 1e-12))
+    wgt = np.exp(-d / max(float(d.mean()), 1e-12))
+    nf = len(w.faces)
+    g = sparse.coo_matrix((np.ones(len(adj)), (adj[:, 0], adj[:, 1])), shape=(nf, nf))
+    ncomp, comp = connected_components(g, directed=False)
+    if ncomp > 1:
+        diag = float(np.linalg.norm(np.ptp(w.vertices, axis=0)))
+        pairs = cKDTree(fc).query_pairs(r=0.03 * diag, output_type="ndarray")
+        if len(pairs):
+            pairs = pairs[comp[pairs[:, 0]] != comp[pairs[:, 1]]]
+        if len(pairs):
+            adj = np.concatenate([adj, pairs])
+            wgt = np.concatenate([wgt, np.full(len(pairs), 0.25 * float(np.median(wgt)))])
+    return adj, wgt
 
 
 # ------------------------------------------------------------------------------- over-segmentation
@@ -116,7 +141,37 @@ def over_segment(mesh, n_patches: int = DEFAULT_PATCHES) -> Patches:
     emb = vecs / np.maximum(np.linalg.norm(vecs, axis=1, keepdims=True), 1e-12)
     _, lab = kmeans2(emb, k, minit="++", seed=0)
     lab = _clean_islands(w, lab)
+    lab = _fold_isolated(w, lab)
     return Patches(w, lab, int(lab.max()) + 1)
+
+
+def _fold_isolated(w, lab: np.ndarray) -> np.ndarray:
+    """Give every patch that touches no other patch (a disconnected scrap of the mesh) to the patch
+    nearest to it in space, so no candidate partition offers an invisible speck as a region."""
+    from scipy.spatial import cKDTree
+
+    adj = np.asarray(w.face_adjacency)
+    n = int(lab.max()) + 1
+    if n < 2:
+        return lab
+    a, b = lab[adj[:, 0]], lab[adj[:, 1]]
+    touching = np.zeros(n, bool)
+    touching[a[a != b]] = True
+    touching[b[a != b]] = True
+    area = np.bincount(lab, weights=w.area_faces, minlength=n)
+    lonely = [p for p in range(n) if not touching[p] and area[p] < 0.5 * area.max()]
+    if not lonely or len(lonely) == n:
+        return lab
+    fc = w.triangles_center
+    others = ~np.isin(lab, lonely)
+    tree = cKDTree(fc[others])
+    other_lab = lab[others]
+    lab = lab.copy()
+    for p in lonely:
+        sel = lab == p
+        _, nn = tree.query(fc[sel], k=1)
+        lab[sel] = np.bincount(other_lab[nn]).argmax()
+    return np.unique(lab, return_inverse=True)[1]
 
 
 def _clean_islands(w, lab: np.ndarray) -> np.ndarray:
@@ -167,13 +222,17 @@ def patch_adjacency(p: Patches) -> dict[tuple[int, int], float]:
 
 def merge_hierarchy(p: Patches) -> dict[int, list[int]]:
     """Every partition from ``p.n`` patches down to 1 group, built by repeatedly merging the two
-    touching groups joined most strongly (cut affinity relative to the smaller group's volume).
+    touching groups with the best score: the cut affinity relative to the smaller group's volume,
+    times a thickness-similarity factor. The factor is what keeps a thin band from joining a bulky
+    cup before it joins the rest of the band, when a scan hole makes the band's own pieces only
+    weakly connected (local thickness, the shape diameter function, is the classic part cue).
     Returns {group count: group id per patch}, with group 0 the largest by area in each partition.
     Patches that touch nothing are merged last, into the largest group."""
     adj, wgt = _affinity(p.work)
     nf = len(p.work.faces)
     deg = np.bincount(adj[:, 0], weights=wgt, minlength=nf) + np.bincount(adj[:, 1], weights=wgt, minlength=nf)
     area = p.work.area_faces
+    thick = _face_thickness(p.work)
     group = list(range(p.n))
     out: dict[int, list[int]] = {}
     while True:
@@ -182,6 +241,7 @@ def merge_hierarchy(p: Patches) -> dict[int, list[int]]:
             break
         g_face = np.asarray(group)[p.labels]
         vol = np.bincount(g_face, weights=deg, minlength=p.n)
+        t_med = {g: _weighted_median(thick[g_face == g], area[g_face == g]) for g in set(group)}
         a, b = g_face[adj[:, 0]], g_face[adj[:, 1]]
         cross = a != b
         cut: dict[tuple[int, int], float] = {}
@@ -189,14 +249,49 @@ def merge_hierarchy(p: Patches) -> dict[int, list[int]]:
             key = (int(min(x, y)), int(max(x, y)))
             cut[key] = cut.get(key, 0.0) + float(ww)
         if cut:
-            (x, y), _ = max(cut.items(),
-                            key=lambda kv: kv[1] / max(min(vol[kv[0][0]], vol[kv[0][1]]), 1e-12))
+            tm, vl = t_med, vol
+
+            def score(kv, tm=tm, vl=vl):
+                (x, y), c = kv
+                ratio = abs(np.log(max(tm[x], 1e-6) / max(tm[y], 1e-6)))
+                return c / max(min(vl[x], vl[y]), 1e-12) * np.exp(-ratio / THICKNESS_SCALE)
+            (x, y), _ = max(cut.items(), key=score)
         else:  # disconnected groups: fold the smallest into the largest
             ga = np.bincount(g_face, weights=area, minlength=p.n)
             live = sorted(set(group), key=lambda g: ga[g])
             x, y = live[-1], live[0]
         group = [x if g == y else g for g in group]
     return out
+
+
+THICKNESS_SCALE = 0.3   # a 1.8x thickness ratio cuts a merge score to about 0.14x
+
+
+def _weighted_median(values: np.ndarray, weights: np.ndarray) -> float:
+    if len(values) == 0:
+        return 1.0
+    order = np.argsort(values)
+    cw = np.cumsum(weights[order])
+    return float(values[order][np.searchsorted(cw, 0.5 * cw[-1])])
+
+
+def _face_thickness(w) -> np.ndarray:
+    """Local thickness per face: distance along the inward normal to the opposite surface (Open3D
+    raycaster). Faces whose ray escapes (open scans) get the median."""
+    import open3d as o3d
+
+    v = np.asarray(w.vertices, np.float32)
+    f = np.asarray(w.faces, np.uint32)
+    fc = np.asarray(w.triangles_center, np.float32)
+    fn = np.asarray(w.face_normals, np.float32)
+    diag = float(np.linalg.norm(np.ptp(v, axis=0))) or 1.0
+    scene = o3d.t.geometry.RaycastingScene()
+    scene.add_triangles(o3d.core.Tensor(v), o3d.core.Tensor(f))
+    rays = np.concatenate([fc - fn * (1e-3 * diag), -fn], axis=1).astype(np.float32)
+    t = scene.cast_rays(o3d.core.Tensor(rays))["t_hit"].numpy()
+    ok = np.isfinite(t) & (t < 0.5 * diag)
+    fill = float(np.median(t[ok])) if ok.any() else diag
+    return np.where(ok, t, fill)
 
 
 def _by_area(group: list[int], labels: np.ndarray, area: np.ndarray) -> list[int]:
@@ -238,13 +333,40 @@ def full_face_labels(mesh, p: Patches, patch_group: list[int], rounds: int = 2) 
     return lab
 
 
-def submeshes(mesh, face_labels: np.ndarray) -> dict[int, object]:
-    """{group id: trimesh} from per-face labels, keeping vertex colours."""
+def submeshes(mesh, face_labels: np.ndarray, min_frac: float = 0.005) -> dict[int, object]:
+    """{group id: trimesh} from per-face labels, keeping vertex colours. A group with under
+    ``min_frac`` of the faces is not a part: its faces join the nearest other group."""
+    from scipy.spatial import cKDTree
+
+    face_labels = np.asarray(face_labels).copy()
+    counts = np.bincount(face_labels)
+    tiny = [g for g in np.flatnonzero(counts) if counts[g] < min_frac * len(face_labels)]
+    big = ~np.isin(face_labels, tiny)
+    if tiny and big.any():
+        fc = np.asarray(mesh.triangles_center)
+        _, nn = cKDTree(fc[big]).query(fc[~big], k=1)
+        face_labels[~big] = face_labels[big][nn]
     out = {}
     for g in np.unique(face_labels):
         sub = mesh.submesh([np.flatnonzero(face_labels == g)], append=True)
         if len(sub.faces):
             out[int(g)] = sub
+    return out
+
+
+def candidate_counts(p: Patches, hierarchy: dict[int, list[int]], max_parts: int = MAX_PARTS,
+                     min_area: float = MIN_PATCH_AREA) -> list[int]:
+    """Region counts worth offering: 2..max_parts where every region is a visible share of the
+    surface (at least ``min_area``), so no option shows an invisible region."""
+    area = p.work.area_faces
+    total = float(area.sum()) or 1.0
+    out = []
+    for k in range(2, max_parts + 1):
+        if k not in hierarchy:
+            continue
+        g = np.asarray(hierarchy[k])[p.labels]
+        if np.bincount(g, weights=area, minlength=k).min() >= min_area * total:
+            out.append(k)
     return out
 
 
@@ -321,3 +443,155 @@ def render_patches(p: Patches, *, size: int = 512) -> bytes:
     """PNG of the raw patches, each in its own colour with its number (a debugging aid)."""
     face_rgb = _PALETTE[p.labels % len(_PALETTE)]
     return _render(p.work, face_rgb, size=size, numbers=p.labels)
+
+
+def render_patch_grid(p: Patches, *, view: int = 240, cols: int = 2) -> bytes:
+    """PNG grid with one tile per patch: the whole object in grey with that one patch in red, from
+    the SAME two sides in every tile, with the patch number in the corner. Identical viewpoints let
+    a VLM tell which side of the object each patch is on (with a per-tile camera, "the near cup"
+    meant a different cup in different tiles and it paired up the wrong ones)."""
+    from PIL import Image, ImageDraw, ImageFont
+
+    w = p.work
+    grey = np.array([150.0, 150.0, 150.0])
+    red = np.array([235.0, 45.0, 45.0])
+    try:
+        font = ImageFont.load_default(size=view // 6)
+    except TypeError:  # older Pillow
+        font = ImageFont.load_default()
+    tiles = []
+    for pid in range(p.n):
+        rgb = np.where((p.labels == pid)[:, None], red, grey)
+        img = Image.open(io.BytesIO(_render(w, rgb, size=view))).convert("RGB")
+        dr = ImageDraw.Draw(img)
+        dr.rectangle([0, 0, img.width - 1, img.height - 1], outline=(90, 90, 100), width=2)
+        dr.text((10, 6), str(pid), fill=(255, 255, 255), font=font, stroke_width=3,
+                stroke_fill=(0, 0, 0))
+        tiles.append(np.asarray(img))
+    rows = (len(tiles) + cols - 1) // cols
+    tiles += [np.full_like(tiles[0], 24)] * (rows * cols - len(tiles))
+    grid = np.concatenate([np.concatenate(tiles[r * cols:(r + 1) * cols], axis=1) for r in range(rows)],
+                          axis=0)
+    buf = io.BytesIO()
+    Image.fromarray(grid).save(buf, format="PNG")
+    return buf.getvalue()
+
+
+_SIDE_WORDS = {"left", "right", "front", "back", "rear", "top", "bottom", "upper", "lower", "inner",
+               "outer", "first", "second", "third", "one", "two", "a", "b", "l", "r"}
+
+
+def part_type(label: str) -> str:
+    """The kind of a part, without the words that only tell identical parts apart: "Left Ear Cup",
+    "right ear cups" and "Ear cup 2" are all "ear cup"."""
+    import re
+
+    words = re.findall(r"[a-z]+", (label or "").lower())
+    words = [w for w in words if w not in _SIDE_WORDS]
+    if words and len(words[-1]) > 3 and words[-1].endswith("s"):
+        words[-1] = words[-1][:-1]
+    return " ".join(words) or (label or "").lower()
+
+
+def regroup_instances(p: Patches, groups: list[list[int]], labels: list[str]) -> list[list[int]]:
+    """Re-derive which patches form which copy of a repeated part.
+
+    A VLM reliably says what kind of part each patch is and how many copies there are (two ear
+    cups), but not which copy a patch belongs to: on a real scan it paired the two cushion tops as
+    one cup and the two side walls as the other. Location settles that. For every part kind with m
+    copies, split the surface of all its patches into m regions by where it is (area-weighted
+    k-means on face centres, farthest-point seeded, so a stray sliver cannot become a cluster of its
+    own), give each patch to the region that holds most of its area, then hand each region to the
+    copy whose original patches it overlaps most. Kinds with one copy are left as they are."""
+    area = p.work.area_faces
+    fc = p.work.triangles_center
+    out = [list(g) for g in groups]
+    by_type: dict[str, list[int]] = {}
+    for gi, lb in enumerate(labels):
+        by_type.setdefault(part_type(lb), []).append(gi)
+    for idxs in by_type.values():
+        m = len(idxs)
+        members = sorted({q for gi in idxs for q in groups[gi] if isinstance(q, int) and 0 <= q < p.n})
+        if m < 2 or len(members) < m:
+            continue
+        sel = np.isin(p.labels, members)
+        pts, wts, owners = fc[sel], area[sel], p.labels[sel]
+        patch_area = np.bincount(p.labels, weights=area, minlength=p.n)
+        cl = _weighted_kmeans(pts, wts, m, seed_groups=[
+            [int(q) for q in sorted(members, key=lambda q: -patch_area[q])[:m]]], owners=owners)
+        share = np.zeros((p.n, m))
+        np.add.at(share, (owners, cl), wts)
+        clusters = [[q for q in members if int(np.argmax(share[q])) == k] for k in range(m)]
+        if any(not c for c in clusters):
+            continue
+        free = list(range(m))
+        for gi in sorted(idxs, key=lambda g: -len(groups[g])):
+            best = max(free, key=lambda k: len(set(clusters[k]) & set(groups[gi])))
+            out[gi] = clusters[best]
+            free.remove(best)
+    return out
+
+
+def _weighted_kmeans(pts: np.ndarray, w: np.ndarray, k: int, iters: int = 30, *,
+                     seed_groups: list[list[int]] | None = None,
+                     owners: np.ndarray | None = None) -> np.ndarray:
+    """Deterministic area-weighted k-means. Lloyd runs from each seeding (the centres of the k
+    largest patches, then farthest-point seeds) and the split with the lowest weighted squared
+    error wins. Farthest-point seeding alone puts a centre on a stray far sliver and keeps it there
+    (on a real scan it split one sliver off and left both ear cups together)."""
+    starts = []
+    if seed_groups and owners is not None:
+        for grp in seed_groups:
+            if len(grp) == k:
+                starts.append(np.array([np.average(pts[owners == q], axis=0, weights=w[owners == q])
+                                        for q in grp]))
+    c0 = np.average(pts, axis=0, weights=w)
+    seeds = [int(np.argmax(np.linalg.norm(pts - c0, axis=1)))]
+    while len(seeds) < k:
+        d = np.min(np.linalg.norm(pts[:, None, :] - pts[seeds][None, :, :], axis=2), axis=1)
+        seeds.append(int(np.argmax(d)))
+    starts.append(pts[seeds].astype(float))
+    best_lab, best_sse = None, np.inf
+    for cent in starts:
+        lab = np.zeros(len(pts), np.int64)
+        for _ in range(iters):
+            lab = np.argmin(np.linalg.norm(pts[:, None, :] - cent[None, :, :], axis=2), axis=1)
+            new = np.array([np.average(pts[lab == j], axis=0, weights=w[lab == j]) if (lab == j).any()
+                            else cent[j] for j in range(k)])
+            if np.allclose(new, cent):
+                break
+            cent = new
+        sse = float(np.sum(w * np.sum((pts - cent[lab]) ** 2, axis=1)))
+        if sse < best_sse:
+            best_lab, best_sse = lab, sse
+    return best_lab
+
+
+def grouping_to_owner(p: Patches, groups: list[list[int]]) -> list[int] | None:
+    """Complete patch -> part map (indices into ``groups``) from a VLM reply. A patch listed twice
+    keeps its first part; a patch listed nowhere joins the part of the touching patch it shares the
+    longest boundary with (or the nearest patch, if it touches none). None if nothing valid."""
+    owner = [-1] * p.n
+    for gi, members in enumerate(groups):
+        for m in members:
+            if isinstance(m, int) and 0 <= m < p.n and owner[m] < 0:
+                owner[m] = gi
+    if all(o < 0 for o in owner):
+        return None
+    shared = patch_adjacency(p)
+    cent = np.array([p.work.triangles_center[p.labels == i].mean(axis=0) for i in range(p.n)])
+    for _ in range(p.n):
+        missing = [i for i in range(p.n) if owner[i] < 0]
+        if not missing:
+            break
+        for i in missing:
+            best, best_len = -1, 0.0
+            for (x, y), ln in shared.items():
+                j = y if x == i else x if y == i else None
+                if j is not None and owner[j] >= 0 and ln > best_len:
+                    best, best_len = owner[j], ln
+            if best < 0:
+                known = [j for j in range(p.n) if owner[j] >= 0]
+                best = owner[min(known, key=lambda j: float(np.linalg.norm(cent[j] - cent[i])))]
+            owner[i] = best
+    return owner

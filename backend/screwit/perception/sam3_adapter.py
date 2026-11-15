@@ -138,8 +138,8 @@ class Sam3TextSegmenter:
         if self._impl is None:
             import transformers
 
-            cls = getattr(transformers, "Sam3VideoModel", None) or getattr(transformers, "Sam3Model")
-            proc_cls = getattr(transformers, "Sam3Processor", None) or getattr(transformers, "AutoProcessor")
+            cls = getattr(transformers, "Sam3VideoModel", None) or transformers.Sam3Model
+            proc_cls = getattr(transformers, "Sam3Processor", None) or transformers.AutoProcessor
             model = cls.from_pretrained(self.model_id).to(self.device)
             processor = proc_cls.from_pretrained(self.model_id)
             self._impl = (model, processor)
