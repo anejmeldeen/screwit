@@ -9,7 +9,7 @@ from pydantic import BaseModel, StringConstraints
 from sqlmodel import select
 
 from screwit.app.accounts import UserDep
-from screwit.app.db import BuildActivityRow, BuildOwnerRow, BuildTitleRow, DeletedBuildRow, db_session
+from screwit.app.db import BuildActivityRow, BuildOpenRow, BuildOwnerRow, BuildTitleRow, DeletedBuildRow, db_session
 from screwit.app.deps import RegistryDep
 from screwit.app.store import ScanStore
 from screwit.contracts import DemoScan
@@ -23,6 +23,7 @@ class BuildSummary(BaseModel):
     status: str
     created_at: datetime
     updated_at: datetime
+    opened_at: datetime | None
     input_type: str
     is_example: bool
 
@@ -33,7 +34,11 @@ def list_builds(reg: RegistryDep, user: UserDep) -> list[BuildSummary]:
     demos = [DemoScan.model_validate(item) for item in json.loads(path.read_text())] if path.exists() else []
     titles = {demo.scan_id: demo.title for demo in demos}
     with db_session() as session:
-        owned = session.exec(select(BuildOwnerRow).where(BuildOwnerRow.username == user.username)).all()
+        owned = session.exec(
+            select(BuildOwnerRow, BuildOpenRow.opened_at)
+            .outerjoin(BuildOpenRow, BuildOwnerRow.scan_id == BuildOpenRow.scan_id)
+            .where(BuildOwnerRow.username == user.username)
+        ).all()
         saved_titles = {
             row.scan_id: row.title for row in session.exec(
                 select(BuildTitleRow).join(BuildOwnerRow, BuildTitleRow.scan_id == BuildOwnerRow.scan_id)
@@ -49,7 +54,7 @@ def list_builds(reg: RegistryDep, user: UserDep) -> list[BuildSummary]:
         }
     store = ScanStore(reg.data)
     builds = []
-    for owner in owned:
+    for owner, opened_at in owned:
         scan = store.get_scan(owner.scan_id)
         if scan is None:
             continue
@@ -57,10 +62,21 @@ def list_builds(reg: RegistryDep, user: UserDep) -> list[BuildSummary]:
         builds.append(BuildSummary(
             scan_id=scan.scan_id,
             title=saved_titles.get(scan.scan_id, titles.get(scan.scan_id, default_title)),
+            opened_at=opened_at.replace(tzinfo=UTC) if opened_at and opened_at.tzinfo is None else opened_at,
             status=scan.status, created_at=scan.created_at, is_example=scan.scan_id in titles,
             updated_at=activity.get(scan.scan_id, scan.created_at), input_type=scan.input.type,
         ))
-    return sorted(builds, key=lambda build: build.updated_at, reverse=True)
+    return sorted(
+        builds, key=lambda build: (build.opened_at is not None, build.opened_at or build.created_at), reverse=True
+    )
+
+
+@router.post("/builds/{scan_id}/open", status_code=204)
+def open_build(scan_id: str) -> Response:
+    with db_session() as session:
+        session.merge(BuildOpenRow(scan_id=scan_id, opened_at=datetime.now(UTC)))
+        session.commit()
+    return Response(status_code=204)
 
 
 class RenameBuildRequest(BaseModel):

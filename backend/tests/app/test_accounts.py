@@ -188,3 +188,16 @@ def test_workspace_actions_are_owned_and_persist(client):
     initialize_accounts(client.app.state.settings.fixtures_dir)
     assert client.get("/api/scans/scn_trap").status_code == 404
     assert "scn_trap" not in {b["scan_id"] for b in client.get("/api/builds").json()}
+
+
+def test_open_order_ignores_rename_and_delete(client):
+    first, second, unused = [create_build(client) for _ in range(3)]
+    for scan_id in (second, first):
+        assert client.post(f"/api/builds/{scan_id}/open").status_code == 204
+    before = client.get("/api/builds").json()
+    assert client.patch(f"/api/builds/{second}", json={"title": "Renamed"}).status_code == 204
+    assert client.delete(f"/api/builds/{unused}").status_code == 204
+    after = client.get("/api/builds").json()
+    assert [b["scan_id"] for b in after[:2]] == [first, second]
+    assert [b["opened_at"] for b in after[:2]] == [b["opened_at"] for b in before[:2]]
+    assert all(b["opened_at"] is None for b in after[2:])

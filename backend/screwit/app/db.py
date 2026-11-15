@@ -55,6 +55,12 @@ class BuildTitleRow(SQLModel, table=True):
     title: str
 
 
+class BuildOpenRow(SQLModel, table=True):
+    __tablename__ = "build_opens"
+    scan_id: str = Field(primary_key=True)
+    opened_at: datetime
+
+
 class BuildActivityRow(SQLModel, table=True):
     __tablename__ = "build_activity"
     scan_id: str = Field(primary_key=True)

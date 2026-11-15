@@ -3,9 +3,9 @@
 import { createContext, useContext, useEffect, useState } from "react";
 import { useAccount } from "@/components/AccountProvider";
 
-export type WorkspaceSort = "modified" | "name" | "created";
+export type WorkspaceSort = "opened" | "name" | "created";
 interface Preferences { sort: WorkspaceSort; compact: boolean }
-const defaults: Preferences = { sort: "modified", compact: false };
+const defaults: Preferences = { sort: "opened", compact: false };
 const PreferencesContext = createContext<{ preferences: Preferences; save: (update: Partial<Preferences>) => void; error: string }>({ preferences: defaults, save: () => {}, error: "" });
 
 export function DashboardPreferences({ children }: { children: React.ReactNode }) {
@@ -17,7 +17,7 @@ export function DashboardPreferences({ children }: { children: React.ReactNode }
     try {
       const saved = JSON.parse(localStorage.getItem(key) || "null");
       setPreferences({
-        sort: ["modified", "name", "created"].includes(saved?.sort) ? saved.sort : "modified",
+        sort: ["opened", "name", "created"].includes(saved?.sort) ? saved.sort : "opened",
         compact: saved?.compact === true,
       });
     } catch { setPreferences(defaults); }

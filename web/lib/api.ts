@@ -41,6 +41,7 @@ export interface BuildSummary {
   status: string;
   created_at: string;
   updated_at: string;
+  opened_at: string | null;
   input_type: string;
   is_example: boolean;
 }
@@ -87,6 +88,7 @@ export const api = {
   }),
   logout: () => request<void>("/auth/logout", { method: "POST" }),
   builds: () => request<BuildSummary[]>("/builds"),
+  openBuild: (id: string) => request<void>(`/builds/${encodeURIComponent(id)}/open`, { method: "POST", keepalive: true }),
   renameBuild: (id: string, title: string) => request<void>(`/builds/${encodeURIComponent(id)}`, {
     method: "PATCH", body: JSON.stringify({ title }),
   }),

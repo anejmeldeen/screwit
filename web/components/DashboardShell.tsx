@@ -11,7 +11,7 @@ import { ScrewMascot } from "./ScrewMascot";
 import { SiteHeader } from "./SiteHeader";
 
 const sections: { href: string; title: string; icon: DashboardIconName }[] = [
-  { href: "/", title: "Dashboard", icon: "dashboard" },
+  { href: "/", title: "Workspaces", icon: "dashboard" },
   { href: "/settings", title: "Settings", icon: "settings" },
 ];
 
@@ -41,11 +41,11 @@ function DashboardShell({ children }: { children: React.ReactNode }) {
     <div className="dashboard-shell">
       <aside className="dashboard-sidebar" aria-label="Workspace navigation">
         <div className="sidebar-brand">
-          <Link href="/" className="sidebar-wordmark" aria-label="Screw It dashboard">Screw It<span>.</span></Link>
+          <Link href="/" className="sidebar-wordmark" aria-label="Screw It workspaces">Screw It<span>.</span></Link>
           <button className="sidebar-menu" type="button" aria-label="Toggle navigation" aria-expanded={menuOpen} aria-controls="sidebar-navigation" onClick={() => setMenuOpen(!menuOpen)}><DashboardIcon name="menu" /></button>
         </div>
         <div id="sidebar-navigation" className={`sidebar-content ${menuOpen ? "is-open" : ""}`}>
-          <Link href="/scan/new" className="sidebar-create"><DashboardIcon name="plus" />New workspace</Link>
+          {path !== "/" && <Link href="/scan/new" className="sidebar-create"><DashboardIcon name="plus" />New workspace</Link>}
           <p className="sidebar-label">Your workshop</p>
           <nav aria-label="Main navigation">{sections.map((section) => (
             <Link key={section.href} href={section.href} aria-current={path === section.href ? "page" : undefined} onClick={() => setMenuOpen(false)}>
@@ -65,7 +65,7 @@ function DashboardShell({ children }: { children: React.ReactNode }) {
         </div>
       </aside>
       <main id="main-content" className="dashboard-main">
-        <div className="dashboard-topline"><span>YOUR WORKSHOP / {sections.find((section) => section.href === path)?.title.toUpperCase()}</span><span className="workspace-owner">{account?.username}&apos;s workspace</span></div>
+        {path !== "/" && <div className="dashboard-topline"><span>YOUR WORKSHOP / {sections.find((section) => section.href === path)?.title.toUpperCase()}</span><span className="workspace-owner">{account?.username}&apos;s workspace</span></div>}
         {children}
         <footer className="dashboard-footer"><span>Screw It. Let&apos;s build.</span><span>HackUMass 2026</span></footer>
       </main>

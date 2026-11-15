@@ -34,6 +34,7 @@ export function Workspace({
   useEffect(() => {
     if (!scanId) return;
     let alive = true;
+    api.openBuild(scanId).catch(() => {});
     api.builds().then(builds => {
       if (alive) setSavedTitle(builds.find(build => build.scan_id === scanId)?.title ?? "");
     }).catch(() => {});
