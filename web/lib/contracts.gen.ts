@@ -35,7 +35,7 @@ export namespace CadRequestNS {
     param_sources: ParamSources;
     params: Params;
     part_measurement_revisions: PartMeasurementRevisions;
-    placement: Placement;
+    placement?: Placement | null;
     printer_profile: PrinterProfile;
     reconstruction_revision: ReconstructionRevision;
     scan_id: ScanId;
@@ -81,6 +81,16 @@ export namespace CadResultNS {
   export type Stl = string;
   export type ReconstructionRevision = number;
   export type Notes = string;
+  /**
+   * @minItems 4
+   * @maxItems 4
+   */
+  export type RotationQuat = [unknown, unknown, unknown, unknown];
+  /**
+   * @minItems 3
+   * @maxItems 3
+   */
+  export type TranslateMm = [unknown, unknown, unknown];
   export type EstMaterialG = number;
   export type EstTimeMin = number;
   export type EstimateMethod = "volume_formula" | "slicer";
@@ -99,6 +109,7 @@ export namespace CadResultNS {
     files: CadFiles | null;
     input_revisions: InputRevisions;
     notes: Notes;
+    placement?: Placement | null;
     print_settings: PrintSettings | null;
     stale: Stale;
     status: Status;
@@ -126,6 +137,10 @@ export namespace CadResultNS {
   }
   export interface PartMeasurementRevisions {
     [k: string]: number;
+  }
+  export interface Placement {
+    rotation_quat: RotationQuat;
+    translate_mm: TranslateMm;
   }
   export interface PrintSettings {
     est_material_g: EstMaterialG;
@@ -223,6 +238,16 @@ export namespace ChatEventNS {
   export type Stl = string;
   export type ReconstructionRevision = number;
   export type Notes = string;
+  /**
+   * @minItems 4
+   * @maxItems 4
+   */
+  export type RotationQuat = [unknown, unknown, unknown, unknown];
+  /**
+   * @minItems 3
+   * @maxItems 3
+   */
+  export type TranslateMm = [unknown, unknown, unknown];
   export type EstMaterialG = number;
   export type EstTimeMin = number;
   export type EstimateMethod = "volume_formula" | "slicer";
@@ -309,6 +334,7 @@ export namespace ChatEventNS {
     files: CadFiles | null;
     input_revisions: InputRevisions;
     notes: Notes;
+    placement?: Placement | null;
     print_settings: PrintSettings | null;
     stale: Stale;
     status: Status;
@@ -336,6 +362,10 @@ export namespace ChatEventNS {
   }
   export interface PartMeasurementRevisions {
     [k: string]: number;
+  }
+  export interface Placement {
+    rotation_quat: RotationQuat;
+    translate_mm: TranslateMm;
   }
   export interface PrintSettings {
     est_material_g: EstMaterialG;
@@ -402,6 +432,16 @@ export namespace ChatMessageNS {
   export type Stl = string;
   export type ReconstructionRevision = number;
   export type Notes = string;
+  /**
+   * @minItems 4
+   * @maxItems 4
+   */
+  export type RotationQuat = [unknown, unknown, unknown, unknown];
+  /**
+   * @minItems 3
+   * @maxItems 3
+   */
+  export type TranslateMm = [unknown, unknown, unknown];
   export type EstMaterialG = number;
   export type EstTimeMin = number;
   export type EstimateMethod = "volume_formula" | "slicer";
@@ -475,6 +515,7 @@ export namespace ChatMessageNS {
     files: CadFiles | null;
     input_revisions: InputRevisions;
     notes: Notes;
+    placement?: Placement | null;
     print_settings: PrintSettings | null;
     stale: Stale;
     status: Status;
@@ -502,6 +543,10 @@ export namespace ChatMessageNS {
   }
   export interface PartMeasurementRevisions {
     [k: string]: number;
+  }
+  export interface Placement {
+    rotation_quat: RotationQuat;
+    translate_mm: TranslateMm;
   }
   export interface PrintSettings {
     est_material_g: EstMaterialG;
@@ -624,6 +669,7 @@ export namespace PartNS {
    * @maxItems 3
    */
   export type CentroidMm = [unknown, unknown, unknown];
+  export type ColorSourceId = string | null;
   export type Description = string;
   export type Name = string;
   export type CaliperMm = number | null;
@@ -745,6 +791,7 @@ export namespace PartNS {
 
   export interface Part {
     centroid_mm: CentroidMm;
+    color_source_id?: ColorSourceId;
     description: Description;
     dimensions: Dimensions;
     features: Features;

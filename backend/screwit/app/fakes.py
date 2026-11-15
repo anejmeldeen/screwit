@@ -204,6 +204,7 @@ class FakePerceptionService:
         parts = {p.part_id: p for p in self._data.parts(scan_id)}
         first = parts[req.part_ids[0]]
         merged = first.model_copy(update={
+            "color_source_id": first.color_source_id or first.part_id,
             "part_id": "merged_" + "_".join(req.part_ids),
             "label": req.label or first.label,
             "measurement_revision": 1,

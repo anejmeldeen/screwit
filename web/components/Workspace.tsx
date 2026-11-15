@@ -207,7 +207,7 @@ export function Workspace({
             {expanded && <ul className="scene-tree">{(parts || []).map((part, index) =>
               <li key={part.part_id}><button aria-pressed={selectedId === part.part_id}
                 onClick={() => select(part.part_id)} onMouseEnter={() => setHoveredId(part.part_id)} onMouseLeave={() => setHoveredId(null)}>
-                <i style={{backgroundColor:partColor(index, part.part_id)}} />{part.label}{hiddenPartIds.includes(part.part_id) && <small>Hidden</small>}
+                <i style={{backgroundColor:partColor(index, part.color_source_id ?? part.part_id)}} />{part.label}{hiddenPartIds.includes(part.part_id) && <small>Hidden</small>}
               </button></li>)}</ul>}
             {!parts?.length && <p className="dock-note">{creationForm ? "No parts yet" : partsReady ? "No parts available" : "Waiting for parts…"}</p>}
             </div>
@@ -215,7 +215,7 @@ export function Workspace({
           <ResizeHandle label="Resize hierarchy height" className="object-split" orientation="horizontal"
             min={minimumHeight} max={maximumHeight} value={hierarchyHeight}
             onChange={height => setHeightAdjustment(height - naturalHeight)} />
-          <section className="scene-inspector" aria-label="Inspector">
+          <section key={selected?.part_id ?? "assembly"} className="scene-inspector" aria-label="Inspector">
             <h2 className="dock-heading">Inspector</h2>
             {!selected && <><h2>{name}</h2><p className="dock-note">{creationForm ? "Add photos or a video to build your assembly." : `${parts?.length ?? 0} components`}</p>
               {scaleWarnings(recon?.scale ?? null).map(w => <p className="dock-note" key={w.id}>{w.message}</p>)}</>}
@@ -224,7 +224,7 @@ export function Workspace({
               onToggleHidden={id => setHiddenPartIds(ids => ids.includes(id) ? ids.filter(p => p !== id) : [...ids, id])}
               onIsolate={setIsolatedId} scanId={scanId} parts={parts} partsReady={partsReady}
               selectedId={selectedId} onCombine={() => { setCombineFrom(selectedId); setCombineError(""); }} onChanged={refreshParts} />}
-            {partsReady && !!parts?.length && <details className="scene-export"><summary>Export {selected ? "component" : "assembly"}</summary>
+            {partsReady && !!parts?.length && <details name="inspector-section" className="scene-export"><summary>Export {selected ? "component" : "assembly"}</summary>
               <PartDownloads scanId={scanId} part={selected} /></details>}
           </section>
         </aside>

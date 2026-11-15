@@ -195,7 +195,8 @@ def _merge_demo(reg: Registry, before: list[Part], req: MergeRequest, scan_id: s
     import numpy as np
     import trimesh
 
-    sources = [p for p in before if p.part_id in req.part_ids]
+    by_id = {p.part_id: p for p in before}
+    sources = [by_id[pid] for pid in req.part_ids]
     meshes = []
     for source in sources:
         scene = trimesh.load(io.BytesIO(reg.storage.get_bytes(source.mesh_uri)), file_type="glb", force="scene")
@@ -208,7 +209,8 @@ def _merge_demo(reg: Registry, before: list[Part], req: MergeRequest, scan_id: s
     dest.write_bytes(mesh.export(file_type="glb"))
     center = mesh.bounds.mean(axis=0).tolist()
     raw = sources[0].model_dump()
-    raw.update(part_id=part_id, label=req.label or " + ".join(p.label for p in sources),
+    raw.update(color_source_id=sources[0].color_source_id or sources[0].part_id,
+               part_id=part_id, label=req.label or " + ".join(p.label for p in sources),
                mesh_uri=key, centroid_mm=center, measurement_revision=1, source="user_edited",
                features=[], dimensions=[],
                obb={"center": center, "extent": np.maximum(mesh.extents, 0.001).tolist(),

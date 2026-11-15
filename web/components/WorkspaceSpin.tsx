@@ -60,7 +60,7 @@ export default function WorkspaceSpin({ id }: { id: string }) {
     async function load() {
       const parts = await api.getParts(id);
       const items = parts.length ? parts.map((part, index) => ({
-        url: assetUrl(part.mesh_uri), color: partColor(index, part.part_id),
+        url: assetUrl(part.mesh_uri), color: partColor(index, part.color_source_id ?? part.part_id),
       })) : [{ url: assetUrl((await api.getReconstruction(id)).mesh_uri) }];
       if (active) setAssets(items);
     }

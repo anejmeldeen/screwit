@@ -650,6 +650,18 @@
       "title": "Centroid Mm",
       "type": "array"
     },
+    "color_source_id": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Color Source Id"
+    },
     "description": {
       "title": "Description",
       "type": "string"

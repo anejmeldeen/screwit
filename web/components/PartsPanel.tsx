@@ -107,7 +107,7 @@ function PartCard({
       <header className="flex items-center gap-3">
         <span
           className="mt-1 h-3 w-3 shrink-0 rounded-sm"
-          style={{ backgroundColor: partColor(index, part.part_id) }}
+          style={{ backgroundColor: partColor(index, part.color_source_id ?? part.part_id) }}
         />
         <span className="h-12 w-12 shrink-0 overflow-hidden rounded bg-wash">
           {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -127,7 +127,7 @@ function PartCard({
 
 
       {/* Actions */}
-      <details className="component-section"><summary>Actions</summary><div className="component-actions">
+      <details name="inspector-section" open className="component-section"><summary>Actions</summary><div className="component-actions">
         <button aria-label={`${hidden ? "Show" : "Hide"} ${part.label}`} aria-pressed={hidden}
           onClick={() => onToggleHidden(part.part_id)}
           className="rounded border border-line px-1.5 py-0.5 hover:border-accent">
@@ -161,7 +161,7 @@ function PartCard({
       </div>
 
       </details>
-      <details className="part-details"><summary>Measurements</summary>
+      <details name="inspector-section" className="part-details"><summary>Measurements</summary>
       {/* Dimensions table */}
       {dims.length ? (
         <div className="dimension-table-wrap"><table className="dimension-table">
@@ -181,9 +181,10 @@ function PartCard({
         </table></div>
       ) : null}
 
+      </details>
       {/* Caliper entry per feature measurement */}
       {editable.length ? (
-        <details className="mt-2 text-xs">
+        <details name="inspector-section" className="mt-2 text-xs">
           <summary>Caliper values (mm)</summary>
           <div className="mt-2 space-y-1">
             {editable.map((e) => (
@@ -221,7 +222,6 @@ function PartCard({
         </details>
       ) : null}
 
-      </details>
       {err ? <p className="mt-2 text-xs text-rose-800">{err}</p> : null}
     </div>
   );
@@ -292,7 +292,7 @@ export function PartsPanel({
 
   return (
     <div data-testid="parts-panel" className="space-y-3">
-      {!selectedId && <details className="assembly-history"><summary>Assembly history</summary><div className="part-history"><button disabled={busy || !history.can_undo} onClick={() => recover()}>↶ Undo combine</button>{history.can_restore_example ? <button disabled={busy} onClick={() => recover(true)}>Restore original example</button> : null}</div></details>}
+      {!selectedId && <details name="inspector-section" open className="assembly-history"><summary>Assembly history</summary><div className="part-history"><button disabled={busy || !history.can_undo} onClick={() => recover()}>↶ Undo combine</button>{history.can_restore_example ? <button disabled={busy} onClick={() => recover(true)}>Restore original example</button> : null}</div></details>}
       {editError ? <p role="alert">{editError}</p> : null}
       {parts.map((p, i) => selectedId === p.part_id && (
         <PartCard

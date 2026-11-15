@@ -36,21 +36,23 @@ it("inspects hierarchy and scene selections and returns to assembly export", asy
   }
   try {
     await act(async () => root.render(<Workspace scanId="scn_test" title="Kitchen" />));
-    const inspector = host.querySelector<HTMLElement>('[aria-label="Inspector"]')!;
+    const inspector = () => host.querySelector<HTMLElement>('[aria-label="Inspector"]')!;
     await click("Sink basin");
-    expect(inspector.querySelector('[data-testid="part-row-p1"]')).toBeTruthy();
+    expect(inspector().querySelector('[data-testid="part-row-p1"]')).toBeTruthy();
     const hierarchy = host.querySelector('[aria-label="Hierarchy"]')!;
     const divider = hierarchy.nextElementSibling!;
     expect(divider.getAttribute("aria-label")).toBe("Resize hierarchy height");
-    expect(divider.nextElementSibling).toBe(inspector);
+    expect(divider.nextElementSibling).toBe(inspector());
     const assistant = host.querySelector<HTMLElement>('[aria-label="Assistant"]')!;
     expect(assistant.hidden).toBe(false);
     await click("Pick faucet in scene");
     expect(host.querySelector("[data-camera-focus]")?.getAttribute("data-camera-focus")).toBe("");
-    expect(inspector.hidden).toBe(false);
-    expect(inspector.querySelector('[data-testid="part-row-p2"]')).toBeTruthy();
-    expect(inspector.querySelector('[data-testid="part-row-p1"]')).toBeNull();
-    expect(inspector.querySelector("details[open]")).toBeNull();
+    expect(inspector().hidden).toBe(false);
+    expect(inspector().querySelector('[data-testid="part-row-p2"]')).toBeTruthy();
+    expect(inspector().querySelector('[data-testid="part-row-p1"]')).toBeNull();
+    expect(inspector().querySelectorAll("details[open]")).toHaveLength(1);
+    expect(inspector().querySelector("details[open] summary")?.textContent).toBe("Actions");
+    expect(inspector().querySelector("details:not([name=inspector-section])")).toBeNull();
     await click("Combine");
     await click("Sink basin");
     expect(api.mergeParts).toHaveBeenLastCalledWith("scn_test", { part_ids: ["p2", "p1"] });
@@ -58,7 +60,7 @@ it("inspects hierarchy and scene selections and returns to assembly export", asy
     await click("Pick faucet in scene");
     expect(api.mergeParts).toHaveBeenLastCalledWith("scn_test", { part_ids: ["p1", "p2"] });
     await click("Kitchen");
-    expect(inspector.textContent).toContain("Export assembly");
+    expect(inspector().textContent).toContain("Export assembly");
   } finally {
     await act(async () => root.unmount());
     host.remove();

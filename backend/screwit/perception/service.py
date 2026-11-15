@@ -443,7 +443,9 @@ class PerceptionImpl(PerceptionService):
         self._write_merged_mesh(scan_id, new_id, sources, storage, glb_key, png_key)
         merged = self._build_part(scan_id, new_id, label, label_info, verts, recon_rev, glb_key,
                                   png_key)
-        merged = merged.model_copy(update={"label": label})
+        merged = merged.model_copy(update={
+            "label": label, "color_source_id": sources[0].color_source_id or sources[0].part_id,
+        })
 
         remaining = [p for p in parts if p.part_id not in req.part_ids] + [merged]
         self._save_parts(scan_id, remaining, storage)

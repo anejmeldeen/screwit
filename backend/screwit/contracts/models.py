@@ -325,6 +325,7 @@ class Guess(Contract):
 
 class Part(Contract):
     part_id: str
+    color_source_id: str | None = None
     reconstruction_revision: int = Field(ge=0)
     measurement_revision: int = Field(ge=1)
     label: str

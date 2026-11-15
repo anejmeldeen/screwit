@@ -34,3 +34,12 @@ def test_sink_combine_undo_and_stl_preserve_geometry(client):
     restored = client.post(base + "/parts/undo")
     assert restored.status_code == 200
     assert len(restored.json()) == 5
+
+
+def test_nested_combine_keeps_first_selected_color(client):
+    base = "/api/scans/scn_sink/parts"
+    first = client.post(base + "/merge", json={"part_ids": ["p4", "p1"]}).json()
+    assert first["color_source_id"] == "p4"
+    second = client.post(base + "/merge", json={"part_ids": [first["part_id"], "p2"]}).json()
+    saved = next(p for p in client.get(base).json() if p["part_id"] == second["part_id"])
+    assert saved["color_source_id"] == "p4"
