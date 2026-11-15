@@ -111,6 +111,10 @@ class _ReconGaussianIO:
         return gauss_mod.write_spz(cloud, Path(path))
 
 
+# Views for a batched geometry run when the board is visible (see _board_batch_views).
+BOARD_BATCH_VIEWS = int(os.environ.get("SCREWIT_BOARD_VIEWS", "24") or 24)
+
+
 class ReconPipelineImpl:
     """Concrete ``ReconPipeline``. The geometry model is injected so tests use the CPU fake."""
 
@@ -135,7 +139,8 @@ class ReconPipelineImpl:
             self._geometry_model = geom_mod.DepthAnything3Adapter()
         return self._geometry_model
 
-    def _geometry_with_cache(self, scan, storage, frames_dir, model_names, timer):
+    def _geometry_with_cache(self, scan, storage, frames_dir, model_names, timer, *, release=True,
+                             cache_tag: str = ""):
         """Run geometry, reusing a cached GeometryResult when the same video+settings were solved
         before. The DA3 call is the pipeline's slowest stage; caching it makes a re-run of the same
         clip near-instant for everything downstream. Cache key = video bytes + view cap + device +
@@ -155,7 +160,7 @@ class ReconPipelineImpl:
                 video_bytes = storage.get_bytes(scan.input.uri)
                 key = geocache.video_key(
                     video_bytes,
-                    model_id=getattr(model, "model_id", type(model).__name__),
+                    model_id=getattr(model, "model_id", type(model).__name__) + cache_tag,
                     view_cap=len(model_names), device=device,
                     infer_gs=bool(getattr(model, "infer_gs", True)),
                 )
@@ -174,10 +179,11 @@ class ReconPipelineImpl:
                 result = model.run(frames_dir / "model", model_names)
             finally:
                 # Free the weights and activations (about 26 GB on a host-memory device) right
-                # away; the result is cached, and a resident copy doubled peak memory.
-                release = getattr(model, "release", None)
-                if callable(release):
-                    release()
+                # away; the result is cached, and a resident copy doubled peak memory. A batched run
+                # keeps the weights until its last batch.
+                free = getattr(model, "release", None)
+                if release and callable(free):
+                    free()
         if key is not None:
             geocache.store(key, result)
         return result
@@ -209,13 +215,20 @@ class ReconPipelineImpl:
             max_views = getattr(self._geometry(), "max_views", None)
             model_names = geom_mod.cap_views(frame_names,
                                              limit=max_views() if callable(max_views) else None)
-            result = self._geometry_with_cache(scan, storage, frames_dir, model_names, timer)
+            board_seen = self._board_frames(frames_dir, index)
+            batch_names = self._board_batch_views(frame_names, model_names, board_seen)
+            if batch_names:
+                result = self._geometry_batched(scan, storage, frames_dir, batch_names,
+                                                len(model_names), timer)
+            else:
+                result = self._geometry_with_cache(scan, storage, frames_dir, model_names, timer)
             self._write_geometry_raw(scan_id, storage, result, timer)
             timer.done("geometry")
 
             # ---- scale ----
             timer.start("scale")
-            scale_res = self._stage_scale(storage, frames_dir, index, result)
+            result, scale_res = self._stage_scale(storage, frames_dir, index, result,
+                                                  batched=bool(batch_names))
             # Align the gaussians to the depth frame at runtime (the SPEC scale_factor quirk is not
             # assumed; see cpu-verify/FINDINGS.md). Then apply the ONE scan-frame similarity (from
             # the board) to the aligned gaussians, the cameras and the depth together. Depth is in
@@ -407,7 +420,67 @@ class ReconPipelineImpl:
 
     # -- stage scale --------------------------------------------------------
 
-    def _stage_scale(self, storage: Storage, frames_dir: Path, index, result):
+    def _board_frames(self, frames_dir: Path, index) -> dict[str, int]:
+        """Board corners found per keyframe (full resolution), by frame name. Cheap next to the
+        geometry model, and it decides whether the geometry can run in batches."""
+        from PIL import Image
+
+        seen: dict[str, int] = {}
+        for entry in index.frames:
+            try:
+                img = np.asarray(Image.open(frames_dir / entry.frame).convert("RGB"))
+            except OSError:
+                continue
+            ids, _ = scale_mod.detect_board_corners(img)
+            seen[entry.frame] = 0 if ids is None else len(ids)
+        return seen
+
+    @staticmethod
+    def _board_batch_views(frame_names: list[str], model_names: list[str],
+                           board_seen: dict[str, int]) -> list[str]:
+        """Views for a batched geometry run, or [] to run the model once as usual.
+
+        One model call holds only ``len(model_names)`` views on this machine (8 on a 36 GB Mac), so a
+        long orbit gets thin coverage and the model's poses for views far apart disagree. When the
+        board is clearly visible in many keyframes, every view can be posed from the board on its
+        own (scale.repose_from_board), so the views no longer have to come from one call: pick up to
+        BOARD_BATCH_VIEWS board views spread over the clip and run them in batches."""
+        cap = len(model_names)
+        want = min(BOARD_BATCH_VIEWS, len(frame_names))
+        if os.environ.get("SCREWIT_BOARD_BATCHES", "1").strip().lower() in ("0", "false", "off", "no") \
+                or cap >= want:
+            return []
+        good = [n for n in frame_names if board_seen.get(n, 0) >= scale_mod.MIN_PNP_CORNERS]
+        if len(good) < 2 * cap:
+            return []
+        idx = np.linspace(0, len(good) - 1, min(want, len(good))).round().astype(int)
+        return list(dict.fromkeys(good[i] for i in idx))
+
+    def _geometry_batched(self, scan, storage, frames_dir, names: list[str], batch: int, timer):
+        """Run the geometry model on ``names`` in batches of ``batch`` neighbouring views and stack
+        the results. The batches' poses are in unrelated frames, so the scale stage poses every view
+        from the board (scale.repose_from_board)."""
+        import dataclasses
+
+        chunks = [names[i:i + batch] for i in range(0, len(names), batch)]
+        if len(chunks[-1]) < 2 and len(chunks) > 1:      # the model needs two views per call
+            chunks[-2] += chunks.pop()
+        parts = []
+        for k, chunk in enumerate(chunks):
+            parts.append(self._geometry_with_cache(
+                scan, storage, frames_dir, chunk, timer, release=k == len(chunks) - 1,
+                cache_tag=f"#batch:{','.join(chunk)}"))
+        first = parts[0]
+        return dataclasses.replace(
+            first, frames=[f for r in parts for f in r.frames],
+            intrinsics=np.concatenate([r.intrinsics for r in parts]),
+            extrinsics=np.concatenate([r.extrinsics for r in parts]),
+            depth=[d for r in parts for d in r.depth], confidence=[c for r in parts for c in r.confidence])
+
+    def _stage_scale(self, storage: Storage, frames_dir: Path, index, result, *, batched: bool = False):
+        """Returns (result, ScaleResult). The result is the geometry input unchanged, unless the
+        multi-view board fit failed and the views were re-posed from the board one by one
+        (scale.repose_from_board), in which case it covers the re-posed views only."""
         from PIL import Image
 
         by_name = {e.frame: e for e in index.frames}
@@ -427,15 +500,23 @@ class ReconPipelineImpl:
         total_corner_obs = sum(len(v) for v in per_view.values())
         if total_corner_obs >= 8 and len(per_view) >= 2:
             try:
-                return scale_mod.scale_from_board(result.intrinsics, result.extrinsics,
-                                                  per_view, grid_maps)
+                fit = scale_mod.scale_from_board(result.intrinsics, result.extrinsics,
+                                                 per_view, grid_maps)
             except ValueError:
-                pass
+                fit = None
+            if batched or fit is None or scale_mod.board_fit_failed(fit):
+                # The model's poses disagree across views (or the board fit failed outright): pose
+                # each view from the board instead. See scale.repose_from_board.
+                reposed = scale_mod.repose_from_board(result, per_view, grid_maps)
+                if reposed is not None:
+                    return reposed
+            if fit is not None and (fit.info.residual_mm or 0.0) <= scale_mod.BOARD_FIT_REJECT_MM:
+                return result, fit
         # Learned fallback. DA3-nested reports a metric scale_factor (depth in metres) -> convert
         # metres to mm; a non-metric model has scale_factor None -> apply its learned_scale directly.
         learned = result.learned_scale if result.learned_scale is not None else 1.0
         is_metric = result.scale_factor is not None
-        return scale_mod.scale_from_learned(learned, metric=is_metric)
+        return result, scale_mod.scale_from_learned(learned, metric=is_metric)
 
     # -- frame set for perception ------------------------------------------
 

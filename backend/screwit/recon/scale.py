@@ -341,3 +341,106 @@ def rescale_factor_from_two_points(point_a_mm, point_b_mm, known_length_mm: floa
     if current <= 1e-9:
         raise ValueError("the two points coincide")
     return known_length_mm / current
+
+
+# --------------------------------------------------------------------------- per-view board poses
+
+MIN_PNP_CORNERS = 6        # a view needs this many board corners to be posed from the board alone
+MAX_PNP_REPROJ_PX = 6.0    # full-res RMS reprojection error above which a view's board pose is dropped
+BOARD_FIT_REJECT_MM = 10.0  # a multi-view board fit this far off is never used as the scale
+
+
+def board_fit_failed(res: ScaleResult) -> bool:
+    """The multi-view board fit is not usable as the scan frame: residual or tilt over the flag."""
+    return (res.info.residual_mm or 0.0) > RESIDUAL_FLAG_MM or \
+        (res.info.board_tilt_deg or 0.0) > BOARD_TILT_FLAG_DEG
+
+
+def repose_from_board(result, per_view_corners: dict[int, dict[int, np.ndarray]],
+                      grid_mappings: dict[int, dict]):
+    """Pose every view that sees the board from the board itself, for when the model's own poses do
+    not agree across views.
+
+    On a real phone clip (8 views around black headphones on a plain floor) the same board corner,
+    located from each view's depth map with the model's poses, landed up to about 0.75 m apart, so
+    the multi-view board fit came out 48 mm off and 4x too small and the fused mesh was torn.
+    Within any single view the model's depth is fine: the board corners fit their printed layout to
+    1.4 mm. So each view gets its own camera pose from PnP on its board corners (full-resolution
+    pixels; already in the scan frame, millimetres), and its depth is rescaled so the corners sit at
+    the PnP depth. Views with too few corners or a poor PnP fit are left out.
+
+    Returns (GeometryResult, ScaleResult) for the kept views, with the result's extrinsics and depth
+    in metres in the scan frame and a ScaleResult of r = I, t = 0, s = 1000 (metres to millimetres),
+    so the rest of the pipeline runs unchanged; or None when fewer than two views can be posed.
+    """
+    import dataclasses
+
+    import cv2
+
+    scan_pts = board_scan_points()
+    kept, extr, depth, corner_err = [], [], [], []
+    seen: dict[int, int] = {}
+    for vi, corners in sorted(per_view_corners.items()):
+        for cid in corners:
+            seen[cid] = seen.get(cid, 0) + 1
+        if len(corners) < MIN_PNP_CORNERS:
+            continue
+        ids = sorted(corners)
+        obj = scan_pts[ids].astype(np.float64)
+        img = np.array([corners[c] for c in ids], dtype=np.float64)
+        m = grid_mappings[vi]
+        sx, sy = float(m["scale_x"]), float(m["scale_y"])
+        K = np.asarray(result.intrinsics[vi], dtype=np.float64)
+        k_full = np.array([[K[0, 0] / sx, 0, (K[0, 2] + 0.5) / sx - 0.5],
+                           [0, K[1, 1] / sy, (K[1, 2] + 0.5) / sy - 0.5], [0, 0, 1.0]])
+        ok, rvec, tvec = cv2.solvePnP(obj, img, k_full, None, flags=cv2.SOLVEPNP_IPPE)
+        if not ok:
+            continue
+        rvec, tvec = cv2.solvePnPRefineLM(obj, img, k_full, None, rvec, tvec)
+        proj, _ = cv2.projectPoints(obj, rvec, tvec, k_full, None)
+        if float(np.sqrt(np.mean(np.sum((proj.reshape(-1, 2) - img) ** 2, axis=1)))) > MAX_PNP_REPROJ_PX:
+            continue
+        r_wc, _ = cv2.Rodrigues(rvec)
+        t_wc = tvec.reshape(3)
+        if (-r_wc.T @ t_wc)[2] <= 0:      # the camera must be above the board (no mirrored fit)
+            continue
+        cam_pts = obj @ r_wc.T + t_wc       # corners in this camera's frame, mm
+        d = np.asarray(result.depth[vi], dtype=np.float64)
+        ratios = []
+        for (u, v), z_mm in zip(img, cam_pts[:, 2], strict=True):
+            x, y = int(round(u * sx)), int(round(v * sy))
+            if 0 <= y < d.shape[0] and 0 <= x < d.shape[1] and d[y, x] > 0:
+                ratios.append(z_mm / d[y, x])
+        if len(ratios) < 4:
+            continue
+        mm_per_unit = float(np.median(ratios))
+        # How far the corners land from their printed positions with this view's depth and pose.
+        backproj = []
+        for (u, v), cid in zip(img, ids, strict=True):
+            x, y = u * sx, v * sy
+            xi, yi = int(round(x)), int(round(y))
+            if 0 <= yi < d.shape[0] and 0 <= xi < d.shape[1] and d[yi, xi] > 0:
+                ray = np.linalg.inv(K) @ np.array([x, y, 1.0])
+                backproj.append(np.linalg.norm(r_wc.T @ (ray * d[yi, xi] * mm_per_unit - t_wc) - scan_pts[cid]))
+        corner_err.extend(backproj)
+        e = np.eye(4)
+        e[:3, :3], e[:3, 3] = r_wc, t_wc / 1000.0
+        kept.append(vi)
+        extr.append(e)
+        depth.append((d * mm_per_unit / 1000.0).astype(np.float32))
+    if len(kept) < 2:
+        return None
+    new = dataclasses.replace(
+        result, frames=[result.frames[i] for i in kept],
+        intrinsics=np.asarray(result.intrinsics)[kept], extrinsics=np.asarray(extr),
+        depth=depth, confidence=[result.confidence[i] for i in kept])
+    rmse = float(np.sqrt(np.mean(np.square(corner_err)))) if corner_err else 0.0
+    corners_in_5 = sum(1 for c in seen.values() if c >= 5)
+    flags = [f"board_poses_per_view_{len(kept)}_of_{len(result.frames)}_views"]
+    if rmse > RESIDUAL_FLAG_MM:
+        flags.append(f"scale_residual_{rmse:.2f}mm_above_{RESIDUAL_FLAG_MM}mm")
+    info = ScaleInfo(method="aruco", board=board_mod.BOARD_NAME, corner_views=corners_in_5,
+                     residual_mm=round(rmse, 3), board_tilt_deg=0.0)
+    res = ScaleResult(r=np.eye(3), t=np.zeros(3), s=1000.0, info=info, frame_origin="board",
+                      flags=flags, support_plane=(np.array([0, 0, 1.0]), 0.0))
+    return new, res
