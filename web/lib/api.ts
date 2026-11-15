@@ -87,6 +87,10 @@ export const api = {
   }),
   logout: () => request<void>("/auth/logout", { method: "POST" }),
   builds: () => request<BuildSummary[]>("/builds"),
+  renameBuild: (id: string, title: string) => request<void>(`/builds/${encodeURIComponent(id)}`, {
+    method: "PATCH", body: JSON.stringify({ title }),
+  }),
+  deleteBuild: (id: string) => request<void>(`/builds/${encodeURIComponent(id)}`, { method: "DELETE" }),
   // Landing / gallery
   demoScans: () => request<DemoScan[]>("/demo-scans"),
 

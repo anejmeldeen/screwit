@@ -37,6 +37,11 @@ class BuildOwnerRow(SQLModel, table=True):
     username: str = Field(index=True)
 
 
+class DeletedBuildRow(SQLModel, table=True):
+    __tablename__ = "deleted_builds"
+    scan_id: str = Field(primary_key=True)
+
+
 class PhotoUploadRow(SQLModel, table=True):
     __tablename__ = "photo_uploads"
     scan_id: str = Field(primary_key=True)

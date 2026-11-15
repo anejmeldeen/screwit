@@ -172,3 +172,19 @@ def test_cad_ids_cannot_overwrite_another_build(client):
     store.save_cad_job(another_request, another_result)
     assert store.get_cad_job("scn_knob", request.cad_id)[1].stale == result.stale
     assert store.get_cad_job("another_scan", request.cad_id)[1].stale is True
+
+
+def test_workspace_actions_are_owned_and_persist(client):
+    alice = other_browser(client)
+    register(alice)
+    path = "/api/builds/scn_trap"
+    assert alice.patch(path, json={"title": "Changed"}).status_code == 404
+    assert alice.delete(path).status_code == 404
+    assert client.patch(path, json={"title": " "}).status_code == 422
+    assert client.patch(path, json={"title": "  Drain assembly  "}).status_code == 204
+    builds = client.get("/api/builds").json()
+    assert next(b["title"] for b in builds if b["scan_id"] == "scn_trap") == "Drain assembly"
+    assert client.delete(path).status_code == 204
+    initialize_accounts(client.app.state.settings.fixtures_dir)
+    assert client.get("/api/scans/scn_trap").status_code == 404
+    assert "scn_trap" not in {b["scan_id"] for b in client.get("/api/builds").json()}

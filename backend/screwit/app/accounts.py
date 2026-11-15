@@ -13,7 +13,7 @@ from fastapi import Depends, HTTPException, Request, Response
 from pydantic import BaseModel, Field, field_validator
 from sqlmodel import select
 
-from screwit.app.db import BuildOwnerRow, ScanRow, SessionRow, UserRow, db_session
+from screwit.app.db import BuildOwnerRow, DeletedBuildRow, ScanRow, SessionRow, UserRow, db_session
 
 COOKIE_NAME = "screwit_session"
 SESSION_SECONDS = 30 * 24 * 60 * 60
@@ -50,7 +50,8 @@ def initialize_accounts(fixtures_dir: Path) -> None:
             session.add(UserRow(username="admin", password_hash=hash_password("password123")))
         scan_ids = {row.scan_id for row in session.exec(select(ScanRow)).all()}
         scan_ids.update(path.parent.name for path in (fixtures_dir / "scans").glob("*/scan.json"))
-        for scan_id in scan_ids:
+        deleted_ids = set(session.exec(select(DeletedBuildRow.scan_id)).all())
+        for scan_id in scan_ids - deleted_ids:
             if session.get(BuildOwnerRow, scan_id) is None:
                 session.add(BuildOwnerRow(scan_id=scan_id, username="admin"))
         session.commit()

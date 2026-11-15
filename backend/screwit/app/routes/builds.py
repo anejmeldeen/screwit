@@ -2,13 +2,14 @@
 
 import json
 from datetime import UTC, datetime
+from typing import Annotated
 
-from fastapi import APIRouter
-from pydantic import BaseModel
+from fastapi import APIRouter, HTTPException, Response
+from pydantic import BaseModel, StringConstraints
 from sqlmodel import select
 
 from screwit.app.accounts import UserDep
-from screwit.app.db import BuildActivityRow, BuildOwnerRow, BuildTitleRow, db_session
+from screwit.app.db import BuildActivityRow, BuildOwnerRow, BuildTitleRow, DeletedBuildRow, db_session
 from screwit.app.deps import RegistryDep
 from screwit.app.store import ScanStore
 from screwit.contracts import DemoScan
@@ -60,3 +61,31 @@ def list_builds(reg: RegistryDep, user: UserDep) -> list[BuildSummary]:
             updated_at=activity.get(scan.scan_id, scan.created_at), input_type=scan.input.type,
         ))
     return sorted(builds, key=lambda build: build.updated_at, reverse=True)
+
+
+class RenameBuildRequest(BaseModel):
+    title: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=120)]
+
+
+@router.patch("/builds/{scan_id}", status_code=204)
+def rename_build(scan_id: str, body: RenameBuildRequest, user: UserDep) -> Response:
+    with db_session() as session:
+        owner = session.get(BuildOwnerRow, scan_id)
+        if owner is None or owner.username != user.username:
+            raise HTTPException(404, "Build not found.")
+        session.merge(BuildTitleRow(scan_id=scan_id, title=body.title))
+        session.merge(BuildActivityRow(scan_id=scan_id, updated_at=datetime.now(UTC)))
+        session.commit()
+    return Response(status_code=204)
+
+
+@router.delete("/builds/{scan_id}", status_code=204)
+def delete_build(scan_id: str, user: UserDep) -> Response:
+    with db_session() as session:
+        owner = session.get(BuildOwnerRow, scan_id)
+        if owner is None or owner.username != user.username:
+            raise HTTPException(404, "Build not found.")
+        session.delete(owner)
+        session.add(DeletedBuildRow(scan_id=scan_id))
+        session.commit()
+    return Response(status_code=204)
