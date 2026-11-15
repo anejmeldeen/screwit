@@ -446,7 +446,22 @@ def _group_shared_boundary(p: Patches, owner: list[int]) -> dict:
 
 
 def fold_connectors(p: Patches, owner: list[int], *, min_groups: int = 2) -> list[int]:
+    """``fold_connectors_cut`` without kinds: every connector folds whole, the patches stay as they
+    are, and only the new patch->group map is returned."""
+    return fold_connectors_cut(p, owner, min_groups=min_groups)[1]
+
+
+def fold_connectors_cut(p: Patches, owner: list[int], *, min_groups: int = 2,
+                        kinds: list[str] | None = None) -> tuple[Patches, list[int], list[int]]:
     """Fold small connector groups into the neighbour they are attached to, generically.
+
+    ``kinds`` (optional, the kind key of each group in ``owner``) says which groups are copies of
+    the same part (two ear cups, four legs). A connector that borders two or more copies of its
+    host's kind is not given whole to one of them: it sits between the copies (the strip where two
+    ear cups meet went whole to the cup with the slightly longer seam, which then reached into the
+    other cup), so its faces are cut between those copies, each face going to the copy nearest to
+    it. Returns (patches, owner, parent): the patches (re-cut when a connector was split), the new
+    patch->group map, and for every patch the group it had in the input ``owner``.
 
     A group is a connector when it is both small (under ``CONNECTOR_MAX_AREA`` of the surface) and
     substantially buried against other parts (``_group_buried_fraction`` over ``CONNECTOR_MIN_BURIED``).
@@ -459,11 +474,16 @@ def fold_connectors(p: Patches, owner: list[int], *, min_groups: int = 2) -> lis
     largest by area (matching ``merge_hierarchy``/``_by_area``). Pure geometry: no label or category
     is consulted, so it treats a hinge, a bracket and any other wedged connector the same way.
     """
+    from scipy.spatial import cKDTree
+
     owner = list(owner)
+    parent = list(owner)
+    plabels, n = p.labels.copy(), p.n
     area = p.work.area_faces
     total = float(area.sum()) or 1.0
     diag = float(np.linalg.norm(np.ptp(p.work.vertices, axis=0))) or 1.0
     for _ in range(max(1, len(set(owner)))):
+        p = Patches(p.work, plabels, n)
         groups = sorted(set(owner))
         if len(groups) <= min_groups:
             break
@@ -492,12 +512,30 @@ def fold_connectors(p: Patches, owner: list[int], *, min_groups: int = 2) -> lis
         if not hosts:
             break
         host = max(hosts, key=hosts.get)
-        owner = [host if o == g else o for o in owner]
+        copies = ([h for h in hosts if kinds[h] == kinds[host]]
+                  if kinds is not None and host < len(kinds) else [host])
+        if len(copies) < 2:
+            owner = [host if o == g else o for o in owner]
+            continue
+        # Between copies of one kind: cut it, each face to the nearest copy.
+        faces = np.flatnonzero(gface == g)
+        near_faces = np.flatnonzero(np.isin(gface, copies))
+        _, nn = cKDTree(p.work.triangles_center[near_faces]).query(p.work.triangles_center[faces])
+        nearest = gface[near_faces][nn]
+        for h in copies:
+            for q in np.unique(plabels[faces[nearest == h]]):
+                mine = faces[(nearest == h) & (plabels[faces] == q)]
+                plabels[mine] = n
+                owner.append(h)
+                parent.append(parent[q])
+                n += 1
+        owner = [copies[0] if o == g else o for o in owner]   # the emptied patches
+    p = Patches(p.work, plabels, n)
     # Relabel contiguous, largest group first (group 0), like merge_hierarchy's partitions.
     gface = _group_face_labels(p, owner)
     live = sorted(set(owner), key=lambda g: -float(area[gface == g].sum()))
     remap = {g: i for i, g in enumerate(live)}
-    return [remap[o] for o in owner]
+    return p, [remap[o] for o in owner], parent
 
 
 # ------------------------------------------------------------------------------- rendering

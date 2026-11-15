@@ -281,11 +281,15 @@ class PerceptionImpl(PerceptionService):
         # between two panels) into the neighbour they are attached to. Purely geometric, no label
         # or category (part_atoms.fold_connectors); carry each surviving group's label from the old
         # group that dominates it so the VLM's naming is preserved.
-        folded = pa.fold_connectors(patches, owner)
-        if folded != list(owner):
+        # A connector between two copies of one kind (the strip where two ear cups meet) is cut
+        # between those copies instead of going whole to one (kinds come from the VLM grouping).
+        group_kinds = ([(replies[g].label or "").strip().lower() for g in range(max(owner) + 1)]
+                       if replies and all(g in replies for g in range(max(owner) + 1)) else None)
+        cut, folded, parent = pa.fold_connectors_cut(patches, owner, kinds=group_kinds)
+        if folded != list(owner) or cut.n != patches.n:
             if replies:
-                replies = self._remap_replies(patches, owner, folded, replies)
-            owner = folded
+                replies = self._remap_replies(cut, parent, folded, replies)
+            patches, owner = cut, folded
         # What the segmentation looked like, for debugging a result.
         storage.put_bytes(f"scans/{scan_id}/renders/segmentation.png",
                           pa.render_partition(patches, owner), "image/png")
