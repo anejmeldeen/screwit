@@ -15,6 +15,11 @@
 .login-switch { margin-top: 20px; font-size: 13px; }
 .login-form .login-error { color: #8a2420; margin-top: 16px; }
 .account-loading { min-height: 100dvh; display: flex; gap: 16px; align-items: center; justify-content: center; }
+/* Loading screens on the editor's routes use the editor's dark canvas, so refreshing a workspace never
+   flashes the yellow page background before the editor appears. */
+.account-loading.is-editor { background: #181918; color: #bab9a9; color-scheme: dark; }
+.account-loading.is-editor a { color: #f1d45d; }
+html:has(.account-loading.is-editor) { background: #181918; }
 .account-controls { display: flex; gap: 14px; align-items: center; font-size: 13px; flex-wrap: wrap; }
 .account-name { max-width: 150px; overflow: hidden; text-overflow: ellipsis; }
 .account-controls button { padding: 8px 12px; border: 1px solid currentColor; border-radius: 5px; }
@@ -439,21 +444,60 @@ button:disabled { cursor: not-allowed; }
 .workspace-titlebar { display:flex; align-items:center; justify-content:space-between; gap:16px; flex-shrink:0; padding:12px 20px; border-bottom:1px solid var(--editor-line); background:var(--editor-panel); }
 .workspace-titlebar h1 { margin:0; font-size:16px; font-weight:650; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .workspace-titlebar>span { color:#bab9a9; font-size:11px; flex-shrink:0; }
-.workspace-setup { height:100%; overflow:auto; padding:28px clamp(18px,4vw,52px); scrollbar-color:#77705a #181918; }
-.workspace-upload-form { max-width:760px; margin:0 auto; padding-bottom:24px; }
-.workspace-upload-form>h2 { font-size:clamp(24px,3vw,36px); font-weight:650; letter-spacing:-.04em; }
-.workspace-name-field { display:flex; flex-direction:column; gap:8px; margin-top:26px; font-size:14px; font-weight:600; }
+.workspace-setup { height:100%; overflow:auto; padding:20px clamp(18px,4vw,52px); scrollbar-color:#77705a #181918; }
+/* New workspace: one compact column that fits a laptop screen without scrolling. The form fills the
+   setup panel so the tips can sit at its bottom; a form taller than the panel scrolls inside it. */
+.workspace-upload-form { display:flex; flex-direction:column; min-height:100%; max-width:760px; margin:0 auto; container:upload-form / inline-size; }
+.workspace-upload-form>h2 { font-size:clamp(20px,2.1vw,26px); font-weight:700; line-height:1.25; letter-spacing:-.03em; }
+.workspace-name-field { display:flex; flex-direction:column; gap:6px; margin-top:14px; font-size:13px; font-weight:600; }
 .workspace-name-field input { width:100%; font-size:16px; min-height:44px; }
-.workspace-upload-form .upload-drop { margin-top:20px; padding:28px 16px; background:#272821; border-color:#686650; }
+.workspace-upload-form .upload-drop { margin-top:12px; padding:16px; background:#272821; border-color:#686650; }
 .workspace-upload-form .upload-drop:has(input:disabled) { opacity:.8; }
-.workspace-upload-form .upload-drop>p:first-child { font-size:16px; }
+.workspace-upload-form .upload-drop>.upload-drop-hint { font-size:15px; letter-spacing:normal; color:#eee9d6; }
 .workspace-upload-form .upload-drop.bg-sky-100 { background:#393623; border-color:var(--editor-yellow); }
-.workspace-file-summary { display:flex; align-items:center; justify-content:space-between; gap:12px; margin-top:16px; font-size:13px; }
+/* Record with camera, Choose a file and Use webcam share one outlined style and one width, so the yellow
+   Create workspace stays the single primary action. Two are labels and one is a button, so the selectors
+   carry .scene-layout to outrank the editor's own button rule (.workbench .scene-layout button). */
+.upload-actions { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,170px),1fr)); gap:10px; max-width:620px; margin:12px auto 0; }
+.workbench .scene-layout .workspace-upload-form .upload-choice { display:flex; align-items:center; justify-content:center; min-height:44px; margin:0; padding:0 16px; border:1px solid #686650; border-radius:6px; background:transparent; color:#eee9d6; font-size:15px; font-weight:650; line-height:1.2; text-align:center; cursor:pointer; transition:background .15s,border-color .15s; }
+.workbench .scene-layout .workspace-upload-form .upload-choice:hover:not(:disabled,:has(input:disabled)) { background:#ffffff0d; border-color:#8b8869; }
+.workbench .scene-layout .workspace-upload-form .upload-choice:is(:disabled,:has(input:disabled)) { opacity:.4; cursor:not-allowed; }
+.upload-choice:has(input:focus-visible) { outline:2px solid var(--editor-yellow); outline-offset:3px; }
+.upload-webcam { display:contents; }
+.upload-webcam.is-recording { display:grid; grid-column:1 / -1; justify-items:center; gap:10px; }
+.upload-webcam video { width:100%; max-width:320px; max-height:200px; border-radius:6px; background:#000; }
+.workbench .scene-layout .workspace-upload-form .upload-webcam-stop { min-height:44px; padding:0 18px; border:1px solid #e5484d; border-radius:6px; background:#e5484d; color:#fff; font-size:15px; font-weight:650; }
+.workbench .scene-layout .workspace-upload-form .upload-webcam-stop:hover { background:#f2555a; }
+/* The phone path ("Record with camera" opens the camera) covers the webcam's job on touch devices, and
+   there is nothing to drag, so the drop area is just a frame around the buttons. */
+@media (hover:none) and (pointer:coarse) { .upload-webcam:not(.is-recording) { display:none; } .upload-drop-hint { display:none; } .upload-actions { margin-top:0; } .workspace-upload-form .upload-drop { padding:12px; } }
+.workspace-file-summary { display:flex; align-items:center; justify-content:space-between; gap:12px; margin-top:10px; font-size:13px; }
 .workspace-file-summary p { overflow-wrap:anywhere; }
-.workspace-file-summary span,.workspace-setup-note { color:#bab9a9; }
-.workbench .workspace-generate { width:100%; margin-top:20px; padding:12px 18px; }
-.workspace-setup-note { font-size:12px; line-height:1.6; margin-top:10px; }
-@media(max-width:759px) { .workbench:has(.workspace-setup) .workbench-grid { grid-template-rows:minmax(680px,80vh) 12px var(--parts-height,280px) 12px var(--chat-height,480px); } .workspace-file-summary { align-items:flex-start; flex-direction:column; } }
+.workspace-file-summary span { color:#bab9a9; }
+.workbench .scene-layout .workspace-upload-form .workspace-generate { display:flex; align-items:center; justify-content:center; width:100%; min-height:56px; margin-top:14px; padding:12px 20px; border:1px solid transparent; border-radius:8px; background:var(--editor-yellow); color:#181918; font-size:18px; font-weight:700; line-height:1.2; letter-spacing:-.01em; }
+.workbench .scene-layout .workspace-upload-form .workspace-generate:hover:not(:disabled) { background:#ffe681; }
+/* Scale board and capture tips: two short cards side by side at the bottom of the panel (at least 18px
+   below the form), stacked when the column is narrow. */
+.workspace-tips { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; margin-top:auto; padding-top:18px; }
+.workspace-tips>div { padding:14px 16px; border:1px solid var(--editor-line); border-radius:8px; background:var(--editor-panel); font-size:13px; line-height:1.45; }
+.workspace-tips h3 { margin-bottom:6px; font-size:14px; font-weight:700; }
+.workspace-tips :is(ol,ul) { display:grid; gap:4px; padding-left:18px; }
+.workspace-tips ol { list-style:decimal; }
+.workspace-tips ul { list-style:disc; }
+.workspace-tips a { display:inline-flex; margin-top:10px; padding:6px 12px; border:1px solid #686650; border-radius:6px; font-size:13px; font-weight:600; }
+.workspace-tips a:hover { border-color:#8b8869; background:#ffffff0d; }
+.workspace-tips-note { margin-top:8px; color:#bab9a9; font-size:12px; }
+@container upload-form (max-width:560px) { .workspace-tips { grid-template-columns:1fr; } }
+/* Phones: while a workspace is being set up the hierarchy, inspector and assistant are empty, so the
+   form gets the screen to itself, kept tight enough to fit a 390x844 screen. */
+@media(max-width:759px) {
+ .scene-layout:has(.workspace-setup)>:not(.workbench-viewer) { display:none; }
+ .workspace-setup { padding:14px 16px; }
+ .workspace-upload-form>h2 { font-size:19px; }
+ .workspace-tips { gap:10px; padding-top:14px; }
+ .workspace-tips>div { padding:10px 12px; line-height:1.4; }
+}
+@media(max-width:759px) { .workbench:has(.workspace-setup) .workbench-grid { grid-template-rows:minmax(680px,80vh) 12px var(--parts-height,280px) 12px var(--chat-height,480px); } .workspace-file-summary { flex-wrap:wrap; row-gap:6px; } }
 
 .workspace-row-link::after { content:""; position:absolute; inset:0; }
 .workspace-actions { position:relative; display:flex; gap:6px; }
@@ -561,7 +605,7 @@ button:disabled { cursor: not-allowed; }
 .workbench:has(.scene-layout) { height:100dvh; min-height:0; }
 .scene-title,.dock-heading,.dock-tabs,.scene-tools { display:flex; align-items:center; gap:12px; border-bottom:1px solid #414238; padding:0 14px; min-height:42px; background:#232421; }
 .scene-title { min-height:48px; font-size:13px; }
-.scene-title a { color:#f1d45d; }.scene-title>span { color:#797a70; }.scene-title h1 { font-weight:650; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.scene-title a { color:#f1d45d; }.scene-title a:hover { text-decoration:underline; text-underline-offset:3px; }.scene-title>span { color:#797a70; }.scene-title h1 { font-weight:650; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .scene-layout { flex:1; min-height:0; display:grid; grid-template-columns:var(--left) 5px minmax(0,1fr) 5px var(--right); }
 .scene-layout>.workbench-viewer { grid-area:auto; }
 .scene-hierarchy,.scene-dock { background:#20211f; min-height:0; min-width:0; }

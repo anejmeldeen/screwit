@@ -50,14 +50,16 @@ export function AccountProvider({ children }: { children: React.ReactNode }) {
     }
   }, [account, error, loading, path, router]);
 
+  // The editor's routes are dark; their loading screens match, so a refresh never flashes the yellow page.
+  const loadingClass = path.startsWith("/scan/") ? "account-loading is-editor" : "account-loading";
   if (path === "/login") return <AccountContext.Provider value={account}>{children}</AccountContext.Provider>;
   if (error) return (
-    <div className="account-loading" role="alert">
+    <div className={loadingClass} role="alert">
       <p>We couldn&apos;t connect to your account.</p>
       <button className="text-link" onClick={() => { setError(false); setLoading(true); setAttempt((n) => n + 1); }}>Try again</button>
     </div>
   );
-  if (loading || !account) return <div className="account-loading" role="status">Opening your workspace…</div>;
+  if (loading || !account) return <div className={loadingClass} role="status">Opening your workspace…</div>;
   return <AccountContext.Provider key={account.username} value={account}>{children}</AccountContext.Provider>;
 }
 

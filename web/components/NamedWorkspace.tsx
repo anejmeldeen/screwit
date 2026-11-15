@@ -25,7 +25,7 @@ export function NamedWorkspace({ segment, partId }: { segment: string; partId?: 
     }).catch(() => { if (active) setMessage("Could not load this workspace. Refresh to retry."); });
     return () => { active = false; };
   }, [segment, partId, router]);
-  if (message) return <div className="account-loading"><p role="alert">{message}</p><Link href="/">Workspaces</Link></div>;
-  if (!build) return <div className="account-loading" role="status">Opening workspace…</div>;
+  if (message) return <div className="account-loading is-editor"><p role="alert">{message}</p><Link href="/">Workspaces</Link></div>;
+  if (!build) return <div className="account-loading is-editor" role="status">Opening workspace…</div>;
   return <Workspace scanId={build.scan_id} title={build.title} initialPartId={partId} />;
 }

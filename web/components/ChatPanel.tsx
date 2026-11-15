@@ -32,11 +32,14 @@ export function ChatPanel({
   onHighlight,
   onPartChip,
   onShowCad,
+  onPartsChanged,
 }: {
   scanId: string;
   onHighlight: (ids: string[]) => void;
   onPartChip: (id: string) => void;
   onShowCad: (cad: Record<string, unknown>) => void;
+  // Called once after a reply in which Screwy changed the workspace's parts (the add_part tool).
+  onPartsChanged?: () => void;
 }) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
@@ -70,6 +73,16 @@ export function ChatPanel({
 
     const sentImages = images;
     setImages([]);
+
+    // An add_part tool call means the workspace has a new part. Refresh the parts once the reply
+    // has finished (on `done`, or when the stream ends some other way), and only once.
+    let partsChanged = false;
+    let partsRefreshed = false;
+    const refreshPartsOnce = () => {
+      if (!partsChanged || partsRefreshed) return;
+      partsRefreshed = true;
+      onPartsChanged?.();
+    };
 
     try {
       let firstToken = true;
@@ -123,6 +136,7 @@ export function ChatPanel({
             }
             case "done":
               flush();
+              refreshPartsOnce();
               break;
             case "error":
               flush();
@@ -130,6 +144,8 @@ export function ChatPanel({
                 (ev as { message: string }).message);
               break;
             case "tool_call":
+              if ((ev as { name: string }).name === "add_part") partsChanged = true;
+              break;
             default:
               break;
           }
@@ -140,6 +156,7 @@ export function ChatPanel({
       setError(String((e as Error)?.message ?? e));
     } finally {
       setStreaming(false);
+      refreshPartsOnce();
     }
   }
 

@@ -133,10 +133,7 @@ export function ScanSetupForm({ title, onTitleChange, onStarted }: {
     <form className="workspace-upload-form" onSubmit={e => {
       e.preventDefault(); if (!busy) void handleFiles(selectedFiles);
     }}>
-      <h2 className="text-2xl font-bold">What are we building?</h2>
-      <p className="mt-1 text-ink">
-        Upload a video or photos of your object.
-      </p>
+      <h2>Upload a video or photos of your object.</h2>
 
       <label className="workspace-name-field" htmlFor="workspace-title">Workspace title
         <input id="workspace-title" name="title" placeholder="e.g. Kitchen tap repair" required maxLength={120}
@@ -145,7 +142,7 @@ export function ScanSetupForm({ title, onTitleChange, onStarted }: {
 
       {/* Capture / upload control */}
       <div
-        className={`upload-drop mt-8 rounded-lg border-2 border-dashed text-center transition ${
+        className={`upload-drop rounded-lg border-2 border-dashed text-center transition ${
           dragOver ? "border-accent bg-sky-100" : "border-line"
         }`}
         onDragOver={(e) => {
@@ -159,13 +156,12 @@ export function ScanSetupForm({ title, onTitleChange, onStarted }: {
           if (!busy && e.dataTransfer.files?.length) chooseFiles(e.dataTransfer.files);
         }}
       >
-        <p className="text-ink">Drag and drop a video or photos here</p>
-        <p className="my-2 text-sm text-muted">or</p>
+        <p className="upload-drop-hint">Drag and drop a video or photos here, or</p>
 
-        <div className="flex flex-col items-center gap-3 sm:flex-row sm:justify-center">
+        <div className="upload-actions">
           {/* Phone-preferred path: opens the native camera on most phones.
               `capture` is only a hint, so the ordinary picker is always offered too. */}
-          <label className="focus-within:outline focus-within:outline-2 focus-within:outline-offset-4 focus-within:outline-ink cursor-pointer rounded-md bg-accent px-4 py-2 font-medium text-paper hover:bg-ink/90">
+          <label className="upload-choice">
             Record with camera
             <input
               type="file"
@@ -177,7 +173,7 @@ export function ScanSetupForm({ title, onTitleChange, onStarted }: {
             />
           </label>
 
-          <label className="focus-within:outline focus-within:outline-2 focus-within:outline-offset-4 focus-within:outline-ink cursor-pointer rounded-md border border-line px-4 py-2 font-medium hover:border-line">
+          <label className="upload-choice">
             Choose a file
             <input
               ref={fileInputRef}
@@ -189,10 +185,12 @@ export function ScanSetupForm({ title, onTitleChange, onStarted }: {
               onChange={(e) => e.target.files && chooseFiles(e.target.files)}
             />
           </label>
+
+          <WebcamRecorder onRecorded={chooseFiles} disabled={busy} />
         </div>
 
         {busy ? (
-          <div className="mt-6">
+          <div className="mt-4">
             <Spinner
               label={
                 phase === "uploading"
@@ -221,64 +219,41 @@ export function ScanSetupForm({ title, onTitleChange, onStarted }: {
         <button type="button" disabled={busy} onClick={() => { chooseFiles([]); if (fileInputRef.current) fileInputRef.current.value = ""; }}>Remove files</button>
       </div> : null}
       <button type="submit" className="workspace-generate" disabled={busy || selectedFiles.length === 0 || !title.trim()}>
-        {busy ? "Preparing your workspace…" : phase === "error" ? "Try again" : "Generate workspace"}
+        {busy ? "Preparing your workspace…" : phase === "error" ? "Try again" : "Create workspace"}
       </button>
-      <p className="workspace-setup-note">Your model and detected parts will appear in this editor as processing completes.</p>
 
       {error ? (
-        <div className="mt-4">
+        <div className="mt-3">
           <ErrorNote message={error} />
         </div>
       ) : null}
 
-      {/* Scale board + capture tips */}
-      <section className="mt-8 grid gap-6 md:grid-cols-2">
-        <div className="rounded-lg border border-line bg-panel p-5">
-          <h2 className="font-semibold">Scale board</h2>
-          <ol className="mt-2 list-decimal space-y-1 pl-5 text-sm text-ink">
-            <li>
-              Print the board PDF at <strong>100% scale</strong> (no
-              &ldquo;fit to page&rdquo;).
-            </li>
-            <li>
-              Check one printed square with a ruler before using it — a board
-              shown on a screen has an unknown size and is not accepted.
-            </li>
-            <li>
-              Lay it <strong>flat</strong> on the same surface the object stands
-              on, right beside the object, arrow pointing away from your first
-              camera position.
-            </li>
+      {/* Scale board + capture tips, kept short so the whole form fits on one screen; pinned to the
+          bottom of the setup panel by CSS. */}
+      <section className="workspace-tips" aria-label="Before you record">
+        <div>
+          <h3>Scale board</h3>
+          <ol>
+            <li>Print the PDF at <strong>100% scale</strong> (not &ldquo;fit to page&rdquo;) and check one square
+              with a ruler. A board shown on a screen isn&apos;t accepted.</li>
+            <li>Lay it <strong>flat</strong> right beside the object, arrow pointing away from where you start
+              filming.</li>
           </ol>
-          <a
-            href="/scale-board.pdf"
-            download
-            className="mt-3 inline-flex rounded-md border border-line px-3 py-1.5 text-sm hover:border-line"
-          >
-            Download scale board (A4 PDF)
-          </a>
-          <p className="mt-2 text-xs text-muted">
-            No board? Put a credit card (85.60 × 53.98 mm) in frame and set the
-            scale later in the viewer.
-          </p>
+          <p><a href="/scale-board.pdf" download>Download scale board (A4 PDF)</a></p>
+          <p className="workspace-tips-note">No board? Put a credit card (85.60 × 53.98 mm) in frame and set the
+            scale later in the viewer.</p>
         </div>
 
-        <div className="rounded-lg border border-line bg-panel p-5">
-          <h2 className="font-semibold">Capture tips</h2>
-          <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-ink">
-            <li>Record a slow orbit, {REC_MIN_S}-{REC_MAX_S} s (10-90 s accepted).</li>
+        <div>
+          <h3>Capture tips</h3>
+          <ul>
+            <li>Record a slow orbit, {REC_MIN_S}-{REC_MAX_S} s (10-90 s accepted), up to 500 MB.</li>
             <li>Keep the whole object and the board in frame.</li>
             <li>Even, diffuse light; avoid harsh shadows and glare.</li>
-            <li>
-              <strong>iPhone:</strong> turn <em>HDR video</em> off in Camera
-              settings for cleaner frames.
-            </li>
-            <li>File size limit is 500 MB.</li>
+            <li><strong>iPhone:</strong> turn <em>HDR video</em> off in Camera settings.</li>
           </ul>
         </div>
       </section>
-
-      <WebcamRecorder onRecorded={chooseFiles} disabled={busy} />
     </form>
   );
 }
@@ -346,33 +321,20 @@ function WebcamRecorder({
     setRecording(false);
   }
 
+  // A third button beside "Choose a file"; while recording, the preview and the stop button take a
+  // row of their own inside the drop area.
   return (
-    <section className="mt-6 rounded-lg border border-line bg-panel p-5">
-      <h2 className="font-semibold">Record from a webcam (optional)</h2>
-      <video
-        ref={videoRef}
-        muted
-        playsInline
-        className={`mt-3 w-full max-w-sm rounded ${recording ? "block" : "hidden"}`}
-      />
-      <div className="mt-3">
-        {recording ? (
-          <button
-            type="button" onClick={stop}
-            className="rounded-md bg-rose-600 px-4 py-2 font-medium text-white hover:bg-rose-500"
-          >
-            Stop and use recording
-          </button>
-        ) : (
-          <button
-            type="button" onClick={start}
-            disabled={disabled}
-            className="rounded-md border border-line px-4 py-2 font-medium hover:border-line disabled:opacity-50"
-          >
-            Start webcam recording
-          </button>
-        )}
-      </div>
-    </section>
+    <div className={`upload-webcam${recording ? " is-recording" : ""}`}>
+      <video ref={videoRef} muted playsInline hidden={!recording} />
+      {recording ? (
+        <button type="button" onClick={stop} className="upload-webcam-stop">
+          Stop and use recording
+        </button>
+      ) : (
+        <button type="button" onClick={start} disabled={disabled} className="upload-choice">
+          Use webcam
+        </button>
+      )}
+    </div>
   );
 }

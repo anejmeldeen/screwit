@@ -197,7 +197,7 @@ export function Workspace({
 
   return (
     <div className="workbench flex flex-col">
-      <header className="scene-title"><Link href="/">← Workspaces</Link><span aria-hidden="true">/</span><h1>{name}</h1></header>
+      <header className="scene-title"><Link href="/">Workspaces</Link><span aria-hidden="true">/</span><h1>{name}</h1></header>
       {scanError ? <div className="workbench-notice"><ErrorNote message={`Could not load this object: ${scanError}`} /></div> : null}
       {scan?.status === "failed" ? <div className="workbench-notice" role="alert">This scan could not finish. Try another recording.</div> : null}
       {!creationForm && !scanError && (watching || !scan || (scan.status !== "ready" && scan.status !== "failed")) ? <div className="workbench-notice" role="status"><ScanProgress scan={scan} /></div> : null}
@@ -268,6 +268,7 @@ export function Workspace({
             onHighlight={onHighlight}
             onPartChip={onPartChip}
             onShowCad={onShowCad}
+            onPartsChanged={refreshParts}
           /></ManualContext.Provider>}
           </section>
         </aside>
